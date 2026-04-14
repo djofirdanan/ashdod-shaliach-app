@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   UserGroupIcon,
   StarIcon,
@@ -6,8 +6,10 @@ import {
   MagnifyingGlassIcon,
   NoSymbolIcon,
   CheckCircleIcon,
-  ExclamationTriangleIcon,
-  ArrowPathIcon,
+  PlusIcon,
+  PencilIcon,
+  TrashIcon,
+  BoltIcon,
 } from '@heroicons/react/24/outline';
 import { StarIcon as StarSolid } from '@heroicons/react/24/solid';
 import toast from 'react-hot-toast';
@@ -16,16 +18,11 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
-import { TableSkeleton } from '../components/ui/LoadingSkeleton';
-import {
-  fetchCouriers,
-  blockCourier,
-  unblockCourier,
-} from '../services/user.service';
-import type { Courier, VehicleType } from '../types';
-import { demoCouriers } from '../data/demoUsers';
+import * as storageService from '../services/storage.service';
+import type { StoredCourier } from '../services/storage.service';
 import { formatCurrency } from '../utils/formatters';
 import { VEHICLE_TYPE_LABELS } from '../utils/constants';
+import type { VehicleType } from '../types';
 
 const vehicleLabels: Record<VehicleType, string> = {
   motorcycle: VEHICLE_TYPE_LABELS.motorcycle,
@@ -37,149 +34,259 @@ const vehicleLabels: Record<VehicleType, string> = {
 const RatingStars: React.FC<{ rating: number }> = ({ rating }) => (
   <div className="flex items-center gap-1">
     <StarSolid className="w-4 h-4 text-yellow-400" />
-    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{rating.toFixed(1)}</span>
+    <span className="text-sm font-medium text-gray-700">{rating.toFixed(1)}</span>
   </div>
 );
 
+// ─── Courier Form ─────────────────────────────────────────────
+interface CourFormState {
+  name: string;
+  email: string;
+  phone: string;
+  vehicle: 'motorcycle' | 'bicycle' | 'car' | 'scooter';
+  vehiclePlate: string;
+  password: string;
+  isActive: boolean;
+}
+
+const emptyCourForm = (): CourFormState => ({
+  name: '', email: '', phone: '',
+  vehicle: 'motorcycle', vehiclePlate: '', password: '', isActive: true,
+});
+
+interface CourFormProps {
+  value: CourFormState;
+  onChange: (v: CourFormState) => void;
+  editMode?: boolean;
+}
+
+const CourForm: React.FC<CourFormProps> = ({ value, onChange, editMode }) => (
+  <div className="space-y-4" dir="rtl">
+    <Input label="שם מלא *" value={value.name} onChange={(e) => onChange({ ...value, name: e.target.value })} />
+    <div className="grid grid-cols-2 gap-3">
+      <Input label="אימייל *" type="email" dir="ltr" value={value.email} onChange={(e) => onChange({ ...value, email: e.target.value })} />
+      <Input label="טלפון *" type="tel" dir="ltr" value={value.phone} onChange={(e) => onChange({ ...value, phone: e.target.value })} />
+    </div>
+    <div className="grid grid-cols-2 gap-3">
+      <div>
+        <label className="block text-[12px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#3c4257' }}>סוג רכב</label>
+        <select value={value.vehicle}
+          onChange={(e) => onChange({ ...value, vehicle: e.target.value as typeof value.vehicle })}
+          className="w-full px-3 py-2.5 rounded-[6px] text-sm border outline-none"
+          style={{ borderColor: '#e0e6ed', background: '#f8fafc', color: '#061b31', fontFamily: 'inherit' }}>
+          <option value="motorcycle">אופנוע</option>
+          <option value="bicycle">אופניים</option>
+          <option value="car">רכב</option>
+          <option value="scooter">קטנוע</option>
+        </select>
+      </div>
+      {value.vehicle !== 'bicycle' && (
+        <Input label="לוחית רישוי" dir="ltr" placeholder="12-345-67" value={value.vehiclePlate} onChange={(e) => onChange({ ...value, vehiclePlate: e.target.value })} />
+      )}
+    </div>
+    {!editMode && (
+      <Input label="סיסמה *" type="password" dir="ltr" placeholder="••••••" value={value.password} onChange={(e) => onChange({ ...value, password: e.target.value })} />
+    )}
+    <label className="flex items-center gap-2 cursor-pointer">
+      <input type="checkbox" checked={value.isActive} onChange={(e) => onChange({ ...value, isActive: e.target.checked })} className="w-4 h-4 accent-purple-600" />
+      <span className="text-sm font-medium text-gray-700">פעיל</span>
+    </label>
+  </div>
+);
+
+// ─── Main Page ────────────────────────────────────────────────
 const Couriers: React.FC = () => {
-  const [couriers, setCouriers] = useState<Courier[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [couriers, setCouriers] = useState<StoredCourier[]>([]);
   const [search, setSearch] = useState('');
   const [vehicleFilter, setVehicleFilter] = useState<string>('all');
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [selectedCourier, setSelectedCourier] = useState<Courier | null>(null);
-  const [blockModal, setBlockModal] = useState<{ open: boolean; courier: Courier | null }>({
-    open: false,
-    courier: null,
-  });
+
+  // Modals
+  const [addModal, setAddModal] = useState(false);
+  const [editModal, setEditModal] = useState<{ open: boolean; courier: StoredCourier | null }>({ open: false, courier: null });
+  const [deleteModal, setDeleteModal] = useState<{ open: boolean; courier: StoredCourier | null }>({ open: false, courier: null });
+  const [blockModal, setBlockModal] = useState<{ open: boolean; courier: StoredCourier | null }>({ open: false, courier: null });
   const [blockReason, setBlockReason] = useState('');
-  const [blocking, setBlocking] = useState(false);
+  const [detailModal, setDetailModal] = useState<{ open: boolean; courier: StoredCourier | null }>({ open: false, courier: null });
 
-  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Forms
+  const [addForm, setAddForm] = useState<CourFormState>(emptyCourForm());
+  const [editForm, setEditForm] = useState<CourFormState>(emptyCourForm());
 
-  const loadCouriers = async (searchVal: string, pg: number) => {
-    setError(null);
-    setLoading(true);
-    try {
-      const result = await fetchCouriers({ search: searchVal || undefined, page: pg, limit: 20 });
-      setCouriers(result.data);
-      setTotalPages(result.totalPages);
-    } catch {
-      // Backend not available — use demo data
-      const filtered = searchVal
-        ? demoCouriers.filter((c) => c.name.includes(searchVal) || c.email?.includes(searchVal))
-        : demoCouriers;
-      setCouriers(filtered);
-      setTotalPages(1);
-    } finally {
-      setLoading(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const load = useCallback(() => {
+    setCouriers(storageService.getCouriers());
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const filtered = couriers.filter((c) => {
+    const matchSearch = !search ||
+      c.name.includes(search) ||
+      c.email.includes(search) ||
+      c.phone.includes(search);
+    const matchVehicle = vehicleFilter === 'all' || c.vehicle === vehicleFilter;
+    return matchSearch && matchVehicle;
+  });
+
+  const totalCount = couriers.length;
+  const activeCount = couriers.filter((c) => c.isActive && !c.isBlocked).length;
+  const avgRating = totalCount > 0 ? couriers.reduce((s, c) => s + c.rating, 0) / totalCount : 0;
+
+  // ── Add ──
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!addForm.name || !addForm.email || !addForm.phone || !addForm.password) {
+      toast.error('נא למלא את כל השדות החובה');
+      return;
     }
+    if (storageService.getCourierByEmail(addForm.email)) {
+      toast.error('אימייל כבר קיים במערכת');
+      return;
+    }
+    setIsSaving(true);
+    try {
+      storageService.addCourier({
+        email: addForm.email,
+        password: storageService.hashPassword(addForm.password),
+        name: addForm.name,
+        phone: addForm.phone,
+        vehicle: addForm.vehicle,
+        vehiclePlate: addForm.vehicle !== 'bicycle' ? addForm.vehiclePlate || undefined : undefined,
+        isActive: addForm.isActive,
+        isBlocked: false,
+        rating: 5,
+        totalDeliveries: 0,
+        activeDeliveries: 0,
+        earnings: { today: 0, thisWeek: 0, thisMonth: 0, total: 0 },
+      });
+      toast.success('שליח נוסף בהצלחה');
+      setAddModal(false);
+      setAddForm(emptyCourForm());
+      load();
+    } catch { toast.error('שגיאה בהוספת שליח'); }
+    finally { setIsSaving(false); }
   };
 
-  // Initial load
-  useEffect(() => {
-    loadCouriers(search, page);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]);
+  // ── Edit ──
+  const openEdit = (courier: StoredCourier) => {
+    setEditForm({
+      name: courier.name,
+      email: courier.email,
+      phone: courier.phone,
+      vehicle: courier.vehicle,
+      vehiclePlate: courier.vehiclePlate || '',
+      password: '',
+      isActive: courier.isActive,
+    });
+    setEditModal({ open: true, courier });
+  };
 
-  // Debounced search
-  useEffect(() => {
-    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-    searchDebounceRef.current = setTimeout(() => {
-      setPage(1);
-      loadCouriers(search, 1);
-    }, 400);
-    return () => {
-      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
+  const handleEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editModal.courier) return;
+    setIsSaving(true);
+    try {
+      storageService.updateCourier(editModal.courier.id, {
+        name: editForm.name,
+        email: editForm.email,
+        phone: editForm.phone,
+        vehicle: editForm.vehicle,
+        vehiclePlate: editForm.vehicle !== 'bicycle' ? editForm.vehiclePlate || undefined : undefined,
+        isActive: editForm.isActive,
+      });
+      toast.success('שליח עודכן בהצלחה');
+      setEditModal({ open: false, courier: null });
+      load();
+    } catch { toast.error('שגיאה בעדכון שליח'); }
+    finally { setIsSaving(false); }
+  };
 
-  const filtered = vehicleFilter === 'all'
-    ? couriers
-    : couriers.filter((c) => c.vehicle === vehicleFilter);
+  // ── Delete ──
+  const handleDelete = () => {
+    if (!deleteModal.courier) return;
+    storageService.deleteCourier(deleteModal.courier.id);
+    toast.success('שליח נמחק');
+    setDeleteModal({ open: false, courier: null });
+    load();
+  };
 
-  // Client-side stats from loaded page
-  const totalOnPage = couriers.length;
-  const activeOnPage = couriers.filter((c) => c.isActive && !c.isBlocked).length;
-  const avgRating = totalOnPage > 0
-    ? couriers.reduce((sum, c) => sum + c.rating, 0) / totalOnPage
-    : 0;
-
-  const handleBlock = async () => {
+  // ── Block/Unblock ──
+  const handleBlock = () => {
     if (!blockModal.courier) return;
-    setBlocking(true);
-    try {
-      await blockCourier(blockModal.courier.id, blockReason || 'חסום על ידי מנהל');
-      toast.success(`שליח ${blockModal.courier.name} נחסם בהצלחה`);
-      setBlockModal({ open: false, courier: null });
-      setBlockReason('');
-      loadCouriers(search, page);
-    } catch (err) {
-      toast.error('שגיאה בחסימת השליח');
-    } finally {
-      setBlocking(false);
-    }
+    storageService.updateCourier(blockModal.courier.id, {
+      isBlocked: true,
+      blockedReason: blockReason || 'חסום על ידי מנהל',
+    });
+    toast.success(`שליח ${blockModal.courier.name} נחסם`);
+    setBlockModal({ open: false, courier: null });
+    setBlockReason('');
+    load();
   };
 
-  const handleUnblock = async (courier: Courier) => {
-    try {
-      await unblockCourier(courier.id);
-      toast.success(`חסימת ${courier.name} בוטלה`);
-      loadCouriers(search, page);
-    } catch (err) {
-      toast.error('שגיאה בביטול החסימה');
-    }
+  const handleUnblock = (courier: StoredCourier) => {
+    storageService.updateCourier(courier.id, { isBlocked: false, blockedReason: undefined });
+    toast.success(`חסימת ${courier.name} בוטלה`);
+    load();
+  };
+
+  // ── Quick Login ──
+  const handleQuickLogin = (courier: StoredCourier) => {
+    const portalUser = { id: courier.id, type: 'courier' as const, name: courier.name };
+    localStorage.setItem('portal_user', JSON.stringify(portalUser));
+    toast.success(`כניסה כ-${courier.name} — פתח את פורטל השליחים בלשונית חדשה`);
+    window.open('/portal/courier', '_blank');
   };
 
   return (
     <div className="space-y-6" dir="rtl">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">ניהול שליחים</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-            ניהול וניטור כל השליחים במערכת
-          </p>
+          <p className="text-sm text-gray-500 mt-0.5">ניהול וניטור כל השליחים במערכת</p>
         </div>
+        <Button
+          variant="primary"
+          leftIcon={<PlusIcon className="w-4 h-4" />}
+          onClick={() => { setAddForm(emptyCourForm()); setAddModal(true); }}
+        >
+          הוסף שליח
+        </Button>
       </div>
 
-      {/* Stats row — computed from current page data */}
+      {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-purple-50 dark:bg-purple-900/20 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center">
               <UserGroupIcon className="w-5 h-5 text-purple-600" />
             </div>
             <div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">סה"כ בעמוד</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{totalOnPage}</p>
+              <p className="text-sm text-gray-500">סה"כ שליחים</p>
+              <p className="text-2xl font-bold text-gray-900">{totalCount}</p>
             </div>
           </div>
         </Card>
         <Card>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-green-50 dark:bg-green-900/20 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center">
               <TruckIcon className="w-5 h-5 text-green-600" />
             </div>
             <div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">פעילים כעת</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{activeOnPage}</p>
+              <p className="text-sm text-gray-500">פעילים כעת</p>
+              <p className="text-2xl font-bold text-gray-900">{activeCount}</p>
             </div>
           </div>
         </Card>
         <Card>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-lg bg-yellow-50 flex items-center justify-center">
               <StarIcon className="w-5 h-5 text-yellow-500" />
             </div>
             <div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">דירוג ממוצע</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                {totalOnPage > 0 ? avgRating.toFixed(1) : '—'}
-              </p>
+              <p className="text-sm text-gray-500">דירוג ממוצע</p>
+              <p className="text-2xl font-bold text-gray-900">{totalCount > 0 ? avgRating.toFixed(1) : '—'}</p>
             </div>
           </div>
         </Card>
@@ -190,7 +297,7 @@ const Couriers: React.FC = () => {
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="flex-1">
             <Input
-              placeholder="חיפוש לפי שם או טלפון..."
+              placeholder="חיפוש לפי שם, אימייל או טלפון..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               leftIcon={<MagnifyingGlassIcon className="w-4 h-4" />}
@@ -199,7 +306,7 @@ const Couriers: React.FC = () => {
           <select
             value={vehicleFilter}
             onChange={(e) => setVehicleFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 text-sm focus:outline-none"
           >
             <option value="all">כל הרכבים</option>
             <option value="motorcycle">אופנוע</option>
@@ -210,265 +317,219 @@ const Couriers: React.FC = () => {
         </div>
       </Card>
 
-      {/* Error state */}
-      {error && !loading && (
-        <div className="flex items-center justify-center py-16">
-          <div className="text-center max-w-sm">
-            <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
-              <ExclamationTriangleIcon className="w-7 h-7 text-red-500" />
+      {/* Table */}
+      <Card padding="none">
+        {/* Desktop Table */}
+        <div className="hidden md:block overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100">
+                {['שם', 'טלפון', 'רכב', 'דירוג', 'פעיל', 'סה"כ', 'הכנסות', 'סטטוס', 'פעולות'].map((h) => (
+                  <th key={h} className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((courier) => (
+                <tr
+                  key={courier.id}
+                  className="border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer"
+                  onClick={() => setDetailModal({ open: true, courier })}
+                >
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0">
+                        <span className="text-purple-700 font-semibold text-xs">{courier.name.charAt(0)}</span>
+                      </div>
+                      <span className="font-medium text-gray-900">{courier.name}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-gray-600" dir="ltr">{courier.phone}</td>
+                  <td className="px-4 py-3 text-gray-600">{vehicleLabels[courier.vehicle] ?? courier.vehicle}</td>
+                  <td className="px-4 py-3"><RatingStars rating={courier.rating} /></td>
+                  <td className="px-4 py-3">
+                    <span className={`font-semibold ${courier.activeDeliveries > 0 ? 'text-blue-600' : 'text-gray-400'}`}>
+                      {courier.activeDeliveries}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-gray-600">{courier.totalDeliveries.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-green-600 font-medium">{formatCurrency(courier.earnings.thisMonth)}</td>
+                  <td className="px-4 py-3">
+                    {courier.isBlocked ? <Badge color="red" dot>חסום</Badge>
+                      : courier.isActive ? <Badge color="green" dot>פעיל</Badge>
+                      : <Badge color="gray" dot>לא זמין</Badge>}
+                  </td>
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center gap-1">
+                      <button title="כניסה מהירה" onClick={() => handleQuickLogin(courier)}
+                        className="p-1.5 rounded-lg bg-purple-50 text-purple-700 hover:bg-purple-100">
+                        <BoltIcon className="w-3.5 h-3.5" />
+                      </button>
+                      <button title="עריכה" onClick={() => openEdit(courier)}
+                        className="p-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100">
+                        <PencilIcon className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => courier.isBlocked ? handleUnblock(courier) : setBlockModal({ open: true, courier })}
+                        className={`p-1.5 rounded-lg ${courier.isBlocked ? 'bg-green-50 text-green-700 hover:bg-green-100' : 'bg-red-50 text-red-700 hover:bg-red-100'}`}>
+                        {courier.isBlocked ? <CheckCircleIcon className="w-3.5 h-3.5" /> : <NoSymbolIcon className="w-3.5 h-3.5" />}
+                      </button>
+                      <button title="מחיקה" onClick={() => setDeleteModal({ open: true, courier })}
+                        className="p-1.5 rounded-lg bg-gray-50 text-gray-600 hover:bg-red-50 hover:text-red-700">
+                        <TrashIcon className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Mobile Cards */}
+        <div className="md:hidden divide-y divide-gray-100">
+          {filtered.map((courier) => (
+            <div key={courier.id} className="p-4 space-y-2">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
+                    <span className="text-purple-700 font-semibold">{courier.name.charAt(0)}</span>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-900">{courier.name}</p>
+                    <p className="text-xs text-gray-400" dir="ltr">{courier.phone}</p>
+                  </div>
+                </div>
+                {courier.isBlocked ? <Badge color="red" dot>חסום</Badge>
+                  : courier.isActive ? <Badge color="green" dot>פעיל</Badge>
+                  : <Badge color="gray" dot>לא זמין</Badge>}
+              </div>
+              <div className="flex items-center justify-between text-sm text-gray-500">
+                <span>{vehicleLabels[courier.vehicle]}</span>
+                <RatingStars rating={courier.rating} />
+              </div>
+              <div className="flex items-center gap-2 pt-1">
+                <button onClick={() => handleQuickLogin(courier)} className="flex-1 py-1.5 rounded-lg text-xs font-semibold bg-purple-50 text-purple-700">כניסה מהירה</button>
+                <button onClick={() => openEdit(courier)} className="flex-1 py-1.5 rounded-lg text-xs font-semibold bg-blue-50 text-blue-700">עריכה</button>
+                <button onClick={() => courier.isBlocked ? handleUnblock(courier) : setBlockModal({ open: true, courier })}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-semibold ${courier.isBlocked ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                  {courier.isBlocked ? 'בטל' : 'חסום'}
+                </button>
+                <button onClick={() => setDeleteModal({ open: true, courier })} className="px-3 py-1.5 rounded-lg text-xs bg-gray-100 text-gray-600">
+                  <TrashIcon className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
-            <p className="font-semibold text-gray-800 dark:text-white mb-1">שגיאה בטעינת הנתונים</p>
-            <p className="text-sm text-gray-500 mb-4">{error}</p>
-            <Button
-              variant="primary"
-              leftIcon={<ArrowPathIcon className="w-4 h-4" />}
-              onClick={() => loadCouriers(search, page)}
-            >
-              נסה שוב
+          ))}
+        </div>
+
+        {filtered.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+            <UserGroupIcon className="w-12 h-12 mb-3 opacity-30" />
+            <p className="text-sm font-medium">לא נמצאו שליחים</p>
+            <Button variant="primary" size="sm" className="mt-4" leftIcon={<PlusIcon className="w-4 h-4" />}
+              onClick={() => { setAddForm(emptyCourForm()); setAddModal(true); }}>
+              הוסף שליח ראשון
             </Button>
           </div>
-        </div>
-      )}
+        )}
+      </Card>
 
-      {/* Table */}
-      {!error && (
-        <Card padding="none">
-          {loading ? (
-            <TableSkeleton rows={5} cols={8} />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100 dark:border-gray-700">
-                    {['שם', 'טלפון', 'רכב', 'דירוג', 'פעילים', 'סה"כ', 'הכנסות', 'סטטוס', 'פעולות'].map((h) => (
-                      <th
-                        key={h}
-                        className="text-right px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide"
-                      >
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((courier) => (
-                    <tr
-                      key={courier.id}
-                      className="border-b border-gray-50 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors cursor-pointer"
-                      onClick={() => setSelectedCourier(courier)}
-                    >
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center flex-shrink-0">
-                            <span className="text-purple-700 dark:text-purple-400 font-semibold text-xs">
-                              {courier.name.charAt(0)}
-                            </span>
-                          </div>
-                          <span className="font-medium text-gray-900 dark:text-white">{courier.name}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300" dir="ltr">{courier.phone}</td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
-                        {vehicleLabels[courier.vehicle] ?? courier.vehicle}
-                      </td>
-                      <td className="px-4 py-3">
-                        <RatingStars rating={courier.rating} />
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`font-semibold ${courier.activeDeliveries > 0 ? 'text-blue-600' : 'text-gray-400'}`}>
-                          {courier.activeDeliveries}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
-                        {courier.totalDeliveries.toLocaleString()}
-                      </td>
-                      <td className="px-4 py-3 text-green-600 dark:text-green-400 font-medium">
-                        {formatCurrency(courier.earnings.thisMonth)}
-                      </td>
-                      <td className="px-4 py-3">
-                        {courier.isBlocked ? (
-                          <Badge color="red" dot>חסום</Badge>
-                        ) : courier.isActive ? (
-                          <Badge color="green" dot>פעיל</Badge>
-                        ) : (
-                          <Badge color="gray" dot>לא זמין</Badge>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (courier.isBlocked) {
-                              handleUnblock(courier);
-                            } else {
-                              setBlockModal({ open: true, courier });
-                            }
-                          }}
-                          className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
-                            courier.isBlocked
-                              ? 'bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-900/20 dark:text-green-400'
-                              : 'bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400'
-                          }`}
-                        >
-                          {courier.isBlocked ? (
-                            <><CheckCircleIcon className="w-3.5 h-3.5" /> בטל חסימה</>
-                          ) : (
-                            <><NoSymbolIcon className="w-3.5 h-3.5" /> חסום</>
-                          )}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              {/* Empty state */}
-              {filtered.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-16 text-gray-400">
-                  <UserGroupIcon className="w-12 h-12 mb-3 opacity-30" />
-                  <p className="text-sm font-medium">לא נמצאו שליחים</p>
-                  {search && (
-                    <p className="text-xs mt-1 text-gray-400">נסה לשנות את מילות החיפוש</p>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Pagination */}
-          {!loading && totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 dark:border-gray-700">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-              >
-                הקודם
-              </Button>
-              <span className="text-sm text-gray-500">
-                עמוד {page} מתוך {totalPages}
-              </span>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-              >
-                הבא
-              </Button>
-            </div>
-          )}
-        </Card>
-      )}
-
-      {/* Courier Details Modal */}
-      <Modal
-        isOpen={!!selectedCourier}
-        onClose={() => setSelectedCourier(null)}
-        title="פרטי שליח"
-        size="lg"
+      {/* ── ADD MODAL ── */}
+      <Modal isOpen={addModal} onClose={() => setAddModal(false)} title="הוסף שליח חדש" size="md"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setAddModal(false)}>ביטול</Button>
+            <Button variant="primary" onClick={handleAdd} isLoading={isSaving}>שמור</Button>
+          </>
+        }
       >
-        {selectedCourier && (
-          <div className="space-y-4">
+        <form onSubmit={handleAdd}><CourForm value={addForm} onChange={setAddForm} /></form>
+      </Modal>
+
+      {/* ── EDIT MODAL ── */}
+      <Modal isOpen={editModal.open} onClose={() => setEditModal({ open: false, courier: null })} title={`עריכת שליח: ${editModal.courier?.name}`} size="md"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setEditModal({ open: false, courier: null })}>ביטול</Button>
+            <Button variant="primary" onClick={handleEdit} isLoading={isSaving}>שמור שינויים</Button>
+          </>
+        }
+      >
+        <form onSubmit={handleEdit}><CourForm value={editForm} onChange={setEditForm} editMode /></form>
+      </Modal>
+
+      {/* ── DETAIL MODAL ── */}
+      <Modal isOpen={detailModal.open} onClose={() => setDetailModal({ open: false, courier: null })} title="פרטי שליח" size="lg">
+        {detailModal.courier && (
+          <div className="space-y-4" dir="rtl">
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-                <span className="text-purple-700 dark:text-purple-400 font-bold text-2xl">
-                  {selectedCourier.name.charAt(0)}
-                </span>
+              <div className="w-16 h-16 rounded-full bg-purple-100 flex items-center justify-center">
+                <span className="text-purple-700 font-bold text-2xl">{detailModal.courier.name.charAt(0)}</span>
               </div>
               <div>
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white">{selectedCourier.name}</h3>
-                <p className="text-gray-500 dark:text-gray-400" dir="ltr">{selectedCourier.phone}</p>
-                {selectedCourier.isBlocked && (
-                  <div className="mt-1">
-                    <Badge color="red">חסום: {selectedCourier.blockedReason}</Badge>
-                  </div>
-                )}
+                <h3 className="text-xl font-bold text-gray-900">{detailModal.courier.name}</h3>
+                <p className="text-gray-500" dir="ltr">{detailModal.courier.phone}</p>
               </div>
             </div>
-
             <div className="grid grid-cols-2 gap-4">
-              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4">
-                <p className="text-xs text-gray-500 mb-1">רכב</p>
-                <p className="font-semibold text-gray-900 dark:text-white">
-                  {vehicleLabels[selectedCourier.vehicle] ?? selectedCourier.vehicle}
-                </p>
-                {selectedCourier.vehiclePlate && (
-                  <p className="text-xs text-gray-400 mt-0.5" dir="ltr">{selectedCourier.vehiclePlate}</p>
-                )}
-              </div>
-              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4">
-                <p className="text-xs text-gray-500 mb-1">דירוג</p>
-                <RatingStars rating={selectedCourier.rating} />
-              </div>
-              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4">
-                <p className="text-xs text-gray-500 mb-1">סה"כ משלוחים</p>
-                <p className="font-semibold text-gray-900 dark:text-white">
-                  {selectedCourier.totalDeliveries.toLocaleString()}
-                </p>
-              </div>
-              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4">
-                <p className="text-xs text-gray-500 mb-1">הצטרף בתאריך</p>
-                <p className="font-semibold text-gray-900 dark:text-white">{selectedCourier.joinedAt}</p>
-              </div>
+              {[
+                { label: 'רכב', value: vehicleLabels[detailModal.courier.vehicle] },
+                { label: 'דירוג', value: <RatingStars rating={detailModal.courier.rating} /> },
+                { label: 'סה"כ משלוחים', value: detailModal.courier.totalDeliveries.toLocaleString() },
+                { label: 'הצטרף', value: new Date(detailModal.courier.createdAt).toLocaleDateString('he-IL') },
+              ].map((item) => (
+                <div key={item.label} className="bg-gray-50 rounded-xl p-3">
+                  <p className="text-xs text-gray-500 mb-1">{item.label}</p>
+                  <div className="font-semibold text-gray-900">{item.value}</div>
+                </div>
+              ))}
             </div>
-
-            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4">
+            <div className="bg-gray-50 rounded-xl p-4">
               <p className="text-xs font-semibold text-gray-500 mb-3">רווחים</p>
-              <div className="grid grid-cols-4 gap-3">
-                <div className="text-center">
-                  <p className="text-lg font-bold text-green-600">{formatCurrency(selectedCourier.earnings.today)}</p>
-                  <p className="text-xs text-gray-400">היום</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-lg font-bold text-blue-600">{formatCurrency(selectedCourier.earnings.thisWeek)}</p>
-                  <p className="text-xs text-gray-400">השבוע</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-lg font-bold text-purple-600">{formatCurrency(selectedCourier.earnings.thisMonth)}</p>
-                  <p className="text-xs text-gray-400">החודש</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-lg font-bold text-gray-700 dark:text-gray-300">{formatCurrency(selectedCourier.earnings.total)}</p>
-                  <p className="text-xs text-gray-400">סה"כ</p>
-                </div>
+              <div className="grid grid-cols-4 gap-3 text-center">
+                {[
+                  { label: 'היום', value: detailModal.courier.earnings.today, color: 'text-green-600' },
+                  { label: 'השבוע', value: detailModal.courier.earnings.thisWeek, color: 'text-blue-600' },
+                  { label: 'החודש', value: detailModal.courier.earnings.thisMonth, color: 'text-purple-600' },
+                  { label: 'סה"כ', value: detailModal.courier.earnings.total, color: 'text-gray-700' },
+                ].map((e) => (
+                  <div key={e.label}>
+                    <p className={`text-lg font-bold ${e.color}`}>{formatCurrency(e.value)}</p>
+                    <p className="text-xs text-gray-400">{e.label}</p>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
         )}
       </Modal>
 
-      {/* Block Reason Modal */}
-      <Modal
-        isOpen={blockModal.open}
-        onClose={() => { setBlockModal({ open: false, courier: null }); setBlockReason(''); }}
-        title={`חסימת שליח: ${blockModal.courier?.name}`}
-        size="sm"
+      {/* ── DELETE MODAL ── */}
+      <Modal isOpen={deleteModal.open} onClose={() => setDeleteModal({ open: false, courier: null })} title="מחיקת שליח" size="sm"
         footer={
           <>
-            <Button
-              variant="secondary"
-              onClick={() => { setBlockModal({ open: false, courier: null }); setBlockReason(''); }}
-            >
-              ביטול
-            </Button>
-            <Button variant="danger" onClick={handleBlock} disabled={blocking}>
-              {blocking ? 'חוסם...' : 'אשר חסימה'}
-            </Button>
+            <Button variant="secondary" onClick={() => setDeleteModal({ open: false, courier: null })}>ביטול</Button>
+            <Button variant="danger" onClick={handleDelete}>מחק</Button>
+          </>
+        }
+      >
+        <p className="text-sm text-gray-600">האם אתה בטוח שברצונך למחוק את השליח <strong>{deleteModal.courier?.name}</strong>?</p>
+      </Modal>
+
+      {/* ── BLOCK MODAL ── */}
+      <Modal isOpen={blockModal.open} onClose={() => { setBlockModal({ open: false, courier: null }); setBlockReason(''); }}
+        title={`חסימת שליח: ${blockModal.courier?.name}`} size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => { setBlockModal({ open: false, courier: null }); setBlockReason(''); }}>ביטול</Button>
+            <Button variant="danger" onClick={handleBlock}>אשר חסימה</Button>
           </>
         }
       >
         <div className="space-y-3">
-          <p className="text-sm text-gray-600 dark:text-gray-300">
-            האם אתה בטוח שברצונך לחסום את השליח {blockModal.courier?.name}?
-          </p>
-          <Input
-            label="סיבת החסימה (אופציונלי)"
-            placeholder="לדוגמה: התנהגות לא הולמת"
-            value={blockReason}
-            onChange={(e) => setBlockReason(e.target.value)}
-          />
+          <p className="text-sm text-gray-600">האם אתה בטוח שברצונך לחסום את {blockModal.courier?.name}?</p>
+          <Input label="סיבת החסימה (אופציונלי)" placeholder="לדוגמה: התנהגות לא הולמת" value={blockReason} onChange={(e) => setBlockReason(e.target.value)} />
         </div>
       </Modal>
     </div>

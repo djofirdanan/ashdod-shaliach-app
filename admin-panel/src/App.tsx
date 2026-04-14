@@ -14,6 +14,8 @@ import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import LiveMap from './pages/LiveMap';
 import Login from './pages/Login';
+import Register from './pages/Register';
+import Chat from './pages/Chat';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const token = localStorage.getItem('admin_token');
@@ -30,6 +32,7 @@ const App: React.FC = () => {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route
               element={
@@ -42,6 +45,7 @@ const App: React.FC = () => {
               <Route path="/deliveries" element={<Deliveries />} />
               <Route path="/couriers" element={<Couriers />} />
               <Route path="/businesses" element={<Businesses />} />
+              <Route path="/chat" element={<Chat />} />
               <Route path="/live-map" element={<LiveMap />} />
               <Route path="/pricing" element={<Pricing />} />
               <Route path="/bonuses" element={<Bonuses />} />

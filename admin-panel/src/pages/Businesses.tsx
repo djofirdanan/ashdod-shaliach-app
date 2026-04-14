@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   BuildingStorefrontIcon,
   TruckIcon,
@@ -6,8 +6,10 @@ import {
   MagnifyingGlassIcon,
   NoSymbolIcon,
   CheckCircleIcon,
-  ExclamationTriangleIcon,
-  ArrowPathIcon,
+  PlusIcon,
+  PencilIcon,
+  TrashIcon,
+  BoltIcon,
 } from '@heroicons/react/24/outline';
 import { StarIcon as StarSolid } from '@heroicons/react/24/solid';
 import toast from 'react-hot-toast';
@@ -16,23 +18,20 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
-import { TableSkeleton } from '../components/ui/LoadingSkeleton';
-import {
-  fetchBusinesses,
-  blockBusiness,
-  unblockBusiness,
-} from '../services/user.service';
-import type { Business } from '../types';
-import { demoBusinesses } from '../data/demoUsers';
+import * as storageService from '../services/storage.service';
+import type { StoredBusiness } from '../services/storage.service';
 import { formatCurrency } from '../utils/formatters';
+import { DEFAULT_PRICING_ZONES } from '../utils/constants';
+
+const CATEGORIES = ['מסעדה', 'בית קפה', 'מכולת', 'פרמצ׳יה', 'אחר'];
+const zones = DEFAULT_PRICING_ZONES.map((z) => z.name);
 
 const categoryColors: Record<string, string> = {
   'מסעדה': 'orange',
-  'בית מרקחת': 'green',
-  'סופרמרקט': 'blue',
-  'פרחים': 'pink',
-  'מכבסה': 'indigo',
-  'אופטיקה': 'purple',
+  'בית קפה': 'brown',
+  'מכולת': 'blue',
+  'פרמצ׳יה': 'green',
+  'אחר': 'gray',
 };
 
 const RatingStars: React.FC<{ rating: number }> = ({ rating }) => (
@@ -42,105 +41,244 @@ const RatingStars: React.FC<{ rating: number }> = ({ rating }) => (
   </div>
 );
 
+// ─── Business Form ────────────────────────────────────────────
+interface BizFormState {
+  businessName: string;
+  contactPerson: string;
+  email: string;
+  phone: string;
+  street: string;
+  city: string;
+  zone: string;
+  category: string;
+  password: string;
+  isActive: boolean;
+  balance: number;
+}
+
+const emptyBizForm = (): BizFormState => ({
+  businessName: '', contactPerson: '', email: '', phone: '',
+  street: '', city: 'אשדוד', zone: '', category: 'מסעדה',
+  password: '', isActive: true, balance: 0,
+});
+
+interface BizFormProps {
+  value: BizFormState;
+  onChange: (v: BizFormState) => void;
+  editMode?: boolean;
+}
+
+const BizForm: React.FC<BizFormProps> = ({ value, onChange, editMode }) => (
+  <div className="space-y-4" dir="rtl">
+    <div className="grid grid-cols-2 gap-3">
+      <Input label="שם העסק *" value={value.businessName} onChange={(e) => onChange({ ...value, businessName: e.target.value })} />
+      <Input label="איש קשר *" value={value.contactPerson} onChange={(e) => onChange({ ...value, contactPerson: e.target.value })} />
+    </div>
+    <div className="grid grid-cols-2 gap-3">
+      <Input label="אימייל *" type="email" dir="ltr" value={value.email} onChange={(e) => onChange({ ...value, email: e.target.value })} />
+      <Input label="טלפון *" type="tel" dir="ltr" value={value.phone} onChange={(e) => onChange({ ...value, phone: e.target.value })} />
+    </div>
+    <div className="grid grid-cols-2 gap-3">
+      <Input label="רחוב *" value={value.street} onChange={(e) => onChange({ ...value, street: e.target.value })} />
+      <Input label="עיר" value={value.city} onChange={(e) => onChange({ ...value, city: e.target.value })} />
+    </div>
+    <div className="grid grid-cols-2 gap-3">
+      <div>
+        <label className="block text-[12px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#3c4257' }}>אזור</label>
+        <select value={value.zone} onChange={(e) => onChange({ ...value, zone: e.target.value })}
+          className="w-full px-3 py-2.5 rounded-[6px] text-sm border outline-none" style={{ borderColor: '#e0e6ed', background: '#f8fafc', color: '#061b31', fontFamily: 'inherit' }}>
+          <option value="">-- בחר --</option>
+          {zones.map((z) => <option key={z} value={z}>{z}</option>)}
+        </select>
+      </div>
+      <div>
+        <label className="block text-[12px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#3c4257' }}>קטגוריה</label>
+        <select value={value.category} onChange={(e) => onChange({ ...value, category: e.target.value })}
+          className="w-full px-3 py-2.5 rounded-[6px] text-sm border outline-none" style={{ borderColor: '#e0e6ed', background: '#f8fafc', color: '#061b31', fontFamily: 'inherit' }}>
+          {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
+    </div>
+    <div className="grid grid-cols-2 gap-3">
+      {!editMode && (
+        <Input label="סיסמה *" type="password" dir="ltr" placeholder="••••••" value={value.password} onChange={(e) => onChange({ ...value, password: e.target.value })} />
+      )}
+      <Input label="יתרה (₪)" type="number" dir="ltr" value={String(value.balance)} onChange={(e) => onChange({ ...value, balance: Number(e.target.value) })} />
+    </div>
+    <label className="flex items-center gap-2 cursor-pointer">
+      <input type="checkbox" checked={value.isActive} onChange={(e) => onChange({ ...value, isActive: e.target.checked })} className="w-4 h-4 accent-purple-600" />
+      <span className="text-sm font-medium text-gray-700">פעיל</span>
+    </label>
+  </div>
+);
+
+// ─── Main Page ────────────────────────────────────────────────
 const Businesses: React.FC = () => {
-  const [businesses, setBusinesses] = useState<Business[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [businesses, setBusinesses] = useState<StoredBusiness[]>([]);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null);
-  const [blockModal, setBlockModal] = useState<{ open: boolean; business: Business | null }>({
-    open: false,
-    business: null,
-  });
+
+  // Modals
+  const [addModal, setAddModal] = useState(false);
+  const [editModal, setEditModal] = useState<{ open: boolean; biz: StoredBusiness | null }>({ open: false, biz: null });
+  const [deleteModal, setDeleteModal] = useState<{ open: boolean; biz: StoredBusiness | null }>({ open: false, biz: null });
+  const [blockModal, setBlockModal] = useState<{ open: boolean; biz: StoredBusiness | null }>({ open: false, biz: null });
   const [blockReason, setBlockReason] = useState('');
-  const [blocking, setBlocking] = useState(false);
 
-  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Forms
+  const [addForm, setAddForm] = useState<BizFormState>(emptyBizForm());
+  const [editForm, setEditForm] = useState<BizFormState>(emptyBizForm());
 
-  const loadBusinesses = async (searchVal: string, pg: number) => {
-    setError(null);
-    setLoading(true);
-    try {
-      const result = await fetchBusinesses({ search: searchVal || undefined, page: pg, limit: 20 });
-      setBusinesses(result.data);
-      setTotalPages(result.totalPages);
-    } catch {
-      // Backend not available — use demo data
-      const filtered = searchVal
-        ? demoBusinesses.filter((b) => b.name.includes(searchVal) || b.email?.includes(searchVal))
-        : demoBusinesses;
-      setBusinesses(filtered);
-      setTotalPages(1);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [isSaving, setIsSaving] = useState(false);
 
-  useEffect(() => {
-    loadBusinesses(search, page);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]);
+  const load = useCallback(() => {
+    setBusinesses(storageService.getBusinesses());
+  }, []);
 
-  useEffect(() => {
-    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-    searchDebounceRef.current = setTimeout(() => {
-      setPage(1);
-      loadBusinesses(search, 1);
-    }, 400);
-    return () => {
-      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
+  useEffect(() => { load(); }, [load]);
 
-  // Client-side category filter
-  const filtered = categoryFilter === 'all'
-    ? businesses
-    : businesses.filter((b) => b.category === categoryFilter);
+  const filtered = businesses.filter((b) => {
+    const matchSearch = !search ||
+      b.businessName.includes(search) ||
+      b.email.includes(search) ||
+      b.phone.includes(search);
+    const matchCat = categoryFilter === 'all' || b.category === categoryFilter;
+    return matchSearch && matchCat;
+  });
 
   const categories = ['all', ...Array.from(new Set(businesses.map((b) => b.category)))];
 
-  const totalOnPage = businesses.length;
-  const activeOnPage = businesses.filter((b) => b.isActive && !b.isBlocked).length;
+  // Stats
+  const totalCount = businesses.length;
+  const activeCount = businesses.filter((b) => b.isActive && !b.isBlocked).length;
   const totalDeliveries = businesses.reduce((s, b) => s + b.totalDeliveries, 0);
 
-  const handleBlock = async () => {
-    if (!blockModal.business) return;
-    setBlocking(true);
-    try {
-      await blockBusiness(blockModal.business.id, blockReason || 'חסום על ידי מנהל');
-      toast.success(`עסק ${blockModal.business.name} נחסם בהצלחה`);
-      setBlockModal({ open: false, business: null });
-      setBlockReason('');
-      loadBusinesses(search, page);
-    } catch (err) {
-      toast.error('שגיאה בחסימת העסק');
-    } finally {
-      setBlocking(false);
+  // ── Add ──
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!addForm.businessName || !addForm.contactPerson || !addForm.email || !addForm.phone || !addForm.street || !addForm.password) {
+      toast.error('נא למלא את כל השדות החובה');
+      return;
     }
+    if (storageService.getBusinessByEmail(addForm.email)) {
+      toast.error('אימייל כבר קיים במערכת');
+      return;
+    }
+    setIsSaving(true);
+    try {
+      storageService.addBusiness({
+        email: addForm.email,
+        password: storageService.hashPassword(addForm.password),
+        businessName: addForm.businessName,
+        contactPerson: addForm.contactPerson,
+        phone: addForm.phone,
+        address: { street: addForm.street, city: addForm.city, zone: addForm.zone || undefined },
+        category: addForm.category,
+        isActive: addForm.isActive,
+        isBlocked: false,
+        balance: addForm.balance,
+        totalDeliveries: 0,
+        rating: 5,
+      });
+      toast.success('עסק נוסף בהצלחה');
+      setAddModal(false);
+      setAddForm(emptyBizForm());
+      load();
+    } catch { toast.error('שגיאה בהוספת עסק'); }
+    finally { setIsSaving(false); }
   };
 
-  const handleUnblock = async (business: Business) => {
+  // ── Edit ──
+  const openEdit = (biz: StoredBusiness) => {
+    setEditForm({
+      businessName: biz.businessName,
+      contactPerson: biz.contactPerson,
+      email: biz.email,
+      phone: biz.phone,
+      street: biz.address.street,
+      city: biz.address.city,
+      zone: biz.address.zone || '',
+      category: biz.category,
+      password: '',
+      isActive: biz.isActive,
+      balance: biz.balance,
+    });
+    setEditModal({ open: true, biz });
+  };
+
+  const handleEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editModal.biz) return;
+    setIsSaving(true);
     try {
-      await unblockBusiness(business.id);
-      toast.success(`חסימת ${business.name} בוטלה`);
-      loadBusinesses(search, page);
-    } catch (err) {
-      toast.error('שגיאה בביטול החסימה');
-    }
+      storageService.updateBusiness(editModal.biz.id, {
+        businessName: editForm.businessName,
+        contactPerson: editForm.contactPerson,
+        email: editForm.email,
+        phone: editForm.phone,
+        address: { street: editForm.street, city: editForm.city, zone: editForm.zone || undefined },
+        category: editForm.category,
+        isActive: editForm.isActive,
+        balance: editForm.balance,
+      });
+      toast.success('עסק עודכן בהצלחה');
+      setEditModal({ open: false, biz: null });
+      load();
+    } catch { toast.error('שגיאה בעדכון עסק'); }
+    finally { setIsSaving(false); }
+  };
+
+  // ── Delete ──
+  const handleDelete = () => {
+    if (!deleteModal.biz) return;
+    storageService.deleteBusiness(deleteModal.biz.id);
+    toast.success('עסק נמחק');
+    setDeleteModal({ open: false, biz: null });
+    load();
+  };
+
+  // ── Block/Unblock ──
+  const handleBlock = () => {
+    if (!blockModal.biz) return;
+    storageService.updateBusiness(blockModal.biz.id, {
+      isBlocked: true,
+      blockedReason: blockReason || 'חסום על ידי מנהל',
+    });
+    toast.success(`עסק ${blockModal.biz.businessName} נחסם`);
+    setBlockModal({ open: false, biz: null });
+    setBlockReason('');
+    load();
+  };
+
+  const handleUnblock = (biz: StoredBusiness) => {
+    storageService.updateBusiness(biz.id, { isBlocked: false, blockedReason: undefined });
+    toast.success(`חסימת ${biz.businessName} בוטלה`);
+    load();
+  };
+
+  // ── Quick Login ──
+  const handleQuickLogin = (biz: StoredBusiness) => {
+    const portalUser = { id: biz.id, type: 'business' as const, name: biz.businessName };
+    localStorage.setItem('portal_user', JSON.stringify(portalUser));
+    toast.success(`כניסה כ-${biz.businessName} — פתח את פורטל העסקים בלשונית חדשה`);
+    window.open('/portal/business', '_blank');
   };
 
   return (
     <div className="space-y-6" dir="rtl">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">ניהול עסקים</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-          ניהול כל העסקים הרשומים במערכת
-        </p>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">ניהול עסקים</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">ניהול כל העסקים הרשומים במערכת</p>
+        </div>
+        <Button
+          variant="primary"
+          leftIcon={<PlusIcon className="w-4 h-4" />}
+          onClick={() => { setAddForm(emptyBizForm()); setAddModal(true); }}
+        >
+          הוסף עסק
+        </Button>
       </div>
 
       {/* Stats */}
@@ -151,8 +289,8 @@ const Businesses: React.FC = () => {
               <BuildingStorefrontIcon className="w-5 h-5 text-blue-600" />
             </div>
             <div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">סה"כ בעמוד</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{totalOnPage}</p>
+              <p className="text-sm text-gray-500">סה"כ עסקים</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">{totalCount}</p>
             </div>
           </div>
         </Card>
@@ -162,8 +300,8 @@ const Businesses: React.FC = () => {
               <BuildingStorefrontIcon className="w-5 h-5 text-green-600" />
             </div>
             <div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">עסקים פעילים</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{activeOnPage}</p>
+              <p className="text-sm text-gray-500">עסקים פעילים</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">{activeCount}</p>
             </div>
           </div>
         </Card>
@@ -173,10 +311,8 @@ const Businesses: React.FC = () => {
               <TruckIcon className="w-5 h-5 text-orange-500" />
             </div>
             <div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">סה"כ משלוחים</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                {totalDeliveries.toLocaleString()}
-              </p>
+              <p className="text-sm text-gray-500">סה"כ משלוחים</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">{totalDeliveries.toLocaleString()}</p>
             </div>
           </div>
         </Card>
@@ -187,7 +323,7 @@ const Businesses: React.FC = () => {
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="flex-1">
             <Input
-              placeholder="חיפוש לפי שם, טלפון או כתובת..."
+              placeholder="חיפוש לפי שם, אימייל או טלפון..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               leftIcon={<MagnifyingGlassIcon className="w-4 h-4" />}
@@ -196,265 +332,203 @@ const Businesses: React.FC = () => {
           <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
           >
             {categories.map((cat) => (
-              <option key={cat} value={cat}>
-                {cat === 'all' ? 'כל הקטגוריות' : cat}
-              </option>
+              <option key={cat} value={cat}>{cat === 'all' ? 'כל הקטגוריות' : cat}</option>
             ))}
           </select>
         </div>
       </Card>
 
-      {/* Error state */}
-      {error && !loading && (
-        <div className="flex items-center justify-center py-16">
-          <div className="text-center max-w-sm">
-            <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
-              <ExclamationTriangleIcon className="w-7 h-7 text-red-500" />
+      {/* Table / Cards */}
+      <Card padding="none">
+        {/* Desktop Table */}
+        <div className="hidden md:block overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 dark:border-gray-700">
+                {['שם עסק', 'טלפון', 'קטגוריה', 'משלוחים', 'דירוג', 'יתרה', 'סטטוס', 'פעולות'].map((h) => (
+                  <th key={h} className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((biz) => (
+                <tr key={biz.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                        <BuildingStorefrontIcon className="w-4 h-4 text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900">{biz.businessName}</p>
+                        <p className="text-xs text-gray-400">{biz.contactPerson}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-gray-600" dir="ltr">{biz.phone}</td>
+                  <td className="px-4 py-3">
+                    <Badge color={(categoryColors[biz.category] as any) || 'gray'} size="sm">{biz.category}</Badge>
+                  </td>
+                  <td className="px-4 py-3 font-semibold text-gray-900">{biz.totalDeliveries.toLocaleString()}</td>
+                  <td className="px-4 py-3"><RatingStars rating={biz.rating} /></td>
+                  <td className="px-4 py-3 text-gray-700 font-medium">{formatCurrency(biz.balance)}</td>
+                  <td className="px-4 py-3">
+                    {biz.isBlocked ? <Badge color="red" dot>חסום</Badge>
+                      : biz.isActive ? <Badge color="green" dot>פעיל</Badge>
+                      : <Badge color="gray" dot>לא פעיל</Badge>}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {/* Quick Login */}
+                      <button
+                        title="כניסה מהירה"
+                        onClick={() => handleQuickLogin(biz)}
+                        className="p-1.5 rounded-lg text-xs font-medium transition-colors bg-purple-50 text-purple-700 hover:bg-purple-100"
+                      >
+                        <BoltIcon className="w-3.5 h-3.5" />
+                      </button>
+                      {/* Edit */}
+                      <button
+                        title="עריכה"
+                        onClick={() => openEdit(biz)}
+                        className="p-1.5 rounded-lg text-xs font-medium transition-colors bg-blue-50 text-blue-700 hover:bg-blue-100"
+                      >
+                        <PencilIcon className="w-3.5 h-3.5" />
+                      </button>
+                      {/* Block/Unblock */}
+                      <button
+                        onClick={() => biz.isBlocked ? handleUnblock(biz) : setBlockModal({ open: true, biz })}
+                        className={`p-1.5 rounded-lg text-xs font-medium transition-colors ${biz.isBlocked ? 'bg-green-50 text-green-700 hover:bg-green-100' : 'bg-red-50 text-red-700 hover:bg-red-100'}`}
+                      >
+                        {biz.isBlocked ? <CheckCircleIcon className="w-3.5 h-3.5" /> : <NoSymbolIcon className="w-3.5 h-3.5" />}
+                      </button>
+                      {/* Delete */}
+                      <button
+                        title="מחיקה"
+                        onClick={() => setDeleteModal({ open: true, biz })}
+                        className="p-1.5 rounded-lg text-xs font-medium transition-colors bg-gray-50 text-gray-600 hover:bg-red-50 hover:text-red-700"
+                      >
+                        <TrashIcon className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Mobile Cards */}
+        <div className="md:hidden divide-y divide-gray-100">
+          {filtered.map((biz) => (
+            <div key={biz.id} className="p-4 space-y-2">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
+                    <BuildingStorefrontIcon className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-900">{biz.businessName}</p>
+                    <p className="text-xs text-gray-400">{biz.contactPerson}</p>
+                  </div>
+                </div>
+                {biz.isBlocked ? <Badge color="red" dot>חסום</Badge>
+                  : biz.isActive ? <Badge color="green" dot>פעיל</Badge>
+                  : <Badge color="gray" dot>לא פעיל</Badge>}
+              </div>
+              <div className="flex items-center justify-between text-sm text-gray-500">
+                <span dir="ltr">{biz.phone}</span>
+                <Badge color={(categoryColors[biz.category] as any) || 'gray'} size="sm">{biz.category}</Badge>
+              </div>
+              <div className="flex items-center gap-2 pt-1">
+                <button onClick={() => handleQuickLogin(biz)} className="flex-1 py-1.5 rounded-lg text-xs font-semibold bg-purple-50 text-purple-700">
+                  כניסה מהירה
+                </button>
+                <button onClick={() => openEdit(biz)} className="flex-1 py-1.5 rounded-lg text-xs font-semibold bg-blue-50 text-blue-700">
+                  עריכה
+                </button>
+                <button onClick={() => biz.isBlocked ? handleUnblock(biz) : setBlockModal({ open: true, biz })}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-semibold ${biz.isBlocked ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                  {biz.isBlocked ? 'בטל חסימה' : 'חסום'}
+                </button>
+                <button onClick={() => setDeleteModal({ open: true, biz })} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 text-gray-600">
+                  <TrashIcon className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
-            <p className="font-semibold text-gray-800 dark:text-white mb-1">שגיאה בטעינת הנתונים</p>
-            <p className="text-sm text-gray-500 mb-4">{error}</p>
-            <Button
-              variant="primary"
-              leftIcon={<ArrowPathIcon className="w-4 h-4" />}
-              onClick={() => loadBusinesses(search, page)}
-            >
-              נסה שוב
+          ))}
+        </div>
+
+        {filtered.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+            <BuildingStorefrontIcon className="w-12 h-12 mb-3 opacity-30" />
+            <p className="text-sm font-medium">לא נמצאו עסקים</p>
+            <Button variant="primary" size="sm" className="mt-4" leftIcon={<PlusIcon className="w-4 h-4" />}
+              onClick={() => { setAddForm(emptyBizForm()); setAddModal(true); }}>
+              הוסף עסק ראשון
             </Button>
           </div>
-        </div>
-      )}
-
-      {/* Table */}
-      {!error && (
-        <Card padding="none">
-          {loading ? (
-            <TableSkeleton rows={5} cols={7} />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100 dark:border-gray-700">
-                    {['שם עסק', 'טלפון', 'כתובת', 'משלוחים', 'דירוג', 'הוצאות', 'סטטוס', 'פעולות'].map((h) => (
-                      <th
-                        key={h}
-                        className="text-right px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase"
-                      >
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((business) => (
-                    <tr
-                      key={business.id}
-                      className="border-b border-gray-50 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors cursor-pointer"
-                      onClick={() => setSelectedBusiness(business)}
-                    >
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
-                            <BuildingStorefrontIcon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                          </div>
-                          <div>
-                            <p className="font-medium text-gray-900 dark:text-white">{business.name}</p>
-                            <Badge
-                              color={(categoryColors[business.category] as any) || 'gray'}
-                              size="sm"
-                            >
-                              {business.category}
-                            </Badge>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300" dir="ltr">
-                        {business.phone}
-                      </td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
-                        {business.address.street}
-                      </td>
-                      <td className="px-4 py-3 font-semibold text-gray-900 dark:text-white">
-                        {business.totalDeliveries.toLocaleString()}
-                      </td>
-                      <td className="px-4 py-3">
-                        <RatingStars rating={business.rating} />
-                      </td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300 font-medium">
-                        {formatCurrency(business.balance)}
-                      </td>
-                      <td className="px-4 py-3">
-                        {business.isBlocked ? (
-                          <Badge color="red" dot>חסום</Badge>
-                        ) : business.isActive ? (
-                          <Badge color="green" dot>פעיל</Badge>
-                        ) : (
-                          <Badge color="gray" dot>לא פעיל</Badge>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (business.isBlocked) {
-                              handleUnblock(business);
-                            } else {
-                              setBlockModal({ open: true, business });
-                            }
-                          }}
-                          className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
-                            business.isBlocked
-                              ? 'bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-900/20 dark:text-green-400'
-                              : 'bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400'
-                          }`}
-                        >
-                          {business.isBlocked ? (
-                            <><CheckCircleIcon className="w-3.5 h-3.5" /> בטל חסימה</>
-                          ) : (
-                            <><NoSymbolIcon className="w-3.5 h-3.5" /> חסום</>
-                          )}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              {/* Empty state */}
-              {filtered.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-16 text-gray-400">
-                  <BuildingStorefrontIcon className="w-12 h-12 mb-3 opacity-30" />
-                  <p className="text-sm font-medium">לא נמצאו עסקים</p>
-                  {search && (
-                    <p className="text-xs mt-1 text-gray-400">נסה לשנות את מילות החיפוש</p>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Pagination */}
-          {!loading && totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 dark:border-gray-700">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-              >
-                הקודם
-              </Button>
-              <span className="text-sm text-gray-500">
-                עמוד {page} מתוך {totalPages}
-              </span>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-              >
-                הבא
-              </Button>
-            </div>
-          )}
-        </Card>
-      )}
-
-      {/* Business Details Modal */}
-      <Modal
-        isOpen={!!selectedBusiness}
-        onClose={() => setSelectedBusiness(null)}
-        title="פרטי עסק"
-        size="lg"
-      >
-        {selectedBusiness && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                <BuildingStorefrontIcon className="w-7 h-7 text-blue-600 dark:text-blue-400" />
-              </div>
-              <div>
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white">{selectedBusiness.name}</h3>
-                <p className="text-gray-500 dark:text-gray-400" dir="ltr">{selectedBusiness.phone}</p>
-                {selectedBusiness.contactPerson && (
-                  <p className="text-sm text-gray-500">איש קשר: {selectedBusiness.contactPerson}</p>
-                )}
-              </div>
-            </div>
-
-            {selectedBusiness.isBlocked && (
-              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-3">
-                <p className="text-sm text-red-700 dark:text-red-400">
-                  <strong>חסום:</strong> {selectedBusiness.blockedReason}
-                </p>
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4">
-                <p className="text-xs text-gray-500 mb-1">כתובת</p>
-                <p className="font-semibold text-gray-900 dark:text-white">{selectedBusiness.address.street}</p>
-                <p className="text-xs text-gray-400">{selectedBusiness.address.city}</p>
-              </div>
-              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4">
-                <p className="text-xs text-gray-500 mb-1">קטגוריה</p>
-                <p className="font-semibold text-gray-900 dark:text-white">{selectedBusiness.category}</p>
-              </div>
-              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4">
-                <p className="text-xs text-gray-500 mb-1">סה"כ משלוחים</p>
-                <p className="font-semibold text-gray-900 dark:text-white">
-                  {selectedBusiness.totalDeliveries.toLocaleString()}
-                </p>
-              </div>
-              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4">
-                <p className="text-xs text-gray-500 mb-1">יתרה</p>
-                <p className="font-semibold text-green-600">{formatCurrency(selectedBusiness.balance)}</p>
-              </div>
-              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4">
-                <p className="text-xs text-gray-500 mb-1">דירוג</p>
-                <RatingStars rating={selectedBusiness.rating} />
-              </div>
-              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4">
-                <p className="text-xs text-gray-500 mb-1">הצטרף בתאריך</p>
-                <p className="font-semibold text-gray-900 dark:text-white">{selectedBusiness.joinedAt}</p>
-              </div>
-            </div>
-          </div>
         )}
+      </Card>
+
+      {/* ── ADD MODAL ── */}
+      <Modal isOpen={addModal} onClose={() => setAddModal(false)} title="הוסף עסק חדש" size="lg"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setAddModal(false)}>ביטול</Button>
+            <Button variant="primary" onClick={handleAdd} isLoading={isSaving}>שמור</Button>
+          </>
+        }
+      >
+        <form onSubmit={handleAdd}>
+          <BizForm value={addForm} onChange={setAddForm} />
+        </form>
       </Modal>
 
-      {/* Block Reason Modal */}
+      {/* ── EDIT MODAL ── */}
+      <Modal isOpen={editModal.open} onClose={() => setEditModal({ open: false, biz: null })} title={`עריכת עסק: ${editModal.biz?.businessName}`} size="lg"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setEditModal({ open: false, biz: null })}>ביטול</Button>
+            <Button variant="primary" onClick={handleEdit} isLoading={isSaving}>שמור שינויים</Button>
+          </>
+        }
+      >
+        <form onSubmit={handleEdit}>
+          <BizForm value={editForm} onChange={setEditForm} editMode />
+        </form>
+      </Modal>
+
+      {/* ── DELETE MODAL ── */}
+      <Modal isOpen={deleteModal.open} onClose={() => setDeleteModal({ open: false, biz: null })} title="מחיקת עסק" size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setDeleteModal({ open: false, biz: null })}>ביטול</Button>
+            <Button variant="danger" onClick={handleDelete}>מחק</Button>
+          </>
+        }
+      >
+        <p className="text-sm text-gray-600">האם אתה בטוח שברצונך למחוק את העסק <strong>{deleteModal.biz?.businessName}</strong>? פעולה זו אינה ניתנת לביטול.</p>
+      </Modal>
+
+      {/* ── BLOCK MODAL ── */}
       <Modal
         isOpen={blockModal.open}
-        onClose={() => { setBlockModal({ open: false, business: null }); setBlockReason(''); }}
-        title={`חסימת עסק: ${blockModal.business?.name}`}
+        onClose={() => { setBlockModal({ open: false, biz: null }); setBlockReason(''); }}
+        title={`חסימת עסק: ${blockModal.biz?.businessName}`}
         size="sm"
         footer={
           <>
-            <Button
-              variant="secondary"
-              onClick={() => { setBlockModal({ open: false, business: null }); setBlockReason(''); }}
-            >
-              ביטול
-            </Button>
-            <Button variant="danger" onClick={handleBlock} disabled={blocking}>
-              {blocking ? 'חוסם...' : 'אשר חסימה'}
-            </Button>
+            <Button variant="secondary" onClick={() => { setBlockModal({ open: false, biz: null }); setBlockReason(''); }}>ביטול</Button>
+            <Button variant="danger" onClick={handleBlock}>אשר חסימה</Button>
           </>
         }
       >
         <div className="space-y-3">
-          <p className="text-sm text-gray-600 dark:text-gray-300">
-            האם אתה בטוח שברצונך לחסום את העסק {blockModal.business?.name}?
-          </p>
-          <Input
-            label="סיבת החסימה (אופציונלי)"
-            placeholder="לדוגמה: הפרת תנאי שימוש"
-            value={blockReason}
-            onChange={(e) => setBlockReason(e.target.value)}
-          />
+          <p className="text-sm text-gray-600">האם אתה בטוח שברצונך לחסום את {blockModal.biz?.businessName}?</p>
+          <Input label="סיבת החסימה (אופציונלי)" placeholder="לדוגמה: הפרת תנאי שימוש" value={blockReason} onChange={(e) => setBlockReason(e.target.value)} />
         </div>
       </Modal>
     </div>

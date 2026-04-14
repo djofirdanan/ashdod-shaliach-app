@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { loginUser } from '../store/authSlice';
 import {
   TruckIcon,
   ShieldCheckIcon,
@@ -10,7 +10,6 @@ import {
   LockClosedIcon,
   EnvelopeIcon,
 } from '@heroicons/react/24/outline';
-import { auth } from '../firebase';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { useAuth } from '../hooks/useAuth';
@@ -71,7 +70,7 @@ const StatPill: React.FC<{
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
-  const { loginDemo } = useAuth();
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -84,32 +83,18 @@ const Login: React.FC = () => {
     }
     setIsLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      toast.success('ברוך הבא!');
-      navigate('/dashboard');
-    } catch (err: unknown) {
-      const firebaseError = err as { code?: string };
-      if (
-        firebaseError.code === 'auth/user-not-found' ||
-        firebaseError.code === 'auth/wrong-password' ||
-        firebaseError.code === 'auth/invalid-credential'
-      ) {
-        toast.error('אימייל או סיסמה שגויים');
-      } else if (firebaseError.code === 'auth/too-many-requests') {
-        toast.error('יותר מדי ניסיונות. נסה שוב מאוחר יותר');
+      const result = await login(email, password);
+      if (loginUser.fulfilled.match(result)) {
+        toast.success('ברוך הבא!');
+        navigate('/dashboard');
       } else {
-        toast.error('שגיאה בכניסה למערכת');
+        toast.error((result.payload as string) || 'שגיאה בכניסה למערכת');
       }
+    } catch {
+      toast.error('שגיאה בכניסה למערכת');
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleDemoLogin = () => {
-    localStorage.setItem('admin_token', 'demo_token_12345');
-    loginDemo();
-    toast.success('כניסת דמו — ברוך הבא!');
-    navigate('/dashboard');
   };
 
   return (
@@ -257,10 +242,10 @@ const Login: React.FC = () => {
               className="text-[1.75rem] font-black mb-2 leading-tight tracking-tight"
               style={{ color: '#061b31' }}
             >
-              כניסה לפאנל הניהול
+              כניסה למערכת
             </h2>
             <p className="text-[14px]" style={{ color: '#8898aa' }}>
-              הזן את פרטי הכניסה שלך כדי להיכנס למערכת
+              הזן את פרטי הכניסה שלך כדי להיכנס
             </p>
           </div>
 
@@ -269,7 +254,7 @@ const Login: React.FC = () => {
             <Input
               label="כתובת אימייל"
               type="email"
-              placeholder="admin@ashdod-shaliach.co.il"
+              placeholder="your@email.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
@@ -304,35 +289,17 @@ const Login: React.FC = () => {
             </Button>
           </form>
 
-          {/* Divider */}
-          <div className="flex items-center gap-3 my-5">
-            <div className="flex-1 h-px" style={{ background: '#e8ecf0' }} />
-            <span className="text-[12px] font-medium" style={{ color: '#8898aa' }}>או</span>
-            <div className="flex-1 h-px" style={{ background: '#e8ecf0' }} />
-          </div>
-
-          {/* Demo login */}
-          <Button
-            type="button"
-            variant="outline"
-            size="lg"
-            className="w-full"
-            onClick={handleDemoLogin}
-          >
-            כניסת דמו — ללא סיסמה
-          </Button>
-
-          {/* Info note */}
-          <div
-            className="mt-4 rounded-[8px] p-3.5 flex items-start gap-2.5"
-            style={{
-              background: 'rgba(83,58,253,0.05)',
-              border: '1px solid rgba(83,58,253,0.12)',
-            }}
-          >
-            <span className="text-[13px] flex-shrink-0 mt-0.5" style={{ color: '#533afd' }}>ℹ</span>
-            <p className="text-[12px] leading-relaxed" style={{ color: '#6b7c93' }}>
-              כניסת הדמו מאפשרת גישה מלאה לממשק ללא חיבור לשרת — מתאים לבדיקות ולפיתוח.
+          {/* Register link */}
+          <div className="mt-6 text-center">
+            <p className="text-[13px]" style={{ color: '#8898aa' }}>
+              לא רשום?{' '}
+              <Link
+                to="/register"
+                className="font-semibold transition-colors"
+                style={{ color: '#533afd' }}
+              >
+                צור חשבון
+              </Link>
             </p>
           </div>
 

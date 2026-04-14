@@ -1,29 +1,121 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
-import type { AuthState, AdminUser } from '../types';
-import * as authService from '../services/auth.service';
+import type { AdminUser } from '../types';
+import * as storageService from '../services/storage.service';
 
-const initialState: AuthState = {
+// Extended auth state with currentPortalUser
+interface ExtendedAuthState {
+  user: AdminUser | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  error: string | null;
+  currentPortalUser: { id: string; type: 'business' | 'courier'; name: string } | null;
+}
+
+const initialState: ExtendedAuthState = {
   user: null,
   isAuthenticated: false,
   isLoading: false,
   error: null,
+  currentPortalUser: null,
+};
+
+// Hardcoded admin credentials
+const ADMIN_EMAIL = 'djofirdanan@gmail.com';
+const ADMIN_PASSWORD = '339529';
+const ADMIN_USER: AdminUser = {
+  id: 'admin-main',
+  name: 'דניאל פירדנן',
+  email: 'djofirdanan@gmail.com',
+  role: 'super_admin',
+  createdAt: new Date().toISOString(),
 };
 
 export const loginUser = createAsyncThunk(
   'auth/login',
   async ({ email, password }: { email: string; password: string }, { rejectWithValue }) => {
     try {
-      const result = await authService.loginWithEmail(email, password);
-      return result.user;
+      // 1. Check hardcoded admin
+      if (email.toLowerCase() === ADMIN_EMAIL.toLowerCase() && password === ADMIN_PASSWORD) {
+        localStorage.setItem('admin_token', 'admin-token');
+        return { user: ADMIN_USER, role: 'admin' as const };
+      }
+
+      // 2. Check localStorage businesses
+      const business = storageService.getBusinessByEmail(email);
+      if (business) {
+        if (!storageService.verifyPassword(password, business.password)) {
+          return rejectWithValue('סיסמה שגויה');
+        }
+        if (business.isBlocked) {
+          return rejectWithValue('החשבון חסום. פנה למנהל המערכת');
+        }
+        localStorage.setItem('admin_token', `business-${business.id}`);
+        const user: AdminUser = {
+          id: business.id,
+          name: business.businessName,
+          email: business.email,
+          role: 'admin',
+          createdAt: business.createdAt,
+        };
+        return { user, role: 'business' as const };
+      }
+
+      // 3. Check localStorage couriers
+      const courier = storageService.getCourierByEmail(email);
+      if (courier) {
+        if (!storageService.verifyPassword(password, courier.password)) {
+          return rejectWithValue('סיסמה שגויה');
+        }
+        if (courier.isBlocked) {
+          return rejectWithValue('החשבון חסום. פנה למנהל המערכת');
+        }
+        localStorage.setItem('admin_token', `courier-${courier.id}`);
+        const user: AdminUser = {
+          id: courier.id,
+          name: courier.name,
+          email: courier.email,
+          role: 'admin',
+          createdAt: courier.createdAt,
+        };
+        return { user, role: 'courier' as const };
+      }
+
+      // 4. Try Firebase
+      const { signInWithEmailAndPassword } = await import('firebase/auth');
+      const { auth } = await import('../firebase');
+      const credential = await signInWithEmailAndPassword(auth, email, password);
+      const token = await credential.user.getIdToken();
+      localStorage.setItem('admin_token', token);
+      const user: AdminUser = {
+        id: credential.user.uid,
+        name: credential.user.displayName || email.split('@')[0],
+        email: credential.user.email!,
+        role: 'admin',
+        createdAt: credential.user.metadata.creationTime || new Date().toISOString(),
+      };
+      return { user, role: 'admin' as const };
     } catch (err: unknown) {
-      const error = err as { message?: string };
+      const error = err as { message?: string; code?: string };
+      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+        return rejectWithValue('אימייל או סיסמה שגויים');
+      }
+      if (error.code === 'auth/too-many-requests') {
+        return rejectWithValue('יותר מדי ניסיונות. נסה שוב מאוחר יותר');
+      }
       return rejectWithValue(error.message || 'שגיאה בהתחברות');
     }
   }
 );
 
 export const logoutUser = createAsyncThunk('auth/logout', async () => {
-  await authService.logout();
+  try {
+    const { signOut } = await import('firebase/auth');
+    const { auth } = await import('../firebase');
+    await signOut(auth);
+  } catch {
+    // ignore firebase errors on logout
+  }
+  localStorage.removeItem('admin_token');
 });
 
 const authSlice = createSlice({
@@ -37,19 +129,11 @@ const authSlice = createSlice({
     clearError(state) {
       state.error = null;
     },
-    // Demo login without Firebase
-    demoLogin(state) {
-      state.user = {
-        id: 'demo-admin',
-        name: 'מנהל מערכת',
-        email: 'admin@ashdod-shaliach.co.il',
-        role: 'super_admin',
-        createdAt: new Date().toISOString(),
-      };
-      state.isAuthenticated = true;
-      state.isLoading = false;
-      state.error = null;
-      localStorage.setItem('admin_token', 'demo-token');
+    setPortalUser(
+      state,
+      action: PayloadAction<{ id: string; type: 'business' | 'courier'; name: string } | null>
+    ) {
+      state.currentPortalUser = action.payload;
     },
   },
   extraReducers: (builder) => {
@@ -60,7 +144,7 @@ const authSlice = createSlice({
       })
       .addCase(loginUser.fulfilled, (state, action) => {
         state.isLoading = false;
-        state.user = action.payload;
+        state.user = action.payload.user;
         state.isAuthenticated = true;
       })
       .addCase(loginUser.rejected, (state, action) => {
@@ -70,9 +154,10 @@ const authSlice = createSlice({
       .addCase(logoutUser.fulfilled, (state) => {
         state.user = null;
         state.isAuthenticated = false;
+        state.currentPortalUser = null;
       });
   },
 });
 
-export const { setUser, clearError, demoLogin } = authSlice.actions;
+export const { setUser, clearError, setPortalUser } = authSlice.actions;
 export default authSlice.reducer;
