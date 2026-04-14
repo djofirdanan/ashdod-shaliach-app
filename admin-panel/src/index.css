@@ -1,0 +1,332 @@
+/* ─── Fonts ──────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Hebrew:wght@300;400;500;600;700;800;900&family=Source+Code+Pro:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── CSS Variables (Stripe palette) ─────────────────────────────── */
+:root {
+  /* Primary brand */
+  --stripe-purple:   #533afd;
+  --stripe-purple-dark: #3d22e0;
+  --stripe-navy:     #061b31;
+  --stripe-navy-mid: #1c1e54;
+  --stripe-ruby:     #ea2261;
+  --stripe-magenta:  #f96bee;
+  --stripe-teal:     #00d4aa;
+
+  /* Surfaces */
+  --bg-canvas:   #f6f9fc;
+  --bg-card:     #ffffff;
+  --bg-sidebar:  #061b31;
+
+  /* Text */
+  --text-heading: #061b31;
+  --text-body:    #3c4257;
+  --text-muted:   #6b7c93;
+  --text-faint:   #8898aa;
+
+  /* Borders */
+  --border:       #e0e6ed;
+  --border-card:  #e8ecf0;
+
+  /* Shadows (blue-tinted — Stripe signature) */
+  --shadow-sm: 0 2px 5px 0 rgba(50,50,93,0.10), 0 1px 1px 0 rgba(0,0,0,0.07);
+  --shadow:    0 7px 14px 0 rgba(50,50,93,0.10), 0 3px 6px 0 rgba(0,0,0,0.07);
+  --shadow-md: 0 13px 27px -5px rgba(50,50,93,0.15), 0 8px 16px -8px rgba(0,0,0,0.10);
+  --shadow-lg: 0 30px 60px -12px rgba(50,50,93,0.25), 0 18px 36px -18px rgba(0,0,0,0.30);
+}
+
+/* ─── Base ───────────────────────────────────────────────────────── */
+@layer base {
+  * {
+    direction: rtl;
+    box-sizing: border-box;
+  }
+
+  html {
+    font-family: 'Noto Sans Hebrew', 'Helvetica Neue', Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: "kern" 1, "liga" 1;
+  }
+
+  body {
+    background: var(--bg-canvas);
+    color: var(--text-body);
+    font-size: 15px;
+    line-height: 1.65;
+    margin: 0;
+    padding: 0;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    color: var(--text-heading);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+  }
+
+  a {
+    color: var(--stripe-purple);
+    text-decoration: none;
+  }
+
+  a:hover {
+    color: var(--stripe-purple-dark);
+  }
+}
+
+/* ─── Stripe Card ────────────────────────────────────────────────── */
+.stripe-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.stripe-card:hover {
+  box-shadow: var(--shadow);
+}
+
+.stripe-card-elevated {
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.stripe-card-elevated:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+/* ─── Stripe Gradient Button ─────────────────────────────────────── */
+.btn-stripe {
+  background: linear-gradient(135deg, var(--stripe-purple), var(--stripe-purple-dark));
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 20px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  box-shadow: 0 4px 6px rgba(50,50,93,0.11), 0 1px 3px rgba(0,0,0,0.08);
+  transition: all 0.15s ease;
+  letter-spacing: 0.01em;
+}
+
+.btn-stripe:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 7px 14px rgba(50,50,93,0.15), 0 3px 6px rgba(0,0,0,0.10);
+}
+
+.btn-stripe:active {
+  transform: translateY(1px);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ─── Stripe Hero Gradient ───────────────────────────────────────── */
+.stripe-hero-bg {
+  background: linear-gradient(135deg, #533afd 0%, #1c1e54 40%, #061b31 100%);
+}
+
+/* ─── Stat Card Gradients ────────────────────────────────────────── */
+.stat-purple {
+  background: linear-gradient(135deg, #533afd 0%, #3d22e0 100%);
+  box-shadow: 0 13px 27px -5px rgba(83,58,253,0.35), 0 8px 16px -8px rgba(83,58,253,0.20);
+}
+
+.stat-ruby {
+  background: linear-gradient(135deg, #ea2261 0%, #c01053 100%);
+  box-shadow: 0 13px 27px -5px rgba(234,34,97,0.35), 0 8px 16px -8px rgba(234,34,97,0.20);
+}
+
+.stat-teal {
+  background: linear-gradient(135deg, #00b090 0%, #007acc 100%);
+  box-shadow: 0 13px 27px -5px rgba(0,176,144,0.35), 0 8px 16px -8px rgba(0,176,144,0.20);
+}
+
+.stat-gold {
+  background: linear-gradient(135deg, #f59e0b 0%, #dc6f0a 100%);
+  box-shadow: 0 13px 27px -5px rgba(245,158,11,0.35), 0 8px 16px -8px rgba(245,158,11,0.20);
+}
+
+.stat-indigo {
+  background: linear-gradient(135deg, #1c1e54 0%, #533afd 100%);
+  box-shadow: 0 13px 27px -5px rgba(28,30,84,0.40), 0 8px 16px -8px rgba(28,30,84,0.25);
+}
+
+/* ─── Sidebar active nav item ────────────────────────────────────── */
+.nav-active {
+  background: rgba(83,58,253,0.15) !important;
+  color: #a89bff !important;
+  position: relative;
+}
+
+.nav-active::before {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: #533afd;
+  border-radius: 0 0 0 3px;
+}
+
+/* ─── Input focus ─────────────────────────────────────────────────── */
+.stripe-input {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 14px;
+  color: var(--text-heading);
+  background: white;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  outline: none;
+  width: 100%;
+}
+
+.stripe-input:focus {
+  border-color: var(--stripe-purple);
+  box-shadow: 0 0 0 4px rgba(83,58,253,0.15);
+}
+
+.stripe-input::placeholder {
+  color: var(--text-faint);
+}
+
+/* ─── Badge styles ───────────────────────────────────────────────── */
+.badge-purple {
+  background: rgba(83,58,253,0.10);
+  color: #533afd;
+  border: 1px solid rgba(83,58,253,0.20);
+}
+
+.badge-ruby {
+  background: rgba(234,34,97,0.10);
+  color: #ea2261;
+  border: 1px solid rgba(234,34,97,0.20);
+}
+
+.badge-teal {
+  background: rgba(0,176,144,0.10);
+  color: #00897b;
+  border: 1px solid rgba(0,176,144,0.20);
+}
+
+.badge-amber {
+  background: rgba(245,158,11,0.10);
+  color: #b45309;
+  border: 1px solid rgba(245,158,11,0.25);
+}
+
+.badge-gray {
+  background: rgba(107,124,147,0.10);
+  color: #6b7c93;
+  border: 1px solid rgba(107,124,147,0.20);
+}
+
+/* ─── Gradient text ──────────────────────────────────────────────── */
+.text-gradient {
+  background: linear-gradient(135deg, #533afd, #ea2261);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.text-gradient-hero {
+  background: linear-gradient(135deg, #a89bff 0%, #f96bee 60%, #f59e0b 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ─── Animations ─────────────────────────────────────────────────── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+  animation: fadeInUp 0.3s ease-out both;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%       { transform: scale(1.5); opacity: 0.6; }
+}
+
+.pulse-dot {
+  animation: pulse-dot 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #e8ecf0 25%, #f0f3f6 50%, #e8ecf0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 6px;
+}
+
+/* ─── Scrollbar ──────────────────────────────────────────────────── */
+::-webkit-scrollbar         { width: 6px; height: 6px; }
+::-webkit-scrollbar-track   { background: transparent; }
+::-webkit-scrollbar-thumb   { background: #c1cdd8; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #8898aa; }
+
+/* ─── Leaflet RTL fix ────────────────────────────────────────────── */
+.leaflet-container { direction: ltr; }
+
+/* ─── Table styles ───────────────────────────────────────────────── */
+.stripe-table th {
+  background: #f8fafc;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-card);
+}
+
+.stripe-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-card);
+  font-size: 14px;
+  color: var(--text-body);
+  vertical-align: middle;
+}
+
+.stripe-table tr:last-child td {
+  border-bottom: none;
+}
+
+.stripe-table tr:hover td {
+  background: #f8fafc;
+}
+
+/* ─── Gradient top border for cards ─────────────────────────────── */
+.card-accent-top::before {
+  content: '';
+  display: block;
+  height: 3px;
+  border-radius: 8px 8px 0 0;
+  background: linear-gradient(90deg, #533afd, #ea2261, #f96bee);
+  margin: -1px -1px 0 -1px;
+}
+
+/* ─── Sidebar gradient line ──────────────────────────────────────── */
+.sidebar-gradient-line {
+  background: linear-gradient(180deg, #533afd, #ea2261);
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+}

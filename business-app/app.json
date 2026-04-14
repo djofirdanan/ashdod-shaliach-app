@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "אשדוד-שליח עסקים",
+    "slug": "ashdod-shaliach-business",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "backgroundColor": "#6C63FF"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.ashdodshaliach.business"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#6C63FF"
+      },
+      "package": "com.ashdodshaliach.business",
+      "permissions": ["ACCESS_FINE_LOCATION", "CAMERA", "READ_EXTERNAL_STORAGE"]
+    },
+    "plugins": [
+      "expo-notifications",
+      "expo-location",
+      "expo-camera"
+    ]
+  }
+}
