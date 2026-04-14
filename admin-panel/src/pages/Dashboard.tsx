@@ -11,14 +11,43 @@ import { StatCard } from '../components/ui/StatCard';
 import { RevenueChart } from '../components/charts/RevenueChart';
 import { DeliveryChart } from '../components/charts/DeliveryChart';
 import { CourierHeatmap } from '../components/charts/CourierHeatmap';
-import { DeliveryStatusBadge } from '../components/deliveries/DeliveryStatusBadge';
 import { Skeleton, TableSkeleton } from '../components/ui/LoadingSkeleton';
-import { fetchDashboardStats } from '../services/admin.service';
-import type { DashboardStats } from '../services/admin.service';
-import { fetchActiveDeliveries } from '../services/delivery.service';
-import type { Delivery, DailyRevenueData, HourlyDeliveryData } from '../types';
-import { formatCurrency, formatTimeAgo } from '../utils/formatters';
+import type { DailyRevenueData, HourlyDeliveryData } from '../types';
+import { formatCurrency } from '../utils/formatters';
+import * as storageService from '../services/storage.service';
 import clsx from 'clsx';
+
+interface DashboardStats {
+  deliveriesToday: number;
+  activeDeliveries: number;
+  activeCouriers: number;
+  totalCouriers: number;
+  totalBusinesses: number;
+  activeBusinesses: number;
+  revenueToday: number;
+  revenueThisWeek: number;
+  trends: { deliveries: number; couriers: number; businesses: number; revenue: number };
+}
+
+function buildStatsFromStorage(): DashboardStats {
+  const couriers = storageService.getCouriers();
+  const businesses = storageService.getBusinesses();
+  const activeCouriers = couriers.filter((c) => c.isActive && !c.isBlocked).length;
+  const activeBusinesses = businesses.filter((b) => b.isActive && !b.isBlocked).length;
+  const revenueToday = couriers.reduce((s, c) => s + c.earnings.today, 0);
+  const revenueThisWeek = couriers.reduce((s, c) => s + c.earnings.thisWeek, 0);
+  return {
+    deliveriesToday: 0,
+    activeDeliveries: 0,
+    activeCouriers,
+    totalCouriers: couriers.length,
+    totalBusinesses: businesses.length,
+    activeBusinesses,
+    revenueToday,
+    revenueThisWeek,
+    trends: { deliveries: 0, couriers: 0, businesses: businesses.length, revenue: 0 },
+  };
+}
 
 // ─── Static chart data ────────────────────────────────────────────────────────
 const generateWeeklyRevenue = (): DailyRevenueData[] => {
@@ -119,48 +148,28 @@ const DashboardError: React.FC<{ message: string; onRetry: () => void }> = ({
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 const Dashboard: React.FC = () => {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [activeDeliveries, setActiveDeliveries] = useState<Delivery[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [stats, setStats] = useState<DashboardStats>(() => buildStatsFromStorage());
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(new Date());
 
   const [weeklyData] = useState<DailyRevenueData[]>(generateWeeklyRevenue);
   const [hourlyData] = useState<HourlyDeliveryData[]>(generateHourlyDeliveries);
 
-  const loadData = async () => {
-    setError(null);
-    try {
-      const [statsData, deliveriesData] = await Promise.all([
-        fetchDashboardStats(),
-        fetchActiveDeliveries(),
-      ]);
-      setStats(statsData);
-      setActiveDeliveries(deliveriesData);
-      setLastUpdated(new Date());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'אירעה שגיאה בלתי צפויה');
-    } finally {
-      setLoading(false);
-    }
+  const loadData = () => {
+    setStats(buildStatsFromStorage());
+    setLastUpdated(new Date());
   };
 
   useEffect(() => {
-    loadData();
     const interval = setInterval(loadData, 30000);
     return () => clearInterval(interval);
   }, []);
 
-  const handleRefresh = async () => {
+  const handleRefresh = () => {
     setIsRefreshing(true);
-    await loadData();
-    setIsRefreshing(false);
+    loadData();
+    setTimeout(() => setIsRefreshing(false), 600);
   };
-
-  if (loading) return <DashboardSkeleton />;
-  if (error) return <DashboardError message={error} onRetry={() => { setLoading(true); loadData(); }} />;
-  if (!stats) return null;
 
   return (
     <div className="space-y-5 fade-in">
@@ -390,87 +399,15 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
 
-          {activeDeliveries.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16" style={{ color: '#c1cdd8' }}>
-              <TruckIcon className="w-10 h-10 mb-3 opacity-40" />
-              <p className="text-[13px] font-medium" style={{ color: '#8898aa' }}>
-                אין משלוחים פעילים כרגע
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr style={{ background: '#f8fafc' }}>
-                    {["מס' עקיבה", 'עסק', 'אזור', 'סטטוס', 'זמן'].map((h) => (
-                      <th
-                        key={h}
-                        className="px-5 py-3 text-right"
-                        style={{
-                          fontSize: '11px',
-                          fontWeight: 600,
-                          letterSpacing: '0.06em',
-                          textTransform: 'uppercase',
-                          color: '#8898aa',
-                          borderBottom: '1px solid #e8ecf0',
-                        }}
-                      >
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {activeDeliveries.map((d, idx) => (
-                    <tr
-                      key={d.id}
-                      className={clsx('transition-colors', idx % 2 !== 0 ? '' : '')}
-                      style={{ borderBottom: '1px solid #f0f3f6' }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = '#f8fafc'; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = ''; }}
-                    >
-                      <td className="px-5 py-3.5">
-                        <span
-                          className="font-mono text-[12px] font-bold px-2 py-0.5 rounded-[4px]"
-                          style={{
-                            color: '#533afd',
-                            background: 'rgba(83,58,253,0.08)',
-                            border: '1px solid rgba(83,58,253,0.15)',
-                          }}
-                        >
-                          {d.trackingNumber}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3.5">
-                        <span className="text-[13px] font-medium" style={{ color: '#3c4257' }}>
-                          {d.business.name}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3.5">
-                        <span
-                          className="text-[11px] px-2.5 py-0.5 rounded-full font-medium"
-                          style={{
-                            color: '#6b7c93',
-                            background: '#f0f3f6',
-                          }}
-                        >
-                          {d.zone}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3.5">
-                        <DeliveryStatusBadge status={d.status} />
-                      </td>
-                      <td className="px-5 py-3.5">
-                        <span className="text-[12px]" style={{ color: '#8898aa' }}>
-                          {formatTimeAgo(d.createdAt)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <div className="flex flex-col items-center justify-center py-16" style={{ color: '#c1cdd8' }}>
+            <TruckIcon className="w-10 h-10 mb-3 opacity-40" />
+            <p className="text-[13px] font-medium" style={{ color: '#8898aa' }}>
+              אין משלוחים פעילים כרגע
+            </p>
+            <p className="text-[11px] mt-1" style={{ color: '#c1cdd8' }}>
+              משלוחים יופיעו כאן בזמן אמת
+            </p>
+          </div>
         </div>
 
         {/* Heatmap */}

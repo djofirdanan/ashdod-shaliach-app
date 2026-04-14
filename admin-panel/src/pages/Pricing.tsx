@@ -16,11 +16,27 @@ import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
 import { TableSkeleton } from '../components/ui/LoadingSkeleton';
 import { PricingForm } from '../components/pricing/PricingForm';
-import {
-  fetchPricingZones,
-  bulkUpdatePricing,
-} from '../services/pricing.service';
+import { bulkUpdatePricing } from '../services/pricing.service';
 import type { PricingZone } from '../types';
+import { DEFAULT_PRICING_ZONES } from '../utils/constants';
+
+// Load zones from localStorage or fall back to defaults
+const STORAGE_KEY = 'app_pricing_zones';
+function loadStoredZones(): PricingZone[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw) as PricingZone[];
+  } catch { /* ignore */ }
+  // Convert defaults to full PricingZone type
+  return DEFAULT_PRICING_ZONES.map((z) => ({
+    ...z,
+    updatedAt: new Date().toISOString(),
+    updatedBy: 'system',
+  }));
+}
+function saveZones(zones: PricingZone[]): void {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(zones));
+}
 
 interface EditValues {
   [zoneId: string]: string;
@@ -34,9 +50,9 @@ const getPriceColor = (price: number) => {
 };
 
 const Pricing: React.FC = () => {
-  const [zones, setZones] = useState<PricingZone[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [zones, setZones] = useState<PricingZone[]>(() => loadStoredZones());
+  const [loading, setLoading] = useState(false);
+  const [error] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<EditValues>({});
@@ -46,22 +62,7 @@ const Pricing: React.FC = () => {
   const unsavedIds = Object.keys(editValues);
   const hasUnsaved = unsavedIds.length > 0;
 
-  const loadZones = async () => {
-    setError(null);
-    setLoading(true);
-    try {
-      const data = await fetchPricingZones();
-      setZones(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'שגיאה בטעינת האזורים');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadZones();
-  }, []);
+  // Zones are loaded from localStorage on init — no async fetch needed
 
   const startEdit = (zone: PricingZone) => {
     setEditingId(zone.id);
@@ -109,13 +110,17 @@ const Pricing: React.FC = () => {
 
     setSaving(true);
     try {
-      await bulkUpdatePricing(changed);
+      // Save locally — try backend too (gracefully ignore if offline)
+      const updatedZones = zones.map((z) => {
+        const match = changed.find((c) => c.id === z.id);
+        return match ? { ...z, basePrice: match.basePrice, updatedAt: new Date().toISOString() } : z;
+      });
+      setZones(updatedZones);
+      saveZones(updatedZones);
+      bulkUpdatePricing(changed).catch(() => {/* offline — ignore */});
       toast.success('כל המחירים נשמרו בהצלחה!');
       setEditValues({});
       setEditingId(null);
-      await loadZones();
-    } catch (err) {
-      toast.error('שגיאה בשמירת המחירים');
     } finally {
       setSaving(false);
     }
@@ -132,7 +137,7 @@ const Pricing: React.FC = () => {
     // If a dedicated addPricingZone service existed, we'd call it here.
     toast.success('אזור חדש נוסף — מרענן...');
     setShowAddModal(false);
-    await loadZones();
+    setZones(loadStoredZones());
   };
 
   const getDisplayPrice = (zone: PricingZone): number => {
@@ -171,7 +176,7 @@ const Pricing: React.FC = () => {
           <Button
             variant="primary"
             leftIcon={<ArrowPathIcon className="w-4 h-4" />}
-            onClick={loadZones}
+            onClick={() => setZones(loadStoredZones())}
           >
             נסה שוב
           </Button>

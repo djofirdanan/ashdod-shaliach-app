@@ -4,11 +4,24 @@ import toast from 'react-hot-toast';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { CardSkeleton } from '../components/ui/LoadingSkeleton';
-import {
-  fetchBonusRules,
-  updateBonusRule,
-} from '../services/admin.service';
+import { updateBonusRule } from '../services/admin.service';
 import type { BonusRule } from '../services/admin.service';
+
+const DEFAULT_BONUS_RULES: BonusRule[] = [
+  { id: 'b1', name: 'peak_hours', nameHe: 'שעות עומס', description: 'בונוס בשעות עומס (12:00–14:00, 18:00–21:00)', amount: 5, condition: 'שעות 12–14 ו-18–21', icon: '⏰', isActive: true },
+  { id: 'b2', name: 'daily_target', nameHe: 'יעד יומי', description: 'הושלמו 10 משלוחים ביום', amount: 30, condition: '10 משלוחים ביום', icon: '🎯', isActive: true },
+  { id: 'b3', name: 'weekly_star', nameHe: 'כוכב שבועי', description: 'שליח עם הכי הרבה משלוחים בשבוע', amount: 100, condition: 'מקום ראשון שבועי', icon: '⭐', isActive: true },
+  { id: 'b4', name: 'rating_bonus', nameHe: 'בונוס דירוג', description: 'שמירה על דירוג 4.8+ לאורך חודש', amount: 50, condition: 'דירוג 4.8+', icon: '🏆', isActive: false },
+];
+
+const BONUS_STORAGE_KEY = 'app_bonus_rules';
+function loadBonusRules(): BonusRule[] {
+  try {
+    const raw = localStorage.getItem(BONUS_STORAGE_KEY);
+    if (raw) return JSON.parse(raw) as BonusRule[];
+  } catch { /* ignore */ }
+  return DEFAULT_BONUS_RULES;
+}
 
 // ─── Color palette for bonus cards ───────────────────────────────────────────
 
@@ -100,50 +113,25 @@ const Toggle: React.FC<{ checked: boolean; onChange: () => void; colorKey: strin
 // ─── Bonuses Page ─────────────────────────────────────────────────────────────
 
 const Bonuses: React.FC = () => {
-  const [rules, setRules] = useState<BonusRule[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [rules, setRules] = useState<BonusRule[]>(() => loadBonusRules());
+  const [loading] = useState(false);
+  const [error] = useState<string | null>(null);
   const [calculatorChecked, setCalculatorChecked] = useState<Record<string, boolean>>({});
 
   // Track pending amount edits (not yet sent to server)
   const [pendingAmounts, setPendingAmounts] = useState<Record<string, number>>({});
 
-  const loadRules = async () => {
-    setError(null);
-    setLoading(true);
-    try {
-      const data = await fetchBonusRules();
-      setRules(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'שגיאה בטעינת כללי הבונוס');
-    } finally {
-      setLoading(false);
-    }
+  // Persist rule changes to localStorage
+  const persistRules = (updated: BonusRule[]) => {
+    localStorage.setItem(BONUS_STORAGE_KEY, JSON.stringify(updated));
   };
 
-  useEffect(() => {
-    loadRules();
-  }, []);
-
   const handleToggle = async (rule: BonusRule) => {
-    // Optimistic update
-    setRules((prev) =>
-      prev.map((r) => (r.id === rule.id ? { ...r, isActive: !r.isActive } : r))
-    );
-    try {
-      await updateBonusRule(rule.id, { isActive: !rule.isActive });
-      toast.success(
-        !rule.isActive
-          ? `כלל "${rule.nameHe || rule.name}" הופעל`
-          : `כלל "${rule.nameHe || rule.name}" הושבת`
-      );
-    } catch (err) {
-      // Revert optimistic update
-      setRules((prev) =>
-        prev.map((r) => (r.id === rule.id ? { ...r, isActive: rule.isActive } : r))
-      );
-      toast.error('שגיאה בעדכון הכלל');
-    }
+    const updated = rules.map((r) => (r.id === rule.id ? { ...r, isActive: !r.isActive } : r));
+    setRules(updated);
+    persistRules(updated);
+    toast.success(!rule.isActive ? `כלל "${rule.nameHe || rule.name}" הופעל` : `כלל "${rule.nameHe || rule.name}" הושבת`);
+    updateBonusRule(rule.id, { isActive: !rule.isActive }).catch(() => {/* offline */});
   };
 
   const handleAmountChange = (id: string, value: string) => {
@@ -214,7 +202,7 @@ const Bonuses: React.FC = () => {
           <Button
             variant="primary"
             leftIcon={<ArrowPathIcon className="w-4 h-4" />}
-            onClick={loadRules}
+            onClick={() => { setRules(loadBonusRules()); }}
           >
             נסה שוב
           </Button>

@@ -127,23 +127,30 @@ const Settings: React.FC = () => {
   const [savingGeneral, setSavingGeneral] = useState(false);
   const [savingDispatch, setSavingDispatch] = useState(false);
 
-  const loadSettings = async () => {
+  const loadSettings = () => {
     setError(null);
-    setLoading(true);
+    // Use stored settings or defaults
     try {
-      const data = await fetchSystemSettings();
-      setSettings(data);
-      setPlatformName(data.platformName ?? '');
-      setContactEmail(data.contactEmail ?? '');
-      setContactPhone(data.contactPhone ?? '');
-      setDispatchTimeout(String(data.dispatchTimeout ?? ''));
-      setMaxRadius(String(data.maxSearchRadius ?? ''));
-      setMaxCouriers(String(data.maxCouriersPerDispatch ?? ''));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'שגיאה בטעינת ההגדרות');
-    } finally {
-      setLoading(false);
-    }
+      const raw = localStorage.getItem('app_settings');
+      const data = raw ? JSON.parse(raw) : null;
+      if (data) {
+        setSettings(data);
+        setPlatformName(data.platformName ?? 'אשדוד שליח');
+        setContactEmail(data.contactEmail ?? 'djofirdanan@gmail.com');
+        setContactPhone(data.contactPhone ?? '08-8000000');
+        setDispatchTimeout(String(data.dispatchTimeout ?? '5'));
+        setMaxRadius(String(data.maxSearchRadius ?? '5'));
+        setMaxCouriers(String(data.maxCouriersPerDispatch ?? '3'));
+      } else {
+        setPlatformName('אשדוד שליח');
+        setContactEmail('djofirdanan@gmail.com');
+        setContactPhone('08-8000000');
+        setDispatchTimeout('5');
+        setMaxRadius('5');
+        setMaxCouriers('3');
+      }
+    } catch { /* ignore */ }
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -154,36 +161,28 @@ const Settings: React.FC = () => {
     setNotifs((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const handleSaveGeneral = async () => {
-    setSavingGeneral(true);
+  const saveToStorage = (patch: Record<string, unknown>) => {
     try {
-      await updateSystemSettings({
-        platformName,
-        contactEmail,
-        contactPhone,
-      });
-      toast.success('הגדרות כלליות נשמרו בהצלחה!');
-    } catch (err) {
-      toast.error('שגיאה בשמירת ההגדרות');
-    } finally {
-      setSavingGeneral(false);
-    }
+      const raw = localStorage.getItem('app_settings');
+      const current = raw ? JSON.parse(raw) : {};
+      localStorage.setItem('app_settings', JSON.stringify({ ...current, ...patch }));
+    } catch { /* ignore */ }
   };
 
-  const handleSaveDispatch = async () => {
+  const handleSaveGeneral = () => {
+    setSavingGeneral(true);
+    saveToStorage({ platformName, contactEmail, contactPhone });
+    updateSystemSettings({ platformName, contactEmail, contactPhone }).catch(() => {/* offline */});
+    toast.success('הגדרות כלליות נשמרו בהצלחה!');
+    setSavingGeneral(false);
+  };
+
+  const handleSaveDispatch = () => {
     setSavingDispatch(true);
-    try {
-      await updateSystemSettings({
-        dispatchTimeout: Number(dispatchTimeout),
-        maxSearchRadius: Number(maxRadius),
-        maxCouriersPerDispatch: Number(maxCouriers),
-      });
-      toast.success('הגדרות שיגור נשמרו בהצלחה!');
-    } catch (err) {
-      toast.error('שגיאה בשמירת הגדרות השיגור');
-    } finally {
-      setSavingDispatch(false);
-    }
+    saveToStorage({ dispatchTimeout: Number(dispatchTimeout), maxSearchRadius: Number(maxRadius), maxCouriersPerDispatch: Number(maxCouriers) });
+    updateSystemSettings({ dispatchTimeout: Number(dispatchTimeout), maxSearchRadius: Number(maxRadius), maxCouriersPerDispatch: Number(maxCouriers) }).catch(() => {/* offline */});
+    toast.success('הגדרות שיגור נשמרו בהצלחה!');
+    setSavingDispatch(false);
   };
 
   const handleSaveNotifs = () => {

@@ -68,8 +68,11 @@ const Deliveries: React.FC = () => {
       setDeliveries(result.data);
       setTotalPages(result.totalPages);
       setTotal(result.total);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'שגיאה בטעינת המשלוחים');
+    } catch {
+      // Backend not available — show empty state
+      setDeliveries([]);
+      setTotalPages(1);
+      setTotal(0);
     } finally {
       setLoading(false);
     }

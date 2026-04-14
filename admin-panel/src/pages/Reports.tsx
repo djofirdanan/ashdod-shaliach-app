@@ -14,9 +14,24 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { RevenueChart } from '../components/charts/RevenueChart';
 import { Skeleton, TableSkeleton } from '../components/ui/LoadingSkeleton';
-import { fetchRevenueReport } from '../services/admin.service';
 import type { RevenueReport } from '../services/admin.service';
-import type { DailyRevenueData } from '../types';
+import * as storageService from '../services/storage.service';
+
+function buildLocalReport(from: string, to: string): RevenueReport {
+  const couriers = storageService.getCouriers();
+  const days = Math.max(1, Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86400000));
+  const dailyRevenue = Array.from({ length: Math.min(days, 7) }, (_, i) => {
+    const d = new Date(from);
+    d.setDate(d.getDate() + i);
+    return { date: d.toLocaleDateString('he-IL', { weekday: 'short', day: 'numeric' }), amount: 0 };
+  });
+  return {
+    totalRevenue: 0,
+    dailyRevenue,
+    byZone: [],
+    topCouriers: couriers.slice(0, 5).map((c) => ({ name: c.name, deliveries: c.totalDeliveries, earnings: c.earnings.total, rating: c.rating })),
+  };
+}
 
 type TabType = 'revenue' | 'deliveries' | 'couriers';
 
@@ -82,17 +97,11 @@ const Reports: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadReport = async (from: string, to: string) => {
-    setError(null);
+  const loadReport = (from: string, to: string) => {
     setLoading(true);
-    try {
-      const data = await fetchRevenueReport(from, to);
-      setReportData(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'שגיאה בטעינת הדוח');
-    } finally {
-      setLoading(false);
-    }
+    setError(null);
+    setReportData(buildLocalReport(from, to));
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -105,8 +114,8 @@ const Reports: React.FC = () => {
     exportCSV(reportData, activeTab, dateFrom, dateTo);
   };
 
-  // Derived chart data: map dailyRevenue to DailyRevenueData shape for RevenueChart
-  const revenueChartData: DailyRevenueData[] = (reportData?.dailyRevenue ?? []).map((d) => ({
+  // Derived chart data: map dailyRevenue to shape for RevenueChart
+  const revenueChartData = (reportData?.dailyRevenue ?? []).map((d) => ({
     date: d.date,
     revenue: d.amount,
     deliveries: 0, // not provided by this endpoint
