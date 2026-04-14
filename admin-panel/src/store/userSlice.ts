@@ -1,6 +1,7 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import type { UserState, Courier, Business } from '../types';
 import * as userService from '../services/user.service';
+import { demoCouriers, demoBusinesses } from '../data/demoUsers';
 
 const initialState: UserState = {
   couriers: [],
@@ -93,6 +94,12 @@ const userSlice = createSlice({
     setSelectedBusiness(state, action: PayloadAction<Business | null>) {
       state.selectedBusiness = action.payload;
     },
+    loadDemoUsers(state) {
+      state.couriers = demoCouriers;
+      state.businesses = demoBusinesses;
+      state.isLoading = false;
+      state.error = null;
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -133,5 +140,5 @@ const userSlice = createSlice({
   },
 });
 
-export const { setSelectedCourier, setSelectedBusiness } = userSlice.actions;
+export const { setSelectedCourier, setSelectedBusiness, loadDemoUsers } = userSlice.actions;
 export default userSlice.reducer;

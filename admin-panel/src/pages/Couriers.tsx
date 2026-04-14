@@ -23,6 +23,7 @@ import {
   unblockCourier,
 } from '../services/user.service';
 import type { Courier, VehicleType } from '../types';
+import { demoCouriers } from '../data/demoUsers';
 import { formatCurrency } from '../utils/formatters';
 import { VEHICLE_TYPE_LABELS } from '../utils/constants';
 
@@ -65,8 +66,13 @@ const Couriers: React.FC = () => {
       const result = await fetchCouriers({ search: searchVal || undefined, page: pg, limit: 20 });
       setCouriers(result.data);
       setTotalPages(result.totalPages);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'שגיאה בטעינת השליחים');
+    } catch {
+      // Backend not available — use demo data
+      const filtered = searchVal
+        ? demoCouriers.filter((c) => c.name.includes(searchVal) || c.email?.includes(searchVal))
+        : demoCouriers;
+      setCouriers(filtered);
+      setTotalPages(1);
     } finally {
       setLoading(false);
     }

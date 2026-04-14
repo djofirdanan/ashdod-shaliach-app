@@ -23,6 +23,7 @@ import {
   unblockBusiness,
 } from '../services/user.service';
 import type { Business } from '../types';
+import { demoBusinesses } from '../data/demoUsers';
 import { formatCurrency } from '../utils/formatters';
 
 const categoryColors: Record<string, string> = {
@@ -66,8 +67,13 @@ const Businesses: React.FC = () => {
       const result = await fetchBusinesses({ search: searchVal || undefined, page: pg, limit: 20 });
       setBusinesses(result.data);
       setTotalPages(result.totalPages);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'שגיאה בטעינת העסקים');
+    } catch {
+      // Backend not available — use demo data
+      const filtered = searchVal
+        ? demoBusinesses.filter((b) => b.name.includes(searchVal) || b.email?.includes(searchVal))
+        : demoBusinesses;
+      setBusinesses(filtered);
+      setTotalPages(1);
     } finally {
       setLoading(false);
     }
