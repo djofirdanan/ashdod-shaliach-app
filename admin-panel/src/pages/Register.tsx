@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   TruckIcon,
@@ -14,6 +14,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import * as storageService from '../services/storage.service';
 import { DEFAULT_PRICING_ZONES } from '../utils/constants';
+import { sendWelcomeBusiness, sendWelcomeCourier } from '../services/email.service';
 
 type TabType = 'business' | 'courier';
 
@@ -64,8 +65,19 @@ const SuccessScreen: React.FC<{ type: TabType; name: string }> = ({ type, name }
 // ─── Register Page ────────────────────────────────────────────
 const Register: React.FC = () => {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<TabType>('business');
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState<TabType>(() => {
+    const type = searchParams.get('type');
+    return type === 'courier' ? 'courier' : 'business';
+  });
   const [isLoading, setIsLoading] = useState(false);
+
+  // Sync tab when URL query changes
+  useEffect(() => {
+    const type = searchParams.get('type');
+    if (type === 'courier') setTab('courier');
+    else if (type === 'business') setTab('business');
+  }, [searchParams]);
   const [success, setSuccess] = useState<{ type: TabType; name: string } | null>(null);
 
   // Business form
@@ -130,6 +142,8 @@ const Register: React.FC = () => {
         totalDeliveries: 0,
         rating: 5,
       });
+      // Send welcome email (fire and forget)
+      sendWelcomeBusiness(biz.email, biz.businessName).catch(() => {});
       setSuccess({ type: 'business', name: biz.businessName });
     } catch {
       toast.error('שגיאה בהרשמה. נסה שוב');
@@ -173,6 +187,8 @@ const Register: React.FC = () => {
         activeDeliveries: 0,
         earnings: { today: 0, thisWeek: 0, thisMonth: 0, total: 0 },
       });
+      // Send welcome email (fire and forget)
+      sendWelcomeCourier(cour.email, cour.name).catch(() => {});
       setSuccess({ type: 'courier', name: cour.name });
     } catch {
       toast.error('שגיאה בהרשמה. נסה שוב');
