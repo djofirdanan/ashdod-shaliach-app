@@ -452,11 +452,25 @@ export async function syncConversationsDown(userId: string, role: 'business' | '
       if (courRaw) {
         (JSON.parse(courRaw) as Array<{ id: string; name: string }>).forEach(c => { courMap[c.id] = c.name; });
       }
-      const fresh = data.map(row => ({
-        ...dbToConversation(row as Record<string, unknown>),
-        businessName: row.business_id === 'admin' ? 'מנהל האתר' : (bizMap[row.business_id as string] ?? ''),
-        courierName: row.courier_id === 'admin' ? 'מנהל האתר' : (courMap[row.courier_id as string] ?? ''),
-      }));
+      const fresh = data.map(row => {
+        const conv = {
+          ...dbToConversation(row as Record<string, unknown>),
+          businessName: row.business_id === 'admin' ? 'מנהל האתר' : (bizMap[row.business_id as string] ?? ''),
+          courierName: row.courier_id === 'admin' ? 'מנהל האתר' : (courMap[row.courier_id as string] ?? ''),
+        };
+        // Preserve locally cleared unread count if no new message arrived since we last read
+        const lastReadStr = localStorage.getItem(`conv_last_read_${conv.id}`);
+        if (lastReadStr) {
+          const lastMsgAt = conv.lastMessageAt;
+          // If conv's last message is older than our last read → keep it at 0
+          if (!lastMsgAt || lastMsgAt <= lastReadStr) {
+            if (role === 'business' || role === 'admin') conv.unreadBusiness = 0;
+            if (role === 'courier' || role === 'admin') conv.unreadCourier = 0;
+          }
+          // If a new message arrived after our read, the Supabase count is correct — keep it
+        }
+        return conv;
+      });
       localStorage.setItem(LS_KEYS.conversations, JSON.stringify([...others, ...fresh]));
     }
   } catch (err) {

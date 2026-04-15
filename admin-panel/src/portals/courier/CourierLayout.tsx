@@ -185,43 +185,46 @@ const CourierLayout: React.FC = () => {
       ]);
     };
 
-    // ── 1. Subscribe to new messages ─────────────────────────────
+    // ── 1. Subscribe to conversation updates (unread count change = new message)
+    //    More reliable than messages INSERT subscription.
     const msgChannel = supabase
-      .channel(`cour_msgs_${courierId}`)
+      .channel(`cour_convs_${courierId}`)
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'messages' },
-        async (payload) => {
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'conversations',
+          filter: `courier_id=eq.${courierId}`,
+        },
+        (payload) => {
           const row = payload.new as {
-            conversation_id: string;
-            sender_id: string;
-            sender_type: string;
-            content: string;
-            created_at: string;
-            sender_name?: string;
+            id: string;
+            unread_courier: number;
+            last_message: string | null;
+            last_message_at: string | null;
           };
 
-          // Ignore own messages
-          if (row.sender_id === courierId || row.sender_type === 'courier') return;
+          // Only fire when there are unread messages for the courier
+          const newUnread = Number(row.unread_courier) || 0;
+          if (newUnread <= 0) return;
 
-          const convId = row.conversation_id;
-
-          let conv = getConversations().find(c => c.id === convId && c.courierId === courierId);
-          if (!conv) {
-            await syncConversationsDown(courierId, 'courier');
-            conv = getConversations().find(c => c.id === convId && c.courierId === courierId);
-          }
-          if (!conv) return;
-
+          const convId = row.id;
           const loc = locationRef.current;
           const sp = new URLSearchParams(loc.search);
           const isOpen = loc.pathname === '/courier/chat' && sp.get('convId') === convId;
           if (isOpen) return;
 
+          // Update local cache immediately
+          syncConversationsDown(courierId, 'courier').catch(() => {});
+
+          // Get business name from local cache
+          const localConv = getConversations().find(c => c.id === convId);
+
           showToast(
-            `${convId}__${row.created_at}`,
-            conv.businessName || row.sender_name || 'עסק',
-            row.content || 'הודעה חדשה',
+            `${convId}__${row.last_message_at ?? Date.now()}`,
+            localConv?.businessName || 'עסק',
+            row.last_message || 'הודעה חדשה',
             `/courier/chat?convId=${convId}`,
           );
         },

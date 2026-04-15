@@ -327,44 +327,47 @@ const BusinessLayout: React.FC = () => {
       ]);
     };
 
-    // ── 1. Subscribe to new messages ─────────────────────────────
+    // ── 1. Subscribe to conversation updates (unread count change = new message)
+    //    This is more reliable than messages INSERT because the conversations table
+    //    is already used by upsertConversation on every sent message.
     const msgChannel = supabase
-      .channel(`biz_msgs_${businessId}`)
+      .channel(`biz_convs_${businessId}`)
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'messages' },
-        async (payload) => {
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'conversations',
+          filter: `business_id=eq.${businessId}`,
+        },
+        (payload) => {
           const row = payload.new as {
-            conversation_id: string;
-            sender_id: string;
-            sender_type: string;
-            content: string;
-            created_at: string;
-            sender_name?: string;
+            id: string;
+            unread_business: number;
+            last_message: string | null;
+            last_message_at: string | null;
           };
 
-          // Ignore own messages
-          if (row.sender_id === businessId || row.sender_type === 'business') return;
+          // Only fire when there are unread messages for the business
+          const newUnread = Number(row.unread_business) || 0;
+          if (newUnread <= 0) return;
 
-          const convId = row.conversation_id;
-
-          // Look up conv in localStorage; if missing, sync first
-          let conv = getConversations().find(c => c.id === convId && c.businessId === businessId);
-          if (!conv) {
-            await syncConversationsDown(businessId, 'business');
-            conv = getConversations().find(c => c.id === convId && c.businessId === businessId);
-          }
-          if (!conv) return; // Not our conversation
-
+          const convId = row.id;
           const loc = locationRef.current;
           const sp = new URLSearchParams(loc.search);
           const isOpen = loc.pathname === '/business/chat' && sp.get('convId') === convId;
           if (isOpen) return;
 
+          // Update local cache immediately
+          syncConversationsDown(businessId, 'business').catch(() => {});
+
+          // Get courier name from local cache (may be empty if not yet synced)
+          const localConv = getConversations().find(c => c.id === convId);
+
           showToast(
-            `${convId}__${row.created_at}`,
-            conv.courierName || row.sender_name || 'שליח',
-            row.content || 'הודעה חדשה',
+            `${convId}__${row.last_message_at ?? Date.now()}`,
+            localConv?.courierName || 'שליח',
+            row.last_message || 'הודעה חדשה',
             `/business/chat?convId=${convId}`,
           );
         },

@@ -560,6 +560,11 @@ export function markMessagesRead(
       };
     }
     write(KEYS.conversations, convList);
+
+    // Persist the read timestamp so syncConversationsDown won't overwrite with stale count
+    localStorage.setItem(`conv_last_read_${conversationId}`, new Date().toISOString());
+    // Sync cleared unread count to Supabase immediately
+    sync.upsertConversation(convList[convIdx]).catch(console.error);
   }
 }
 
