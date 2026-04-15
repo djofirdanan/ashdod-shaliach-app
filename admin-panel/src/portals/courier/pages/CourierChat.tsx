@@ -14,8 +14,6 @@ import {
   type StoredDelivery,
 } from '../../../services/storage.service';
 import { syncDeliveriesDown, syncMessagesDown, syncConversationsDown } from '../../../services/sync.service';
-import { useSelector } from 'react-redux';
-import type { RootState } from '../../../store';
 import {
   ChatBubbleLeftRightIcon,
   PaperAirplaneIcon,
@@ -197,12 +195,12 @@ const DeliveryBanner: React.FC<{
 
 /* ─── Main Component ──────────────────────────── */
 const CourierChat: React.FC = () => {
-  const user = useSelector((s: RootState) => s.auth.user);
   const location = useLocation();
   const navigate = useNavigate();
 
   const token = localStorage.getItem('admin_token') ?? '';
   const courierId = token.startsWith('courier-') ? token.replace('courier-', '') : '';
+  const courierName = getCourier(courierId)?.name ?? 'שליח';
 
   // Parse URL params
   const searchParams = new URLSearchParams(location.search);
@@ -273,10 +271,10 @@ const CourierChat: React.FC = () => {
   }, [messages]);
 
   const handleSend = () => {
-    if (!text.trim() || !selectedConvId || !user) return;
+    if (!text.trim() || !selectedConvId) return;
     addMessage(selectedConvId, {
       senderId: courierId,
-      senderName: user.name,
+      senderName: courierName,
       senderType: 'courier',
       content: text.trim(),
       messageType: 'text',
@@ -382,7 +380,7 @@ const CourierChat: React.FC = () => {
         <DeliveryBanner
           delivery={delivery}
           courierId={courierId}
-          userName={user?.name ?? 'שליח'}
+          userName={courierName}
           convId={selectedConvId}
           onStatusUpdate={() => {
             setMessages(getMessages(selectedConvId));

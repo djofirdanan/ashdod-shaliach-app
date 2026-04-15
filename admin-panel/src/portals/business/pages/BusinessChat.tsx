@@ -4,18 +4,17 @@ import {
   getMessages,
   addMessage,
   markMessagesRead,
+  getBusiness,
   type StoredConversation,
   type StoredMessage,
 } from '../../../services/storage.service';
 import { syncMessagesDown, syncConversationsDown } from '../../../services/sync.service';
-import { useSelector } from 'react-redux';
-import type { RootState } from '../../../store';
 import { ChatBubbleLeftRightIcon, PaperAirplaneIcon } from '@heroicons/react/24/outline';
 
 const BusinessChat: React.FC = () => {
-  const user = useSelector((s: RootState) => s.auth.user);
   const token = localStorage.getItem('admin_token') ?? '';
   const businessId = token.startsWith('business-') ? token.replace('business-', '') : '';
+  const businessName = getBusiness(businessId)?.businessName ?? 'עסק';
 
   const [conversations, setConversations] = useState<StoredConversation[]>([]);
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
@@ -60,10 +59,10 @@ const BusinessChat: React.FC = () => {
   }, [messages]);
 
   const handleSend = () => {
-    if (!text.trim() || !selectedConvId || !user) return;
+    if (!text.trim() || !selectedConvId) return;
     addMessage(selectedConvId, {
       senderId: businessId,
-      senderName: user.name,
+      senderName: businessName,
       senderType: 'business',
       content: text.trim(),
       messageType: 'text',
