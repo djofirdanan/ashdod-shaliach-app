@@ -23,6 +23,62 @@ function detectDevice(): 'ios' | 'android' | 'desktop' {
   return 'desktop';
 }
 
+// ─── Official Store Badge Components ─────────────────────────────────────────
+const AppStoreBadge: React.FC<{ size?: 'sm' | 'md' }> = ({ size = 'md' }) => {
+  const w = size === 'sm' ? 120 : 140;
+  const h = size === 'sm' ? 36 : 42;
+  return (
+    <button
+      onClick={() => toast('בקרוב ב-App Store! 🍎')}
+      className="transition-all hover:opacity-80 active:scale-95 flex-shrink-0"
+      style={{ lineHeight: 0 }}
+    >
+      <svg width={w} height={h} viewBox="0 0 140 42" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="140" height="42" rx="7" fill="#000"/>
+        <rect x="0.5" y="0.5" width="139" height="41" rx="6.5" stroke="white" strokeOpacity="0.3"/>
+        {/* Apple logo */}
+        <path d="M30.36 21.46c-.04-3.42 2.79-5.07 2.92-5.15-1.59-2.32-4.07-2.64-4.95-2.67-2.09-.21-4.1 1.24-5.16 1.24-1.08 0-2.73-1.22-4.49-1.18-2.29.03-4.41 1.34-5.59 3.38-2.39 4.14-.61 10.24 1.69 13.59 1.14 1.63 2.49 3.47 4.26 3.4 1.72-.07 2.36-1.1 4.44-1.1 2.06 0 2.66 1.1 4.46 1.06 1.85-.03 3.01-1.65 4.13-3.3 1.32-1.89 1.86-3.75 1.88-3.84-.04-.01-3.56-1.37-3.59-5.43zM26.95 11.8c.92-1.14 1.55-2.71 1.38-4.3-1.33.06-3.01.91-3.99 2.04-.85.98-1.61 2.61-1.41 4.14 1.49.11 3.02-.77 4.02-1.88z" fill="white"/>
+        {/* Download on the */}
+        <text x="40" y="18.5" fill="white" fontFamily="-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif" fontSize="9" letterSpacing="0.4" opacity="0.85">Download on the</text>
+        {/* App Store */}
+        <text x="39" y="33" fill="white" fontFamily="-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif" fontSize="17" fontWeight="600" letterSpacing="-0.4">App Store</text>
+      </svg>
+    </button>
+  );
+};
+
+const GooglePlayBadge: React.FC<{ size?: 'sm' | 'md' }> = ({ size = 'md' }) => {
+  const w = size === 'sm' ? 120 : 140;
+  const h = size === 'sm' ? 36 : 42;
+  return (
+    <button
+      onClick={() => toast('בקרוב ב-Google Play! 🤖')}
+      className="transition-all hover:opacity-80 active:scale-95 flex-shrink-0"
+      style={{ lineHeight: 0 }}
+    >
+      <svg width={w} height={h} viewBox="0 0 140 42" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="140" height="42" rx="7" fill="#000"/>
+        <rect x="0.5" y="0.5" width="139" height="41" rx="6.5" stroke="white" strokeOpacity="0.3"/>
+        {/* Google Play icon — 4 coloured triangles */}
+        {/* Blue — left large triangle (top half) */}
+        <path d="M10 9.5 L10 21 L23.5 21 Z" fill="#4FACEE"/>
+        {/* Teal — left large triangle (bottom half) */}
+        <path d="M10 21 L10 32.5 L23.5 21 Z" fill="#3ECBA0"/>
+        {/* Yellow — top triangle */}
+        <path d="M10 9.5 L23.5 21 L30 17.3 Z" fill="#FFCA28"/>
+        {/* Red — bottom triangle + right tip */}
+        <path d="M10 32.5 L23.5 21 L30 24.7 Z" fill="#F06292"/>
+        {/* Right tip red */}
+        <path d="M23.5 21 L30 17.3 L33.5 21 L30 24.7 Z" fill="#F44336"/>
+        {/* GET IT ON */}
+        <text x="40" y="18.5" fill="white" fontFamily="-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif" fontSize="9" letterSpacing="0.8" opacity="0.85">GET IT ON</text>
+        {/* Google Play */}
+        <text x="39" y="33" fill="white" fontFamily="-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif" fontSize="17" fontWeight="500" letterSpacing="-0.3">Google Play</text>
+      </svg>
+    </button>
+  );
+};
+
 // ─── App Download Banner ─────────────────────────────────────────────────────
 const AppDownloadBanner: React.FC = () => {
   const device = detectDevice();
@@ -43,31 +99,15 @@ const AppDownloadBanner: React.FC = () => {
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-white text-[13px] font-bold leading-tight">
-          📱 הורד את אפליקציית אשדוד-שליח
+          הורד את אפליקציית אשדוד-שליח
         </p>
         <p className="text-white/55 text-[11px] mt-0.5">
           גש לכל הפיצ׳רים ישירות מהנייד שלך
         </p>
       </div>
-      <div className="flex gap-2 flex-shrink-0">
-        {(device === 'ios' || device === 'desktop') && (
-          <button
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-[11px] font-bold text-white transition-all hover:opacity-90"
-            style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)' }}
-            onClick={() => toast('בקרוב ב-App Store! 🍎')}
-          >
-            🍎 <span className="hidden sm:inline">App Store</span>
-          </button>
-        )}
-        {(device === 'android' || device === 'desktop') && (
-          <button
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-[11px] font-bold text-white transition-all hover:opacity-90"
-            style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)' }}
-            onClick={() => toast('בקרוב ב-Google Play! 🤖')}
-          >
-            🤖 <span className="hidden sm:inline">Google Play</span>
-          </button>
-        )}
+      <div className="flex flex-col gap-2 flex-shrink-0">
+        {(device === 'ios' || device === 'desktop') && <AppStoreBadge size="sm" />}
+        {(device === 'android' || device === 'desktop') && <GooglePlayBadge size="sm" />}
       </div>
     </div>
   );
@@ -250,17 +290,19 @@ const Login: React.FC = () => {
 
         {/* App download – desktop left panel */}
         <div
-          className="relative z-10 rounded-[12px] p-4 flex items-center gap-3"
-          style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)' }}
+          className="relative z-10 rounded-[12px] p-4"
+          style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.13)' }}
         >
-          <DevicePhoneMobileIcon className="w-8 h-8 text-white/70 flex-shrink-0" />
-          <div className="flex-1">
-            <p className="text-white text-[12px] font-bold">📱 האפליקציה בקרוב!</p>
-            <p className="text-white/45 text-[11px]">App Store ו-Google Play</p>
+          <div className="flex items-center gap-2 mb-3">
+            <DevicePhoneMobileIcon className="w-5 h-5 text-white/60 flex-shrink-0" />
+            <div>
+              <p className="text-white text-[12px] font-bold leading-tight">הורד את האפליקציה</p>
+              <p className="text-white/45 text-[10px]">זמין בקרוב ב-App Store ו-Google Play</p>
+            </div>
           </div>
           <div className="flex gap-2">
-            <button onClick={() => toast('בקרוב ב-App Store! 🍎')} className="px-3 py-1.5 rounded-[7px] text-[11px] font-bold text-white" style={{ background: 'rgba(255,255,255,0.15)' }}>🍎</button>
-            <button onClick={() => toast('בקרוב ב-Google Play! 🤖')} className="px-3 py-1.5 rounded-[7px] text-[11px] font-bold text-white" style={{ background: 'rgba(255,255,255,0.15)' }}>🤖</button>
+            <AppStoreBadge size="sm" />
+            <GooglePlayBadge size="sm" />
           </div>
         </div>
       </div>
