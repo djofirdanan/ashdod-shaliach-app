@@ -5,7 +5,8 @@ import type { RootState, AppDispatch } from '../../store';
 import { logoutUser } from '../../store/authSlice';
 import { getPendingNotifications, getCourier, updateCourier, updateCourierLocation, getDeliveriesByCourier, getDeliveries, getOrCreateConversation, updateDelivery, getUnreadCount, getOrCreateSupportTicket, getSupportMessages, getConversations } from '../../services/storage.service';
 import { playNewMessage } from '../../utils/sounds';
-import { pingCandidateHeartbeat, getCandidacyStatus, withdrawFromQueue } from '../../services/sync.service';
+import { pingCandidateHeartbeat, getCandidacyStatus, withdrawFromQueue, syncConversationsDown, syncSupportMessagesDown } from '../../services/sync.service';
+import { supabase } from '../../lib/supabase';
 import { DeliveryNotificationOverlay } from '../../components/DeliveryNotificationOverlay';
 import {
   HomeIcon,
@@ -28,6 +29,8 @@ const BLUE = '#009DE0';
 const CourierLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const locationRef = useRef(location);
+  useEffect(() => { locationRef.current = location; }, [location]);
   const dispatch = useDispatch<AppDispatch>();
   const user = useSelector((s: RootState) => s.auth.user);
 
@@ -168,76 +171,111 @@ const CourierLayout: React.FC = () => {
     return () => clearInterval(id);
   }, [courierId, navigate]);
 
-  // ── Detect new messages and show toast ──────────────────────
+  // ── Realtime: detect incoming messages on any page ───────────
   useEffect(() => {
     if (!courierId) return;
 
-    const check = () => {
-      const convs = getConversations().filter(c => c.courierId === courierId);
-      const sp = new URLSearchParams(location.search);
-      const activeConvId = sp.get('convId');
-      const isSupportOpen = location.pathname === '/courier/chat' && sp.get('support') === '1';
-
-      // ── Regular conversations ─────────────────────────────────
-      for (const conv of convs) {
-        const at = conv.lastMessageAt;
-        if (!at) continue;
-
-        if (!toastInitRef.current) {
-          lastSeenAt.current[conv.id] = at;
-          continue;
-        }
-
-        const prev = lastSeenAt.current[conv.id];
-        if (prev && at > prev && conv.unreadCourier > 0) {
-          const toastId = `${conv.id}__${at}`;
-          const isOpen = location.pathname === '/courier/chat' && activeConvId === conv.id;
-          if (!isOpen && !toastSeenIds.current.has(toastId)) {
-            toastSeenIds.current.add(toastId);
-            playNewMessage();
-            setMsgToasts(prev => [
-              ...prev.slice(-2),
-              { id: toastId, name: conv.businessName || 'עסק', preview: conv.lastMessage || 'הודעה חדשה', path: `/courier/chat?convId=${conv.id}` },
-            ]);
-          }
-        }
-        lastSeenAt.current[conv.id] = at;
-      }
-
-      // ── Support messages ──────────────────────────────────────
-      try {
-        const ticket = getOrCreateSupportTicket(courierId, 'courier');
-        const msgs = getSupportMessages(ticket.id);
-        const lastAdminMsg = [...msgs].reverse().find(m => m.senderType === 'admin');
-        if (lastAdminMsg) {
-          const at = lastAdminMsg.createdAt;
-          if (!toastInitRef.current) {
-            lastSeenAt.current['__support__'] = at;
-          } else {
-            const prev = lastSeenAt.current['__support__'];
-            if (prev && at > prev && !isSupportOpen) {
-              const toastId = `support__${at}`;
-              if (!toastSeenIds.current.has(toastId)) {
-                toastSeenIds.current.add(toastId);
-                playNewMessage();
-                setMsgToasts(prev => [
-                  ...prev.slice(-2),
-                  { id: toastId, name: 'מוקד שירות', preview: lastAdminMsg.content, path: '/courier/chat?support=1' },
-                ]);
-              }
-            }
-            lastSeenAt.current['__support__'] = at;
-          }
-        }
-      } catch { /* ignore */ }
-
-      toastInitRef.current = true;
+    const showToast = (toastId: string, name: string, preview: string, path: string) => {
+      if (toastSeenIds.current.has(toastId)) return;
+      toastSeenIds.current.add(toastId);
+      playNewMessage();
+      setMsgToasts(prev => [
+        ...prev.slice(-2),
+        { id: toastId, name, preview, path },
+      ]);
     };
 
-    check();
-    const id = setInterval(check, 3000);
-    return () => clearInterval(id);
-  }, [courierId, location.pathname, location.search]);
+    // ── 1. Subscribe to new messages ─────────────────────────────
+    const msgChannel = supabase
+      .channel(`cour_msgs_${courierId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages' },
+        async (payload) => {
+          const row = payload.new as {
+            conversation_id: string;
+            sender_id: string;
+            sender_type: string;
+            content: string;
+            created_at: string;
+            sender_name?: string;
+          };
+
+          // Ignore own messages
+          if (row.sender_id === courierId || row.sender_type === 'courier') return;
+
+          const convId = row.conversation_id;
+
+          let conv = getConversations().find(c => c.id === convId && c.courierId === courierId);
+          if (!conv) {
+            await syncConversationsDown(courierId, 'courier');
+            conv = getConversations().find(c => c.id === convId && c.courierId === courierId);
+          }
+          if (!conv) return;
+
+          const loc = locationRef.current;
+          const sp = new URLSearchParams(loc.search);
+          const isOpen = loc.pathname === '/courier/chat' && sp.get('convId') === convId;
+          if (isOpen) return;
+
+          showToast(
+            `${convId}__${row.created_at}`,
+            conv.businessName || row.sender_name || 'עסק',
+            row.content || 'הודעה חדשה',
+            `/courier/chat?convId=${convId}`,
+          );
+        },
+      )
+      .subscribe();
+
+    // ── 2. Subscribe to support messages ─────────────────────────
+    let supportTicketId: string | null = null;
+    try {
+      const t = getOrCreateSupportTicket(courierId, 'courier');
+      supportTicketId = t.id;
+    } catch { /* ignore */ }
+
+    const suppChannel = supabase
+      .channel(`cour_supp_${courierId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'support_messages' },
+        (payload) => {
+          const row = payload.new as {
+            ticket_id: string;
+            sender_type: string;
+            content: string;
+            created_at: string;
+          };
+          if (row.sender_type !== 'admin') return;
+          if (supportTicketId && row.ticket_id !== supportTicketId) return;
+
+          const loc = locationRef.current;
+          const sp = new URLSearchParams(loc.search);
+          const isSupportOpen = loc.pathname === '/courier/chat' && sp.get('support') === '1';
+          if (isSupportOpen) return;
+
+          showToast(
+            `support__${row.created_at}`,
+            'מוקד שירות',
+            row.content || 'הודעה חדשה',
+            '/courier/chat?support=1',
+          );
+        },
+      )
+      .subscribe();
+
+    // ── 3. Fallback sync every 12 s ───────────────────────────────
+    const fallbackId = setInterval(async () => {
+      await syncConversationsDown(courierId, 'courier').catch(() => {});
+    }, 12_000);
+
+    return () => {
+      supabase.removeChannel(msgChannel);
+      supabase.removeChannel(suppChannel);
+      clearInterval(fallbackId);
+    };
+  }, [courierId]);
 
   // ── Auto-dismiss toasts after 5 s ───────────────────────────
   useEffect(() => {
