@@ -21,7 +21,7 @@ const initialState: ExtendedAuthState = {
 
 // Hardcoded admin credentials
 const ADMIN_EMAIL = 'djofirdanan@gmail.com';
-const ADMIN_PASSWORD = '339529';
+const ADMIN_PASSWORD = '339529Aa!@';
 const ADMIN_USER: AdminUser = {
   id: 'admin-main',
   name: 'דניאל פירדנן',

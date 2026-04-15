@@ -6,7 +6,6 @@ import {
   TruckIcon,
   BuildingStorefrontIcon,
   UserGroupIcon,
-  ShieldCheckIcon,
   LockClosedIcon,
   EnvelopeIcon,
   DevicePhoneMobileIcon,
@@ -114,7 +113,7 @@ const AppDownloadBanner: React.FC = () => {
 };
 
 // ─── Role card ────────────────────────────────────────────────────────────────
-type Role = 'business' | 'courier' | 'admin';
+type Role = 'business' | 'courier';
 
 interface RoleCardProps {
   role: Role;
@@ -136,13 +135,6 @@ const roleConfig: Record<Role, { icon: React.ReactNode; label: string; sub: stri
     sub: 'שלח ואסוף משלוחים',
     color: '#00b090',
     grad: 'linear-gradient(135deg, #00b090, #007acc)',
-  },
-  admin: {
-    icon: <ShieldCheckIcon className="w-6 h-6" />,
-    label: 'מנהל',
-    sub: 'ניהול מערכת מלא',
-    color: '#533afd',
-    grad: 'linear-gradient(135deg, #533afd, #3d22e0)',
   },
 };
 
@@ -338,7 +330,7 @@ const Login: React.FC = () => {
 
           {/* ── Role selector ── */}
           <div className="flex gap-3 mb-6">
-            {(['business', 'courier', 'admin'] as Role[]).map((r) => (
+            {(['business', 'courier'] as Role[]).map((r) => (
               <RoleCard key={r} role={r} selected={selectedRole === r} onSelect={() => setSelectedRole(r)} />
             ))}
           </div>
@@ -352,7 +344,6 @@ const Login: React.FC = () => {
             <p className="text-[13px] font-semibold" style={{ color: cfg.color }}>
               {selectedRole === 'business' && 'כניסה לפורטל עסקים'}
               {selectedRole === 'courier' && 'כניסה לפורטל שליחים'}
-              {selectedRole === 'admin' && 'כניסה לפאנל ניהול'}
             </p>
           </div>
 
@@ -400,7 +391,7 @@ const Login: React.FC = () => {
                 background: isLoading ? undefined : cfg.grad,
               }}
             >
-              {!isLoading && `כניסה כ${selectedRole === 'business' ? 'עסק' : selectedRole === 'courier' ? 'שליח' : 'מנהל'} ←`}
+              {!isLoading && `כניסה כ${selectedRole === 'business' ? 'עסק' : 'שליח'} ←`}
             </Button>
           </form>
 
@@ -412,32 +403,30 @@ const Login: React.FC = () => {
           </div>
 
           {/* Register cards */}
-          {selectedRole !== 'admin' && (
-            <div className="grid grid-cols-2 gap-3">
-              <Link
-                to="/register?type=business"
-                className="flex flex-col items-center gap-2 py-4 rounded-[12px] border-2 transition-all hover:shadow-md"
-                style={{ borderColor: '#ea226120', background: '#ea22610a' }}
-              >
-                <BuildingStorefrontIcon className="w-6 h-6" style={{ color: '#ea2261' }} />
-                <div className="text-center">
-                  <p className="text-[13px] font-bold" style={{ color: '#ea2261' }}>הרשמה כעסק</p>
-                  <p className="text-[10px]" style={{ color: '#8898aa' }}>מסעדה, מכולת ועוד</p>
-                </div>
-              </Link>
-              <Link
-                to="/register?type=courier"
-                className="flex flex-col items-center gap-2 py-4 rounded-[12px] border-2 transition-all hover:shadow-md"
-                style={{ borderColor: '#00b09020', background: '#00b0900a' }}
-              >
-                <UserGroupIcon className="w-6 h-6" style={{ color: '#00b090' }} />
-                <div className="text-center">
-                  <p className="text-[13px] font-bold" style={{ color: '#00b090' }}>הרשמה כשליח</p>
-                  <p className="text-[10px]" style={{ color: '#8898aa' }}>הצטרף לצוות השליחים</p>
-                </div>
-              </Link>
-            </div>
-          )}
+          <div className="grid grid-cols-2 gap-3">
+            <Link
+              to="/register?type=business"
+              className="flex flex-col items-center gap-2 py-4 rounded-[12px] border-2 transition-all hover:shadow-md"
+              style={{ borderColor: '#ea226120', background: '#ea22610a' }}
+            >
+              <BuildingStorefrontIcon className="w-6 h-6" style={{ color: '#ea2261' }} />
+              <div className="text-center">
+                <p className="text-[13px] font-bold" style={{ color: '#ea2261' }}>הרשמה כעסק</p>
+                <p className="text-[10px]" style={{ color: '#8898aa' }}>מסעדה, מכולת ועוד</p>
+              </div>
+            </Link>
+            <Link
+              to="/register?type=courier"
+              className="flex flex-col items-center gap-2 py-4 rounded-[12px] border-2 transition-all hover:shadow-md"
+              style={{ borderColor: '#00b09020', background: '#00b0900a' }}
+            >
+              <UserGroupIcon className="w-6 h-6" style={{ color: '#00b090' }} />
+              <div className="text-center">
+                <p className="text-[13px] font-bold" style={{ color: '#00b090' }}>הרשמה כשליח</p>
+                <p className="text-[10px]" style={{ color: '#8898aa' }}>הצטרף לצוות השליחים</p>
+              </div>
+            </Link>
+          </div>
 
           {/* App download — desktop (below form) */}
           {showBanner && (
