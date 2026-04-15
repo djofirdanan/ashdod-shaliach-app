@@ -1,6 +1,12 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { syncDown } from './services/sync.service';
+import {
+  getDeliveries,
+  updateDelivery,
+  addDeliveryNotification,
+  getBusiness,
+} from './services/storage.service';
 import { Provider } from 'react-redux';
 import { Toaster } from 'react-hot-toast';
 import { store } from './store';
@@ -53,9 +59,42 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
   return <>{children}</>;
 };
 
+/** Check every minute for scheduled deliveries whose time has arrived */
+function checkScheduledDeliveries() {
+  const now = new Date();
+  const deliveries = getDeliveries();
+  for (const d of deliveries) {
+    if (d.status === 'scheduled' && d.scheduledAt) {
+      if (new Date(d.scheduledAt) <= now) {
+        // Time arrived — switch to pending and send notification
+        updateDelivery(d.id, { status: 'pending' });
+        const biz = getBusiness(d.businessId);
+        addDeliveryNotification({
+          businessId: d.businessId,
+          businessName: biz?.businessName ?? d.businessName,
+          pickupAddress: d.pickupAddress,
+          dropAddress: d.dropAddress,
+          description: d.description,
+          price: d.price,
+          requiredVehicle: d.requiredVehicle,
+          paymentMethod: d.paymentMethod,
+          customerPaid: d.customerPaid,
+          scheduledAt: d.scheduledAt,
+        });
+        console.log(`[scheduler] Activated scheduled delivery ${d.id}`);
+      }
+    }
+  }
+}
+
 const App: React.FC = () => {
   // On every app start: pull latest data from Supabase into localStorage
-  useEffect(() => { syncDown(); }, []);
+  useEffect(() => {
+    syncDown();
+    checkScheduledDeliveries(); // check on startup too
+    const t = setInterval(checkScheduledDeliveries, 60_000); // every minute
+    return () => clearInterval(t);
+  }, []);
 
   return (
     <Provider store={store}>

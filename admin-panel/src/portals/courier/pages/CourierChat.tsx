@@ -13,7 +13,7 @@ import {
   type StoredMessage,
   type StoredDelivery,
 } from '../../../services/storage.service';
-import { syncDeliveriesDown } from '../../../services/sync.service';
+import { syncDeliveriesDown, syncMessagesDown, syncConversationsDown } from '../../../services/sync.service';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../../../store';
 import {
@@ -29,6 +29,7 @@ import toast from 'react-hot-toast';
 const ETA_OPTIONS = ['5 דקות', '10 דקות', '15 דקות', '20 דקות', '30 דקות'];
 
 const statusLabel: Record<StoredDelivery['status'], string> = {
+  scheduled: '📅 מתוזמן',
   pending: 'ממתין לשליח',
   accepted: 'שליח בדרך לאיסוף',
   picked_up: 'בדרך ללקוח',
@@ -145,7 +146,7 @@ const DeliveryBanner: React.FC<{
               style={{ background: '#fff', border: '1px solid #e0e7ff', color: '#533afd' }}
             >
               <ClockIcon className="w-3.5 h-3.5" />
-              ETA
+              ⏱️ זמן הגעה
             </button>
             {showEta && (
               <div
@@ -232,6 +233,9 @@ const CourierChat: React.FC = () => {
   useEffect(() => {
     loadConvs();
     loadDelivery();
+    if (courierId) {
+      syncConversationsDown(courierId, 'courier').then(loadConvs);
+    }
   }, [courierId, urlDeliveryId]);
 
   // Auto-select conv if passed via URL
@@ -246,14 +250,20 @@ const CourierChat: React.FC = () => {
     setMessages(getMessages(selectedConvId));
     markMessagesRead(selectedConvId, 'courier');
     loadConvs();
-    // Poll for new messages
-    const id = setInterval(() => {
+
+    // Poll Supabase every 3s for new messages (real-time cross-device)
+    const poll = async () => {
+      await syncMessagesDown(selectedConvId);
       setMessages(getMessages(selectedConvId));
       if (urlDeliveryId) {
+        await syncDeliveriesDown();
         const d = getDeliveries().find(x => x.id === urlDeliveryId);
         setDelivery(d ?? null);
       }
-    }, 4000);
+      loadConvs();
+    };
+    poll();
+    const id = setInterval(poll, 3000);
     return () => clearInterval(id);
   }, [selectedConvId, urlDeliveryId]);
 

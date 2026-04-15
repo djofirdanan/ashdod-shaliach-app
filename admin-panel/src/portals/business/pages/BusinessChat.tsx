@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   getConversations,
   getMessages,
@@ -7,6 +7,7 @@ import {
   type StoredConversation,
   type StoredMessage,
 } from '../../../services/storage.service';
+import { syncMessagesDown, syncConversationsDown } from '../../../services/sync.service';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../../../store';
 import { ChatBubbleLeftRightIcon, PaperAirplaneIcon } from '@heroicons/react/24/outline';
@@ -20,23 +21,43 @@ const BusinessChat: React.FC = () => {
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
   const [messages, setMessages] = useState<StoredMessage[]>([]);
   const [text, setText] = useState('');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const loadConvs = () => {
     const all = getConversations().filter((c) => c.businessId === businessId);
     setConversations(all.sort((a, b) => (b.lastMessageAt ?? '').localeCompare(a.lastMessageAt ?? '')));
   };
 
+  // Initial load + sync conversations from Supabase
   useEffect(() => {
     loadConvs();
+    if (businessId) {
+      syncConversationsDown(businessId, 'business').then(loadConvs);
+    }
   }, [businessId]);
 
+  // When a conversation is opened — start real-time polling
   useEffect(() => {
     if (!selectedConvId) return;
-    const msgs = getMessages(selectedConvId);
-    setMessages(msgs);
+    setMessages(getMessages(selectedConvId));
     markMessagesRead(selectedConvId, 'business');
     loadConvs();
+
+    // Poll Supabase every 3s for new messages
+    const poll = async () => {
+      await syncMessagesDown(selectedConvId);
+      setMessages(getMessages(selectedConvId));
+      loadConvs();
+    };
+    poll(); // immediate first sync
+    const id = setInterval(poll, 3000);
+    return () => clearInterval(id);
   }, [selectedConvId]);
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   const handleSend = () => {
     if (!text.trim() || !selectedConvId || !user) return;
@@ -81,12 +102,12 @@ const BusinessChat: React.FC = () => {
                   className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[14px] flex-shrink-0"
                   style={{ background: 'linear-gradient(135deg, #533afd, #ea2261)' }}
                 >
-                  {c.courierName[0] ?? 'ש'}
+                  {(c.courierName || 'ש')[0]}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
                     <p className="text-[14px] font-bold truncate" style={{ color: '#061b31' }}>
-                      {c.courierName}
+                      {c.courierName || 'שליח'}
                     </p>
                     {c.unreadBusiness > 0 && (
                       <span
@@ -129,6 +150,7 @@ const BusinessChat: React.FC = () => {
           <p className="text-[14px] font-bold" style={{ color: '#061b31' }}>
             {selectedConv?.courierName ?? 'שליח'}
           </p>
+          <p className="text-[10px]" style={{ color: '#10b981' }}>● מחובר בזמן אמת</p>
         </div>
       </div>
 
@@ -145,12 +167,9 @@ const BusinessChat: React.FC = () => {
         {messages.map((m) => {
           const isMine = m.senderType === 'business';
           return (
-            <div
-              key={m.id}
-              className={`flex ${isMine ? 'justify-start' : 'justify-end'}`}
-            >
+            <div key={m.id} className={`flex ${isMine ? 'justify-start' : 'justify-end'}`}>
               <div
-                className="max-w-[75%] px-3.5 py-2.5 rounded-2xl text-[13px]"
+                className="max-w-[78%] px-3.5 py-2.5 rounded-2xl text-[13px]"
                 style={{
                   background: isMine ? 'linear-gradient(135deg, #533afd, #ea2261)' : '#fff',
                   color: isMine ? '#fff' : '#061b31',
@@ -164,6 +183,7 @@ const BusinessChat: React.FC = () => {
             </div>
           );
         })}
+        <div ref={messagesEndRef} />
       </div>
 
       {/* Input */}

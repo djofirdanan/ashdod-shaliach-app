@@ -210,6 +210,25 @@ const AvailableDeliveries: React.FC = () => {
                 </div>
               </div>
 
+              {/* Payment / vehicle info tags */}
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {n.paymentMethod && (
+                  <span className="text-[11px] px-2 py-0.5 rounded-full font-bold" style={{ background: '#f0f4f8', color: '#8898aa' }}>
+                    {n.paymentMethod === 'cash' ? '💵 מזומן' : '📱 ביט'}
+                  </span>
+                )}
+                {n.customerPaid !== undefined && (
+                  <span className="text-[11px] px-2 py-0.5 rounded-full font-bold" style={{ background: n.customerPaid ? '#f0fdf4' : '#fff7ed', color: n.customerPaid ? '#10b981' : '#f59e0b' }}>
+                    {n.customerPaid ? '✅ שולם ע"י לקוח' : '💳 גביה בעת המסירה'}
+                  </span>
+                )}
+                {n.requiredVehicle && (
+                  <span className="text-[11px] px-2 py-0.5 rounded-full font-bold" style={{ background: '#eef2ff', color: '#533afd' }}>
+                    {n.requiredVehicle === 'motorcycle' ? '🏍️ אופנוע' : n.requiredVehicle === 'bicycle' ? '🚲 אופניים' : n.requiredVehicle === 'scooter' ? '🛵 קטנוע' : '🚗 רכב'}
+                  </span>
+                )}
+              </div>
+
               {n.description && (
                 <div
                   className="rounded-xl px-3 py-2 mb-3 text-[12px]"

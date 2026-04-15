@@ -157,6 +157,15 @@ const Dashboard: React.FC = () => {
   const [weeklyData] = useState<DailyRevenueData[]>(generateWeeklyRevenue);
   const [hourlyData] = useState<HourlyDeliveryData[]>(generateHourlyDeliveries);
 
+  // Test notification modal
+  const [showTestModal, setShowTestModal] = useState(false);
+  const [testPickup, setTestPickup] = useState('');
+  const [testDrop, setTestDrop] = useState('');
+  const [testDesc, setTestDesc] = useState('');
+  const [testPrice, setTestPrice] = useState('35');
+  const [testVehicle, setTestVehicle] = useState('');
+  const [testPayment, setTestPayment] = useState<'cash'|'bit'>('cash');
+
   const loadData = () => {
     setStats(buildStatsFromStorage());
     setLastUpdated(new Date());
@@ -237,27 +246,15 @@ const Dashboard: React.FC = () => {
                 <ArrowPathIcon className={clsx('w-3.5 h-3.5', isRefreshing && 'animate-spin')} />
                 עדכן נתונים
               </button>
-              {/* Test button — sends a sample delivery notification */}
+              {/* Test notification button — opens modal */}
               <button
-                onClick={() => {
-                  const businesses = storageService.getBusinesses();
-                  const biz = businesses[0];
-                  addDeliveryNotification({
-                    businessId: biz?.id || 'test',
-                    businessName: biz?.businessName || 'פיצה רומא',
-                    pickupAddress: `${biz?.address?.street || 'רוטשילד 12'}, ${biz?.address?.city || 'אשדוד'}`,
-                    dropAddress: 'הרצל 45, אשדוד',
-                    description: 'פיצה ושתייה × 2 — שימו לב לכניסה האחורית',
-                    price: 35,
-                  });
-                  toast.success('📦 התראת משלוח נשלחה לכל השליחים!');
-                }}
+                onClick={() => setShowTestModal(true)}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-[6px] text-[13px] font-bold text-white transition-all"
                 style={{ background: 'rgba(234,34,97,0.35)', border: '1px solid rgba(234,34,97,0.5)' }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(234,34,97,0.5)'; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(234,34,97,0.35)'; }}
               >
-                🧪 בדיקה: שלח התראת משלוח
+                🧪 שלח התראת בדיקה לשליחים
               </button>
             </div>
           </div>
@@ -453,6 +450,116 @@ const Dashboard: React.FC = () => {
       <p className="text-[11px] text-center pb-2" style={{ color: '#c1cdd8' }}>
         עודכן לאחרונה: {lastUpdated.toLocaleTimeString('he-IL')} · מתרענן כל 30 שניות
       </p>
+
+      {/* ── Test notification modal ── */}
+      {showTestModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.5)' }}
+          onClick={e => { if (e.target === e.currentTarget) setShowTestModal(false); }}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl p-6 space-y-4"
+            style={{ background: '#fff', boxShadow: '0 24px 60px rgba(0,0,0,0.2)' }}
+            dir="rtl"
+          >
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-[17px] font-black" style={{ color: '#061b31' }}>🧪 שליחת התראת בדיקה</h2>
+              <button onClick={() => setShowTestModal(false)} className="text-gray-400 hover:text-gray-600 text-xl font-bold">✕</button>
+            </div>
+
+            {[
+              { label: 'כתובת איסוף', val: testPickup, set: setTestPickup, ph: 'למשל: רוטשילד 12, אשדוד' },
+              { label: 'כתובת מסירה', val: testDrop, set: setTestDrop, ph: 'למשל: הרצל 45, אשדוד' },
+              { label: 'הערה / תיאור', val: testDesc, set: setTestDesc, ph: 'פרטים על המשלוח...' },
+            ].map(({ label, val, set, ph }) => (
+              <div key={label}>
+                <label className="text-[11px] font-bold block mb-1" style={{ color: '#8898aa' }}>{label}</label>
+                <input
+                  className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none"
+                  style={{ background: '#f6f9fc', border: '1px solid #e8ecf0', direction: 'rtl', color: '#061b31' }}
+                  placeholder={ph}
+                  value={val}
+                  onChange={e => set(e.target.value)}
+                />
+              </div>
+            ))}
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[11px] font-bold block mb-1" style={{ color: '#8898aa' }}>מחיר לשליח (₪)</label>
+                <input
+                  className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none"
+                  style={{ background: '#f6f9fc', border: '1px solid #e8ecf0', direction: 'ltr', color: '#061b31' }}
+                  type="number" min="0"
+                  value={testPrice}
+                  onChange={e => setTestPrice(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold block mb-1" style={{ color: '#8898aa' }}>כלי רכב</label>
+                <select
+                  className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none"
+                  style={{ background: '#f6f9fc', border: '1px solid #e8ecf0', direction: 'rtl', color: '#061b31' }}
+                  value={testVehicle}
+                  onChange={e => setTestVehicle(e.target.value)}
+                >
+                  <option value="">כל כלי רכב</option>
+                  <option value="motorcycle">אופנוע</option>
+                  <option value="scooter">קטנוע</option>
+                  <option value="bicycle">אופניים</option>
+                  <option value="car">רכב</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold block mb-1" style={{ color: '#8898aa' }}>אופן תשלום</label>
+              <div className="flex gap-2">
+                {(['cash', 'bit'] as const).map(pm => (
+                  <button
+                    key={pm}
+                    type="button"
+                    onClick={() => setTestPayment(pm)}
+                    className="flex-1 py-2 rounded-xl font-bold text-[13px] transition-all"
+                    style={{
+                      background: testPayment === pm ? '#eef2ff' : '#f6f9fc',
+                      border: `1.5px solid ${testPayment === pm ? '#533afd' : '#e8ecf0'}`,
+                      color: testPayment === pm ? '#533afd' : '#8898aa',
+                    }}
+                  >
+                    {pm === 'cash' ? '💵 מזומן' : '📱 ביט'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                const businesses = storageService.getBusinesses();
+                const biz = businesses[0];
+                addDeliveryNotification({
+                  businessId: biz?.id || 'admin-test',
+                  businessName: biz?.businessName || 'ניהול מערכת',
+                  pickupAddress: testPickup.trim() || 'כתובת איסוף לבדיקה',
+                  dropAddress: testDrop.trim() || 'כתובת מסירה לבדיקה',
+                  description: testDesc.trim() || undefined,
+                  price: parseFloat(testPrice) || 35,
+                  requiredVehicle: testVehicle || undefined,
+                  paymentMethod: testPayment,
+                });
+                toast.success('📦 התראת בדיקה נשלחה לשליחים!');
+                setShowTestModal(false);
+                setTestPickup(''); setTestDrop(''); setTestDesc(''); setTestPrice('35'); setTestVehicle('');
+              }}
+              className="w-full py-3 rounded-xl text-white font-black text-[14px] transition-all active:scale-95"
+              style={{ background: 'linear-gradient(135deg, #ea2261, #533afd)' }}
+            >
+              🚀 שלח התראה לשליחים
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

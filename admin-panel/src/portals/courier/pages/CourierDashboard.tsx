@@ -11,6 +11,7 @@ import {
 import { TruckIcon, BellIcon } from '@heroicons/react/24/outline';
 
 const statusLabel: Record<StoredDelivery['status'], string> = {
+  scheduled: '📅 מתוזמן',
   pending: 'ממתין לשליח',
   accepted: 'בדרך לאיסוף',
   picked_up: 'בדרך ללקוח',
@@ -19,6 +20,7 @@ const statusLabel: Record<StoredDelivery['status'], string> = {
 };
 
 const statusColor: Record<StoredDelivery['status'], string> = {
+  scheduled: '#6366f1',
   pending: '#8898aa',
   accepted: '#533afd',
   picked_up: '#f59e0b',

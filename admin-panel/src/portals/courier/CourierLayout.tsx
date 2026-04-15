@@ -26,6 +26,7 @@ const CourierLayout: React.FC = () => {
 
   const [pendingCount, setPendingCount] = useState(0);
   const [isAvailable, setIsAvailable] = useState(true);
+  const [showAvailConfirm, setShowAvailConfirm] = useState(false);
 
   const refreshAvailability = useCallback(() => {
     if (!courierId) return;
@@ -44,11 +45,16 @@ const CourierLayout: React.FC = () => {
   }, [courierId, refreshAvailability]);
 
   const handleToggleAvailability = () => {
+    setShowAvailConfirm(true); // always show confirmation first
+  };
+
+  const confirmToggleAvailability = () => {
     if (!courierId) return;
     const next = !isAvailable;
     updateCourier(courierId, { isAvailable: next });
     setIsAvailable(next);
-    toast.success(next ? 'אתה זמין לקבל משלוחים' : 'סימנת את עצמך כלא זמין');
+    setShowAvailConfirm(false);
+    toast.success(next ? '🟢 אתה זמין לקבל משלוחים' : '🔴 סימנת את עצמך כלא זמין');
   };
 
   const handleLogout = async () => {
@@ -169,6 +175,52 @@ const CourierLayout: React.FC = () => {
 
       {/* Delivery popup overlay */}
       <DeliveryNotificationOverlay />
+
+      {/* Availability confirmation dialog */}
+      {showAvailConfirm && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center p-6"
+          style={{ background: 'rgba(0,0,0,0.6)' }}
+          onClick={e => { if (e.target === e.currentTarget) setShowAvailConfirm(false); }}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl p-6 text-center"
+            style={{ background: '#fff', boxShadow: '0 24px 60px rgba(0,0,0,0.25)' }}
+            dir="rtl"
+          >
+            <div
+              className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 text-[28px]"
+              style={{ background: isAvailable ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)' }}
+            >
+              {isAvailable ? '🔴' : '🟢'}
+            </div>
+            <h3 className="text-[17px] font-black mb-2" style={{ color: '#061b31' }}>
+              {isAvailable ? 'סימון כלא זמין?' : 'סימון כזמין?'}
+            </h3>
+            <p className="text-[13px] mb-5" style={{ color: '#8898aa' }}>
+              {isAvailable
+                ? 'לא תקבל משלוחים חדשים כל עוד אתה מסומן כלא זמין'
+                : 'תתחיל לקבל התראות על משלוחים חדשים'}
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowAvailConfirm(false)}
+                className="flex-1 py-3 rounded-xl font-bold text-[14px]"
+                style={{ background: '#f0f4f8', color: '#8898aa' }}
+              >
+                ביטול
+              </button>
+              <button
+                onClick={confirmToggleAvailability}
+                className="flex-1 py-3 rounded-xl font-bold text-[14px] text-white"
+                style={{ background: isAvailable ? '#ef4444' : '#10b981' }}
+              >
+                {isAvailable ? 'אשר — לא זמין' : 'אשר — זמין'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

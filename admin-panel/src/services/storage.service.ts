@@ -96,7 +96,7 @@ export interface StoredDelivery {
   customerPhone?: string;
   description?: string;
   price: number;
-  status: 'pending' | 'accepted' | 'picked_up' | 'delivered' | 'cancelled';
+  status: 'scheduled' | 'pending' | 'accepted' | 'picked_up' | 'delivered' | 'cancelled';
   courierId?: string;
   courierName?: string;
   createdAt: string;
@@ -104,6 +104,10 @@ export interface StoredDelivery {
   pickedUpAt?: string;
   deliveredAt?: string;
   cancelledAt?: string;
+  scheduledAt?: string;       // ISO – future scheduled delivery time
+  requiredVehicle?: string;   // 'motorcycle' | 'bicycle' | 'car' | 'scooter' | undefined=any
+  paymentMethod?: 'cash' | 'bit'; // how business pays courier
+  customerPaid?: boolean;     // true = customer already paid; false = courier collects
 }
 
 // ─── Keys ────────────────────────────────────────────────────
@@ -163,6 +167,10 @@ export interface DeliveryNotification {
   createdAt: string;
   dismissedBy: string[]; // courier IDs
   takenBy?: string;      // courier ID who accepted
+  requiredVehicle?: string; // only show to couriers with this vehicle type
+  scheduledAt?: string;     // ISO – for scheduled deliveries
+  paymentMethod?: 'cash' | 'bit';
+  customerPaid?: boolean;
 }
 
 const NOTIF_KEY = 'app_delivery_notifications';
@@ -187,8 +195,14 @@ export function addDeliveryNotification(
 export function getPendingNotifications(courierId: string): DeliveryNotification[] {
   const list = read<DeliveryNotification>(NOTIF_KEY);
   const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString(); // 10 min
+  const courier = getCourier(courierId);
   return list.filter(
-    (n) => !n.dismissedBy.includes(courierId) && !n.takenBy && n.createdAt > cutoff
+    (n) =>
+      !n.dismissedBy.includes(courierId) &&
+      !n.takenBy &&
+      n.createdAt > cutoff &&
+      // Vehicle filter: if notification requires a specific vehicle, only show to matching couriers
+      (!n.requiredVehicle || !courier || n.requiredVehicle === courier.vehicle)
   );
 }
 

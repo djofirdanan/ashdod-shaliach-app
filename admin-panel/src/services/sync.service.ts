@@ -163,6 +163,10 @@ function dbToNotification(row: Record<string, unknown>): DeliveryNotification {
     createdAt: row.created_at as string,
     takenBy: (row.taken_by as string | undefined) || undefined,
     dismissedBy: (row.dismissed_by as string[]) || [],
+    requiredVehicle: (row.required_vehicle as string | undefined) || undefined,
+    scheduledAt: (row.scheduled_at as string | undefined) || undefined,
+    paymentMethod: (row.payment_method as 'cash' | 'bit' | undefined) || undefined,
+    customerPaid: row.customer_paid != null ? Boolean(row.customer_paid) : undefined,
   };
 }
 
@@ -196,6 +200,10 @@ function dbToDelivery(row: Record<string, unknown>): StoredDelivery {
     pickedUpAt: (row.picked_up_at as string | undefined) || undefined,
     deliveredAt: (row.delivered_at as string | undefined) || undefined,
     cancelledAt: (row.cancelled_at as string | undefined) || undefined,
+    scheduledAt: (row.scheduled_at as string | undefined) || undefined,
+    requiredVehicle: (row.required_vehicle as string | undefined) || undefined,
+    paymentMethod: (row.payment_method as 'cash' | 'bit' | undefined) || 'cash',
+    customerPaid: row.customer_paid != null ? Boolean(row.customer_paid) : false,
   };
 }
 
@@ -320,12 +328,59 @@ export async function insertMessage(m: StoredMessage): Promise<void> {
     id: m.id,
     conversation_id: m.conversationId,
     sender_id: m.senderId,
+    sender_name: m.senderName,
     sender_type: m.senderType,
     content: m.content,
     created_at: m.createdAt,
     read_at: m.readAt ?? null,
   }, { onConflict: 'id' });
   if (error) console.error('[sync] insertMessage error:', error.message);
+}
+
+/** Pull messages for a specific conversation from Supabase → localStorage.
+ *  Called every few seconds while a chat window is open (cross-device real-time). */
+export async function syncMessagesDown(conversationId: string): Promise<void> {
+  try {
+    const { data } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('conversation_id', conversationId)
+      .order('created_at', { ascending: true });
+
+    if (data) {
+      const raw = localStorage.getItem(LS_KEYS.messages);
+      const allMessages: StoredMessage[] = raw ? JSON.parse(raw) : [];
+      // Replace messages for this conversation with fresh data from DB
+      const others = allMessages.filter((m) => m.conversationId !== conversationId);
+      const fresh = data.map(dbToMessage);
+      localStorage.setItem(LS_KEYS.messages, JSON.stringify([...others, ...fresh]));
+    }
+  } catch (err) {
+    console.warn('[sync] syncMessagesDown failed:', err);
+  }
+}
+
+/** Pull all conversations for a given user (business or courier) from Supabase → localStorage. */
+export async function syncConversationsDown(userId: string, role: 'business' | 'courier'): Promise<void> {
+  try {
+    const col = role === 'business' ? 'business_id' : 'courier_id';
+    const { data } = await supabase
+      .from('conversations')
+      .select('*')
+      .eq(col, userId)
+      .order('last_message_at', { ascending: false });
+
+    if (data) {
+      const raw = localStorage.getItem(LS_KEYS.conversations);
+      const all: StoredConversation[] = raw ? JSON.parse(raw) : [];
+      const freshIds = new Set(data.map((r) => r.id as string));
+      const others = all.filter((c) => !freshIds.has(c.id));
+      const fresh = data.map(dbToConversation);
+      localStorage.setItem(LS_KEYS.conversations, JSON.stringify([...others, ...fresh]));
+    }
+  } catch (err) {
+    console.warn('[sync] syncConversationsDown failed:', err);
+  }
 }
 
 export async function upsertDeliveryNotification(n: DeliveryNotification): Promise<void> {
@@ -340,6 +395,10 @@ export async function upsertDeliveryNotification(n: DeliveryNotification): Promi
     created_at: n.createdAt,
     taken_by: n.takenBy ?? null,
     dismissed_by: n.dismissedBy,
+    required_vehicle: n.requiredVehicle ?? null,
+    scheduled_at: n.scheduledAt ?? null,
+    payment_method: n.paymentMethod ?? null,
+    customer_paid: n.customerPaid ?? false,
   }, { onConflict: 'id' });
   if (error) console.error('[sync] upsertDeliveryNotification error:', error.message);
 }
@@ -363,6 +422,10 @@ export async function upsertDelivery(d: StoredDelivery): Promise<void> {
     picked_up_at: d.pickedUpAt ?? null,
     delivered_at: d.deliveredAt ?? null,
     cancelled_at: d.cancelledAt ?? null,
+    scheduled_at: d.scheduledAt ?? null,
+    required_vehicle: d.requiredVehicle ?? null,
+    payment_method: d.paymentMethod ?? 'cash',
+    customer_paid: d.customerPaid ?? false,
   }, { onConflict: 'id' });
   if (error) console.error('[sync] upsertDelivery error:', error.message);
 }

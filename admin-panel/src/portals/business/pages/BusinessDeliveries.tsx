@@ -12,6 +12,7 @@ import toast from 'react-hot-toast';
 type Tab = 'active' | 'completed' | 'all';
 
 const statusLabel: Record<StoredDelivery['status'], string> = {
+  scheduled: '📅 מתוזמן',
   pending: 'ממתין לשליח',
   accepted: 'שליח בדרך לאיסוף',
   picked_up: 'בדרך ללקוח',
@@ -20,6 +21,7 @@ const statusLabel: Record<StoredDelivery['status'], string> = {
 };
 
 const statusColor: Record<StoredDelivery['status'], string> = {
+  scheduled: '#6366f1',
   pending: '#8898aa',
   accepted: '#533afd',
   picked_up: '#f59e0b',
@@ -68,7 +70,7 @@ const BusinessDeliveries: React.FC = () => {
   };
 
   const filtered = deliveries.filter((d) => {
-    if (tab === 'active') return ['pending', 'accepted', 'picked_up'].includes(d.status);
+    if (tab === 'active') return ['scheduled', 'pending', 'accepted', 'picked_up'].includes(d.status);
     if (tab === 'completed') return ['delivered', 'cancelled'].includes(d.status);
     return true;
   });
@@ -174,31 +176,46 @@ const BusinessDeliveries: React.FC = () => {
               </div>
 
               {/* Footer row */}
-              <div className="flex items-center justify-between mt-3 pt-3" style={{ borderTop: '1px solid #f0f4f8' }}>
-                <span className="text-[13px] font-bold" style={{ color: '#533afd' }}>₪{d.price}</span>
-                <div className="flex items-center gap-2">
-                  {d.courierName && (
-                    <span className="text-[11px]" style={{ color: '#8898aa' }}>
-                      שליח: {d.courierName}
-                    </span>
-                  )}
-                  {d.customerName && !d.courierName && (
-                    <span className="text-[11px]" style={{ color: '#8898aa' }}>
-                      ל: {d.customerName}
-                    </span>
-                  )}
-                  {d.status === 'pending' && (
-                    <button
-                      onClick={() => handleResend(d)}
-                      disabled={resending === d.id}
-                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition-all active:scale-95 disabled:opacity-60"
-                      style={{ background: '#eef2ff', color: '#533afd' }}
-                    >
-                      <ArrowPathIcon className="w-3.5 h-3.5" />
-                      שלח שוב
-                    </button>
-                  )}
+              <div className="mt-3 pt-3 space-y-2" style={{ borderTop: '1px solid #f0f4f8' }}>
+                <div className="flex items-center justify-between">
+                  <span className="text-[13px] font-bold" style={{ color: '#533afd' }}>₪{d.price}</span>
+                  <div className="flex items-center gap-2 flex-wrap justify-end">
+                    {d.paymentMethod && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: '#f0f4f8', color: '#8898aa' }}>
+                        {d.paymentMethod === 'cash' ? '💵 מזומן' : '📱 ביט'}
+                      </span>
+                    )}
+                    {d.customerPaid !== undefined && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: d.customerPaid ? '#f0fdf4' : '#fff7ed', color: d.customerPaid ? '#10b981' : '#f59e0b' }}>
+                        {d.customerPaid ? 'שולם' : 'לגבות'}
+                      </span>
+                    )}
+                    {d.requiredVehicle && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: '#eef2ff', color: '#533afd' }}>
+                        {d.requiredVehicle === 'motorcycle' ? '🏍️' : d.requiredVehicle === 'bicycle' ? '🚲' : d.requiredVehicle === 'scooter' ? '🛵' : '🚗'}
+                      </span>
+                    )}
+                    {d.courierName && (
+                      <span className="text-[11px]" style={{ color: '#8898aa' }}>שליח: {d.courierName}</span>
+                    )}
+                    {(d.status === 'pending' || d.status === 'scheduled') && (
+                      <button
+                        onClick={() => handleResend(d)}
+                        disabled={resending === d.id}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition-all active:scale-95 disabled:opacity-60"
+                        style={{ background: '#eef2ff', color: '#533afd' }}
+                      >
+                        <ArrowPathIcon className="w-3.5 h-3.5" />
+                        שלח שוב
+                      </button>
+                    )}
+                  </div>
                 </div>
+                {d.scheduledAt && d.status === 'scheduled' && (
+                  <p className="text-[11px] font-bold" style={{ color: '#6366f1' }}>
+                    📅 מתוזמן: {new Date(d.scheduledAt).toLocaleString('he-IL', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                )}
               </div>
             </div>
           ))}
