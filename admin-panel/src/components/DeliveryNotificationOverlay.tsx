@@ -327,7 +327,7 @@ export const DeliveryNotificationOverlay: React.FC = () => {
     if (matching) {
       await joinCandidatesQueue(matching.id, courierId, courierName, courierRating, courierVehicle);
       // Store pending candidacy in localStorage
-      localStorage.setItem('pending_candidacy', JSON.stringify({ deliveryId: matching.id, notifId: notif.id }));
+      localStorage.setItem('pending_candidacy', JSON.stringify({ deliveryId: matching.id, notifId: notif.id, joinedAt: new Date().toISOString() }));
     }
 
     // 3. Mark notification as taken (removes from overlay)
