@@ -1,9 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import type { RootState, AppDispatch } from '../../store';
 import { logoutUser } from '../../store/authSlice';
-import { getUnreadCount, getBusiness, getDeliveriesByBusiness } from '../../services/storage.service';
+import {
+  getUnreadCount,
+  getBusiness,
+  getDeliveriesByBusiness,
+  getOrCreateConversation,
+} from '../../services/storage.service';
 import { supabase } from '../../lib/supabase';
 import {
   HomeIcon,
@@ -11,6 +16,9 @@ import {
   TruckIcon,
   ChatBubbleLeftRightIcon,
   UserCircleIcon,
+  CheckIcon,
+  MapPinIcon,
+  BanknotesIcon,
 } from '@heroicons/react/24/outline';
 import {
   HomeIcon as HomeIconSolid,
@@ -28,8 +36,139 @@ const navItems = [
   { label: 'פרופיל',    path: '/business/profile',      icon: UserCircleIcon,          iconSolid: UserIconSolid  },
 ];
 
-const BLUE = '#009DE0';
+const BLUE   = '#009DE0';
+const GREEN  = '#1BA672';
+const ORANGE = '#F58F1F';
 
+// ─── Status popup types ───────────────────────────────────────
+interface StatusPopup {
+  status: 'picked_up' | 'delivered';
+  courierName: string;
+  courierId: string;
+  pickupAddress: string;
+  dropAddress: string;
+  price: number;
+  deliveryId: string;
+}
+
+// ─── DeliveryStatusPopup component ───────────────────────────
+const DeliveryStatusPopup: React.FC<{
+  popup: StatusPopup;
+  businessId: string;
+  onClose: () => void;
+  navigate: ReturnType<typeof useNavigate>;
+}> = ({ popup, businessId, onClose, navigate }) => {
+  const isPickedUp = popup.status === 'picked_up';
+  const accentColor = isPickedUp ? ORANGE : GREEN;
+  const title = isPickedUp ? 'השליח אסף את החבילה' : 'המשלוח נמסר ללקוח';
+
+  const handleOpenChat = () => {
+    const conv = getOrCreateConversation(businessId, popup.courierId);
+    onClose();
+    navigate(`/business/chat?convId=${conv.id}`);
+  };
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 z-50"
+        style={{ background: 'rgba(0,0,0,0.45)' }}
+        onClick={onClose}
+      />
+
+      {/* Bottom sheet */}
+      <div
+        dir="rtl"
+        className="fixed bottom-0 right-0 left-0 z-50 rounded-t-3xl px-5 pt-4 pb-8"
+        style={{
+          background: '#FFFFFF',
+          boxShadow: '0 -4px 30px rgba(0,0,0,0.18)',
+          animation: 'slideUp 0.28s ease',
+        }}
+      >
+        {/* Handle bar */}
+        <div className="flex justify-center mb-4">
+          <div className="w-10 h-1 rounded-full" style={{ background: '#E8E8E8' }} />
+        </div>
+
+        {/* Icon + title */}
+        <div className="flex items-center gap-3 mb-4">
+          <div
+            className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
+            style={{ background: accentColor + '18' }}
+          >
+            {isPickedUp
+              ? <TruckIcon  className="w-6 h-6" style={{ color: accentColor }} />
+              : <CheckIcon  className="w-6 h-6" style={{ color: accentColor }} />
+            }
+          </div>
+          <div>
+            <p className="text-[16px] font-black" style={{ color: '#202125' }}>{title}</p>
+            <p className="text-[13px] font-semibold" style={{ color: '#757575' }}>{popup.courierName}</p>
+          </div>
+        </div>
+
+        {/* Info card */}
+        <div
+          className="rounded-2xl p-4 mb-4 space-y-3"
+          style={{ background: '#F4F4F4', border: '1px solid #E8E8E8' }}
+        >
+          {/* Pickup address */}
+          <div className="flex items-start gap-3">
+            <MapPinIcon className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: GREEN }} />
+            <div>
+              <p className="text-[11px] font-semibold" style={{ color: '#757575' }}>איסוף</p>
+              <p className="text-[13px] font-medium" style={{ color: '#202125' }}>{popup.pickupAddress}</p>
+            </div>
+          </div>
+
+          {/* Drop address */}
+          <div className="flex items-start gap-3">
+            <MapPinIcon className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: '#E23437' }} />
+            <div>
+              <p className="text-[11px] font-semibold" style={{ color: '#757575' }}>מסירה</p>
+              <p className="text-[13px] font-medium" style={{ color: '#202125' }}>{popup.dropAddress}</p>
+            </div>
+          </div>
+
+          {/* Price */}
+          <div className="flex items-center gap-3">
+            <BanknotesIcon className="w-5 h-5 flex-shrink-0" style={{ color: BLUE }} />
+            <p className="text-[14px] font-black" style={{ color: BLUE }}>₪{popup.price}</p>
+          </div>
+        </div>
+
+        {/* Buttons */}
+        <div className="flex gap-3">
+          <button
+            onClick={handleOpenChat}
+            className="flex-1 py-3 rounded-2xl font-bold text-[14px] text-white transition-all active:scale-95"
+            style={{ background: BLUE, boxShadow: `0 4px 14px ${BLUE}40` }}
+          >
+            פתח צ׳אט
+          </button>
+          <button
+            onClick={onClose}
+            className="flex-1 py-3 rounded-2xl font-bold text-[14px] transition-all active:scale-95"
+            style={{ background: '#F0F0F0', color: '#757575' }}
+          >
+            סגור
+          </button>
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes slideUp {
+          from { transform: translateY(100%); }
+          to   { transform: translateY(0); }
+        }
+      `}</style>
+    </>
+  );
+};
+
+// ─── BusinessLayout ───────────────────────────────────────────
 const BusinessLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -42,6 +181,21 @@ const BusinessLayout: React.FC = () => {
   const [unread,            setUnread]            = useState(0);
   const [bizName,           setBizName]           = useState('');
   const [waitingDelivery,   setWaitingDelivery]   = useState<{ id: string; dropAddress: string; candidateCount: number } | null>(null);
+  const [statusPopup,       setStatusPopup]       = useState<StatusPopup | null>(null);
+
+  const popupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clear popup after 10 seconds
+  const showPopup = (p: StatusPopup) => {
+    setStatusPopup(p);
+    if (popupTimerRef.current) clearTimeout(popupTimerRef.current);
+    popupTimerRef.current = setTimeout(() => setStatusPopup(null), 10_000);
+  };
+
+  const closePopup = () => {
+    if (popupTimerRef.current) clearTimeout(popupTimerRef.current);
+    setStatusPopup(null);
+  };
 
   useEffect(() => {
     const refresh = () => {
@@ -79,6 +233,61 @@ const BusinessLayout: React.FC = () => {
     const id = setInterval(check, 6_000);
     return () => clearInterval(id);
   }, [businessId]);
+
+  // ── Supabase Realtime: delivery status changes ──
+  useEffect(() => {
+    if (!businessId) return;
+
+    const channel = supabase
+      .channel(`business_delivery_updates_${businessId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'deliveries',
+        },
+        (payload) => {
+          const n = payload.new as Record<string, unknown>;
+          const o = payload.old as Record<string, unknown>;
+
+          if (
+            n.business_id !== businessId
+          ) return;
+
+          const newStatus = n.status as string;
+          const oldStatus = o.status as string;
+
+          if (
+            (newStatus === 'picked_up' || newStatus === 'delivered') &&
+            oldStatus !== newStatus
+          ) {
+            showPopup({
+              status: newStatus as 'picked_up' | 'delivered',
+              courierName:   (n.courier_name   as string)  || 'שליח',
+              courierId:     (n.courier_id      as string)  || '',
+              pickupAddress: (n.pickup_address  as string)  || '',
+              dropAddress:   (n.drop_address    as string)  || '',
+              price:         (n.price           as number)  ?? 0,
+              deliveryId:    (n.id              as string)  || '',
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [businessId]);
+
+  // Cleanup popup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (popupTimerRef.current) clearTimeout(popupTimerRef.current);
+    };
+  }, []);
 
   const handleLogout = async () => {
     await dispatch(logoutUser());
@@ -218,6 +427,16 @@ const BusinessLayout: React.FC = () => {
           );
         })}
       </nav>
+
+      {/* ── Delivery status popup ── */}
+      {statusPopup && (
+        <DeliveryStatusPopup
+          popup={statusPopup}
+          businessId={businessId}
+          onClose={closePopup}
+          navigate={navigate}
+        />
+      )}
     </div>
   );
 };

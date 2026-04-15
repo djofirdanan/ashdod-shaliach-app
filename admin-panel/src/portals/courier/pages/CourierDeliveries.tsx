@@ -1,30 +1,53 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   getDeliveriesByCourier,
   updateDelivery,
+  getOrCreateConversation,
   type StoredDelivery,
 } from '../../../services/storage.service';
-import { TruckIcon, ArchiveBoxIcon } from '@heroicons/react/24/outline';
+import {
+  XMarkIcon,
+  TruckIcon,
+  ArchiveBoxIcon,
+  CheckIcon,
+  MapPinIcon,
+  UserIcon,
+  PhoneIcon,
+  InformationCircleIcon,
+  CreditCardIcon,
+  ClockIcon,
+  ChatBubbleLeftRightIcon,
+  BanknotesIcon,
+} from '@heroicons/react/24/outline';
+
+// ─── Design tokens ──────────────────────────────────────────────
+const BLUE   = '#009DE0';
+const GREEN  = '#1BA672';
+const ORANGE = '#F58F1F';
+const RED    = '#E23437';
+const TEXT   = '#202125';
+const TEXT2  = '#757575';
 
 type Tab = 'active' | 'completed' | 'archived';
 
 const statusLabel: Record<StoredDelivery['status'], string> = {
-  scheduled: '📅 מתוזמן',
+  scheduled: 'מתוזמן',
   pending: 'ממתין לשליח',
   accepted: 'בדרך לאיסוף',
   picked_up: 'בדרך ללקוח',
-  delivered: 'נמסר ✓',
+  delivered: 'נמסר',
   cancelled: 'בוטל',
 };
 
 const statusColor: Record<StoredDelivery['status'], string> = {
-  scheduled: '#009DE0',
-  pending: '#757575',
-  accepted: '#009DE0',
-  picked_up: '#F58F1F',
-  delivered: '#1BA672',
-  cancelled: '#E23437',
+  scheduled: BLUE,
+  pending: TEXT2,
+  accepted: BLUE,
+  picked_up: ORANGE,
+  delivered: GREEN,
+  cancelled: RED,
 };
 
 function formatDate(iso: string): string {
@@ -32,6 +55,265 @@ function formatDate(iso: string): string {
     day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
   });
 }
+
+// ─── DeliveryActionSheet ─────────────────────────────────────────
+interface ActionSheetProps {
+  delivery: StoredDelivery | null;
+  updating: string | null;
+  onClose: () => void;
+  onStatusUpdate: (d: StoredDelivery, s: 'picked_up' | 'delivered') => void;
+  onOpenChat: (d: StoredDelivery) => void;
+}
+
+const STEPS = [
+  { key: 'accepted',  label: 'קיבלת את המשלוח', Icon: TruckIcon,      color: BLUE   },
+  { key: 'picked_up', label: 'אספת את החבילה',  Icon: ArchiveBoxIcon, color: ORANGE },
+  { key: 'delivered', label: 'נמסר ללקוח',       Icon: CheckIcon,      color: GREEN  },
+] as const;
+
+const STATUS_ORDER: StoredDelivery['status'][] = ['accepted', 'picked_up', 'delivered'];
+
+function stepDone(deliveryStatus: StoredDelivery['status'], stepKey: string): boolean {
+  const di = STATUS_ORDER.indexOf(deliveryStatus as typeof STATUS_ORDER[number]);
+  const si = STATUS_ORDER.indexOf(stepKey as typeof STATUS_ORDER[number]);
+  return si !== -1 && di >= si;
+}
+
+function isCurrent(deliveryStatus: StoredDelivery['status'], stepKey: string): boolean {
+  return deliveryStatus === stepKey;
+}
+
+const DeliveryActionSheet: React.FC<ActionSheetProps> = ({
+  delivery,
+  updating,
+  onClose,
+  onStatusUpdate,
+  onOpenChat,
+}) => {
+  if (!delivery) return null;
+
+  const d = delivery;
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 z-50"
+        style={{ background: 'rgba(0,0,0,0.45)' }}
+        onClick={onClose}
+      />
+
+      {/* Sheet */}
+      <div
+        dir="rtl"
+        className="fixed bottom-0 right-0 left-0 z-50 rounded-t-3xl overflow-y-auto"
+        style={{
+          background: '#FFFFFF',
+          boxShadow: '0 -4px 30px rgba(0,0,0,0.18)',
+          animation: 'slideUp 0.28s ease',
+          maxHeight: '92vh',
+        }}
+      >
+        {/* Handle + close */}
+        <div className="sticky top-0 bg-white pt-4 px-5 pb-2 z-10">
+          <div className="flex justify-center mb-3">
+            <div className="w-10 h-1 rounded-full" style={{ background: '#E8E8E8' }} />
+          </div>
+          <div className="flex items-start justify-between">
+            {/* Header: business name + price + badge */}
+            <div className="flex-1 min-w-0">
+              <p className="text-[17px] font-black truncate" style={{ color: TEXT }}>{d.businessName}</p>
+              <div className="flex items-center gap-2 mt-1">
+                <span
+                  className="text-[11px] font-bold px-2.5 py-0.5 rounded-full"
+                  style={{ background: statusColor[d.status] + '18', color: statusColor[d.status] }}
+                >
+                  {statusLabel[d.status]}
+                </span>
+                <span className="flex items-center gap-1 text-[14px] font-black" style={{ color: BLUE }}>
+                  <BanknotesIcon className="w-4 h-4" />
+                  ₪{d.price}
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-95"
+              style={{ background: '#F4F4F4' }}
+            >
+              <XMarkIcon className="w-5 h-5" style={{ color: TEXT2 }} />
+            </button>
+          </div>
+        </div>
+
+        <div className="px-5 pb-8 space-y-4">
+          {/* ── Timeline ── */}
+          <div
+            className="rounded-2xl p-4"
+            style={{ background: '#F8F8F8', border: '1px solid #E8E8E8' }}
+          >
+            {STEPS.map((step, idx) => {
+              const done    = stepDone(d.status, step.key);
+              const current = isCurrent(d.status, step.key);
+              const { Icon, color, label } = step;
+              return (
+                <div key={step.key} className="flex items-center gap-3">
+                  {/* Circle */}
+                  <div className="flex flex-col items-center">
+                    <div
+                      className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-all"
+                      style={{
+                        background: done ? color : '#E8E8E8',
+                        boxShadow: current ? `0 0 0 4px ${color}30` : undefined,
+                      }}
+                    >
+                      <Icon
+                        className="w-5 h-5"
+                        style={{ color: done ? '#FFFFFF' : '#AAAAAA' }}
+                      />
+                    </div>
+                    {idx < STEPS.length - 1 && (
+                      <div
+                        className="w-0.5 my-1"
+                        style={{
+                          height: 20,
+                          background: done && !current ? color : '#E8E8E8',
+                        }}
+                      />
+                    )}
+                  </div>
+                  {/* Label */}
+                  <p
+                    className="text-[13px] font-semibold"
+                    style={{ color: done ? TEXT : TEXT2 }}
+                  >
+                    {label}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* ── Delivery info card ── */}
+          <div
+            className="rounded-2xl p-4 space-y-3"
+            style={{ background: '#F8F8F8', border: '1px solid #E8E8E8' }}
+          >
+            {/* Pickup */}
+            <div className="flex items-start gap-3">
+              <MapPinIcon className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: GREEN }} />
+              <div>
+                <p className="text-[11px] font-semibold" style={{ color: TEXT2 }}>איסוף</p>
+                <p className="text-[13px] font-medium" style={{ color: TEXT }}>{d.pickupAddress}</p>
+              </div>
+            </div>
+
+            {/* Drop */}
+            <div className="flex items-start gap-3">
+              <MapPinIcon className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: RED }} />
+              <div>
+                <p className="text-[11px] font-semibold" style={{ color: TEXT2 }}>מסירה</p>
+                <p className="text-[13px] font-medium" style={{ color: TEXT }}>{d.dropAddress}</p>
+              </div>
+            </div>
+
+            {/* Customer name */}
+            {d.customerName && (
+              <div className="flex items-center gap-3">
+                <UserIcon className="w-5 h-5 flex-shrink-0" style={{ color: TEXT2 }} />
+                <p className="text-[13px] font-medium" style={{ color: TEXT }}>{d.customerName}</p>
+              </div>
+            )}
+
+            {/* Customer phone */}
+            {d.customerPhone && (
+              <div className="flex items-center gap-3">
+                <PhoneIcon className="w-5 h-5 flex-shrink-0" style={{ color: TEXT2 }} />
+                <a
+                  href={`tel:${d.customerPhone}`}
+                  className="text-[13px] font-medium underline"
+                  style={{ color: BLUE }}
+                >
+                  {d.customerPhone}
+                </a>
+              </div>
+            )}
+
+            {/* Description */}
+            {d.description && (
+              <div className="flex items-start gap-3">
+                <InformationCircleIcon className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: TEXT2 }} />
+                <p className="text-[13px]" style={{ color: TEXT }}>{d.description}</p>
+              </div>
+            )}
+
+            {/* Payment */}
+            <div className="flex items-center gap-3">
+              <CreditCardIcon className="w-5 h-5 flex-shrink-0" style={{ color: TEXT2 }} />
+              <p className="text-[13px] font-medium" style={{ color: TEXT }}>
+                {d.paymentMethod === 'bit' ? 'ביט' : 'מזומן'}
+                {' · '}
+                <span style={{ color: d.customerPaid ? GREEN : RED }}>
+                  {d.customerPaid ? 'שולם' : 'לא שולם'}
+                </span>
+              </p>
+            </div>
+
+            {/* Time */}
+            <div className="flex items-center gap-3">
+              <ClockIcon className="w-5 h-5 flex-shrink-0" style={{ color: TEXT2 }} />
+              <p className="text-[12px]" style={{ color: TEXT2 }}>{formatDate(d.createdAt)}</p>
+            </div>
+          </div>
+
+          {/* ── Action buttons ── */}
+          <div className="space-y-3">
+            {d.status === 'accepted' && (
+              <button
+                onClick={() => onStatusUpdate(d, 'picked_up')}
+                disabled={updating === d.id}
+                className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-white flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-60"
+                style={{ background: ORANGE, boxShadow: `0 4px 14px ${ORANGE}40` }}
+              >
+                <TruckIcon className="w-5 h-5" />
+                {updating === d.id ? '...' : 'אספתי את החבילה'}
+              </button>
+            )}
+
+            {d.status === 'picked_up' && (
+              <button
+                onClick={() => onStatusUpdate(d, 'delivered')}
+                disabled={updating === d.id}
+                className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-white flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-60"
+                style={{ background: GREEN, boxShadow: `0 4px 14px ${GREEN}40` }}
+              >
+                <CheckIcon className="w-5 h-5" />
+                {updating === d.id ? '...' : 'מסרתי ללקוח'}
+              </button>
+            )}
+
+            {/* Chat button — always visible */}
+            <button
+              onClick={() => onOpenChat(d)}
+              className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-white flex items-center justify-center gap-2 transition-all active:scale-95"
+              style={{ background: BLUE, boxShadow: `0 4px 14px ${BLUE}40` }}
+            >
+              <ChatBubbleLeftRightIcon className="w-5 h-5" />
+              צ׳אט עם העסק
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes slideUp {
+          from { transform: translateY(100%); }
+          to   { transform: translateY(0); }
+        }
+      `}</style>
+    </>
+  );
+};
 
 // ─── Swipeable archive card ────────────────────────────────────
 const SwipeToArchive: React.FC<{
@@ -67,7 +349,6 @@ const SwipeToArchive: React.FC<{
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
     >
-      {/* Archive reveal background */}
       {swipeX > 8 && (
         <div
           className="absolute inset-0 flex items-center px-4 rounded-2xl"
@@ -91,13 +372,16 @@ const SwipeToArchive: React.FC<{
   );
 };
 
+// ─── CourierDeliveries ────────────────────────────────────────
 const CourierDeliveries: React.FC = () => {
+  const navigate = useNavigate();
   const token = localStorage.getItem('admin_token') ?? '';
   const courierId = token.startsWith('courier-') ? token.replace('courier-', '') : '';
 
   const [deliveries, setDeliveries] = useState<StoredDelivery[]>([]);
-  const [tab, setTab] = useState<Tab>('active');
-  const [updating, setUpdating] = useState<string | null>(null);
+  const [tab,        setTab]        = useState<Tab>('active');
+  const [updating,   setUpdating]   = useState<string | null>(null);
+  const [activeSheet, setActiveSheet] = useState<StoredDelivery | null>(null);
 
   const load = () => {
     if (!courierId) return;
@@ -108,9 +392,9 @@ const CourierDeliveries: React.FC = () => {
   useEffect(() => { load(); }, [courierId]);
 
   const filtered = deliveries.filter((d) => {
-    if (tab === 'active') return ['accepted', 'picked_up'].includes(d.status) && !d.archived;
+    if (tab === 'active')    return ['accepted', 'picked_up'].includes(d.status) && !d.archived;
     if (tab === 'completed') return ['delivered', 'cancelled'].includes(d.status) && !d.archived;
-    if (tab === 'archived') return d.archived === true;
+    if (tab === 'archived')  return d.archived === true;
     return false;
   });
 
@@ -118,10 +402,11 @@ const CourierDeliveries: React.FC = () => {
     setUpdating(d.id);
     try {
       const update: Partial<StoredDelivery> = { status: newStatus };
-      if (newStatus === 'picked_up') update.pickedUpAt = new Date().toISOString();
+      if (newStatus === 'picked_up') update.pickedUpAt  = new Date().toISOString();
       if (newStatus === 'delivered') update.deliveredAt = new Date().toISOString();
       updateDelivery(d.id, update);
       toast.success(newStatus === 'picked_up' ? 'אספת את החבילה!' : 'מסרת בהצלחה!');
+      setActiveSheet(null);
       load();
     } catch (err) {
       console.error(err);
@@ -129,6 +414,12 @@ const CourierDeliveries: React.FC = () => {
     } finally {
       setUpdating(null);
     }
+  };
+
+  const handleOpenChat = (d: StoredDelivery) => {
+    const conv = getOrCreateConversation(d.businessId, courierId);
+    setActiveSheet(null);
+    navigate(`/courier/chat?convId=${conv.id}&deliveryId=${d.id}`);
   };
 
   const handleArchive = (id: string) => {
@@ -147,7 +438,7 @@ const CourierDeliveries: React.FC = () => {
 
   return (
     <div className="max-w-lg mx-auto px-4 py-5" style={{ background: '#F4F4F4', minHeight: '100vh' }}>
-      <h1 className="text-[20px] font-black mb-5" style={{ color: '#202125' }}>המשלוחים שלי</h1>
+      <h1 className="text-[20px] font-black mb-5" style={{ color: TEXT }}>המשלוחים שלי</h1>
 
       {/* Tabs */}
       <div
@@ -155,17 +446,17 @@ const CourierDeliveries: React.FC = () => {
         style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E8E8E8', overflow: 'hidden' }}
       >
         {([
-          { id: 'active' as Tab, label: 'פעילים', badge: null },
-          { id: 'completed' as Tab, label: 'הושלמו', badge: null },
-          { id: 'archived' as Tab, label: 'ארכיון', badge: archivedCount > 0 ? archivedCount : null },
+          { id: 'active'    as Tab, label: 'פעילים',  badge: null },
+          { id: 'completed' as Tab, label: 'הושלמו',  badge: null },
+          { id: 'archived'  as Tab, label: 'ארכיון',  badge: archivedCount > 0 ? archivedCount : null },
         ]).map((t, i, arr) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
             className="flex-1 py-2.5 text-[13px] font-bold transition-all flex items-center justify-center gap-1.5"
             style={{
-              background: tab === t.id ? '#009DE0' : '#FFFFFF',
-              color: tab === t.id ? '#FFFFFF' : '#757575',
+              background: tab === t.id ? BLUE : '#FFFFFF',
+              color: tab === t.id ? '#FFFFFF' : TEXT2,
               borderRight: i < arr.length - 1 ? '1px solid #E8E8E8' : 'none',
             }}
           >
@@ -174,7 +465,7 @@ const CourierDeliveries: React.FC = () => {
               <span
                 className="text-[10px] font-black px-1.5 py-0.5 rounded-full"
                 style={{
-                  background: tab === t.id ? 'rgba(255,255,255,0.3)' : '#E23437',
+                  background: tab === t.id ? 'rgba(255,255,255,0.3)' : RED,
                   color: '#FFFFFF',
                   minWidth: '18px',
                   textAlign: 'center',
@@ -188,7 +479,7 @@ const CourierDeliveries: React.FC = () => {
       </div>
 
       {tab === 'completed' && (
-        <p className="text-[11px] mb-3 text-center" style={{ color: '#757575' }}>
+        <p className="text-[11px] mb-3 text-center" style={{ color: TEXT2 }}>
           החלק ימינה כדי להעביר לארכיון
         </p>
       )}
@@ -203,15 +494,19 @@ const CourierDeliveries: React.FC = () => {
             style={{ background: '#E6F6FC' }}
           >
             {tab === 'archived'
-              ? <ArchiveBoxIcon className="w-7 h-7" style={{ color: '#009DE0' }} />
-              : <TruckIcon className="w-7 h-7" style={{ color: '#009DE0' }} />
+              ? <ArchiveBoxIcon className="w-7 h-7" style={{ color: BLUE }} />
+              : <TruckIcon      className="w-7 h-7" style={{ color: BLUE }} />
             }
           </div>
-          <p className="text-[14px] font-bold" style={{ color: '#202125' }}>
+          <p className="text-[14px] font-bold" style={{ color: TEXT }}>
             {tab === 'active' ? 'אין משלוחים פעילים' : tab === 'completed' ? 'אין היסטוריה עדיין' : 'הארכיון ריק'}
           </p>
-          <p className="text-[12px]" style={{ color: '#757575' }}>
-            {tab === 'active' ? 'משלוחים שקיבלת יופיעו כאן' : tab === 'completed' ? 'משלוחים שהושלמו יופיעו כאן' : 'משלוחים שהועברו לארכיון יופיעו כאן'}
+          <p className="text-[12px]" style={{ color: TEXT2 }}>
+            {tab === 'active'
+              ? 'משלוחים שקיבלת יופיעו כאן'
+              : tab === 'completed'
+              ? 'משלוחים שהושלמו יופיעו כאן'
+              : 'משלוחים שהועברו לארכיון יופיעו כאן'}
           </p>
         </div>
       ) : (
@@ -219,8 +514,9 @@ const CourierDeliveries: React.FC = () => {
           {filtered.map((d) => {
             const cardContent = (
               <div
-                className="rounded-2xl p-4"
+                className="rounded-2xl p-4 cursor-pointer transition-all active:scale-[0.98]"
                 style={{ background: '#FFFFFF', border: '1px solid #E8E8E8', boxShadow: '0 1px 6px rgba(0,0,0,0.05)' }}
+                onClick={() => tab !== 'archived' ? setActiveSheet(d) : undefined}
               >
                 {/* Status + price */}
                 <div className="flex items-center justify-between mb-3">
@@ -230,69 +526,46 @@ const CourierDeliveries: React.FC = () => {
                   >
                     {statusLabel[d.status]}
                   </span>
-                  <span className="text-[14px] font-black" style={{ color: '#009DE0' }}>₪{d.price}</span>
+                  <span className="text-[14px] font-black" style={{ color: BLUE }}>₪{d.price}</span>
                 </div>
 
                 {/* Business name */}
-                <p className="text-[12px] font-semibold mb-2" style={{ color: '#757575' }}>
+                <p className="text-[12px] font-semibold mb-2" style={{ color: TEXT2 }}>
                   {d.businessName}
                 </p>
 
                 {/* Addresses */}
                 <div className="space-y-1.5 mb-3">
                   <div className="flex gap-2 items-start">
-                    <div
-                      className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 text-[10px] font-bold text-white"
-                      style={{ background: '#009DE0' }}
-                    >
-                      א
-                    </div>
-                    <p className="text-[13px]" style={{ color: '#202125' }}>{d.pickupAddress}</p>
+                    <MapPinIcon className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: GREEN }} />
+                    <p className="text-[13px]" style={{ color: TEXT }}>{d.pickupAddress}</p>
                   </div>
-                  <div className="w-px h-3 mr-2.5" style={{ background: '#E8E8E8' }} />
+                  <div className="w-px h-3 mr-2" style={{ background: '#E8E8E8' }} />
                   <div className="flex gap-2 items-start">
-                    <div
-                      className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 text-[10px] font-bold text-white"
-                      style={{ background: '#202125' }}
-                    >
-                      ב
-                    </div>
-                    <p className="text-[13px]" style={{ color: '#202125' }}>{d.dropAddress}</p>
+                    <MapPinIcon className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: RED }} />
+                    <p className="text-[13px]" style={{ color: TEXT }}>{d.dropAddress}</p>
                   </div>
                 </div>
 
                 {/* Time */}
-                <p className="text-[11px] mb-3" style={{ color: '#757575' }}>{formatDate(d.createdAt)}</p>
+                <p className="text-[11px] mb-2" style={{ color: TEXT2 }}>{formatDate(d.createdAt)}</p>
 
-                {/* Action buttons */}
-                {d.status === 'accepted' && (
-                  <button
-                    onClick={() => handleStatusUpdate(d, 'picked_up')}
-                    disabled={updating === d.id}
-                    className="w-full py-3 rounded-xl font-bold text-[13px] text-white transition-all active:scale-95 disabled:opacity-60"
-                    style={{ background: '#F58F1F', boxShadow: '0 3px 10px rgba(245,143,31,0.30)' }}
-                  >
-                    {updating === d.id ? '...' : 'אספתי את החבילה'}
-                  </button>
+                {/* Tap hint for active */}
+                {tab === 'active' && (
+                  <p className="text-[11px] font-semibold" style={{ color: BLUE }}>
+                    לחץ לפרטים ופעולות
+                  </p>
                 )}
-                {d.status === 'picked_up' && (
-                  <button
-                    onClick={() => handleStatusUpdate(d, 'delivered')}
-                    disabled={updating === d.id}
-                    className="w-full py-3 rounded-xl font-bold text-[13px] text-white transition-all active:scale-95 disabled:opacity-60"
-                    style={{ background: '#1BA672', boxShadow: '0 3px 10px rgba(27,166,114,0.30)' }}
-                  >
-                    {updating === d.id ? '...' : 'מסרתי ללקוח ✓'}
-                  </button>
-                )}
+
+                {/* Unarchive button */}
                 {tab === 'archived' && (
                   <button
-                    onClick={() => handleUnarchive(d.id)}
+                    onClick={(e) => { e.stopPropagation(); handleUnarchive(d.id); }}
                     className="w-full mt-2 py-2.5 rounded-xl text-[12px] font-bold transition-all active:scale-95"
                     style={{
                       background: 'transparent',
-                      color: '#009DE0',
-                      border: '1.5px solid #009DE0',
+                      color: BLUE,
+                      border: `1.5px solid ${BLUE}`,
                     }}
                   >
                     הוצא מהארכיון
@@ -311,6 +584,15 @@ const CourierDeliveries: React.FC = () => {
           })}
         </div>
       )}
+
+      {/* ── Delivery action sheet ── */}
+      <DeliveryActionSheet
+        delivery={activeSheet}
+        updating={updating}
+        onClose={() => setActiveSheet(null)}
+        onStatusUpdate={handleStatusUpdate}
+        onOpenChat={handleOpenChat}
+      />
     </div>
   );
 };
