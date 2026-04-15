@@ -19,7 +19,8 @@ const AdminLogin: React.FC = () => {
     try {
       const result = await login(email, password);
       if (loginUser.fulfilled.match(result)) {
-        navigate('/dashboard');
+        const role = localStorage.getItem('admin_role');
+        navigate(role === 'business' ? '/business/dashboard' : role === 'courier' ? '/courier/dashboard' : '/dashboard');
       } else {
         toast.error('פרטים שגויים');
       }

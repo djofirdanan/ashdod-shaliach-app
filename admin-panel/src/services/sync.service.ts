@@ -9,7 +9,7 @@
  */
 
 import { supabase } from '../lib/supabase';
-import type { StoredBusiness, StoredCourier, StoredConversation, StoredMessage, DeliveryNotification } from './storage.service';
+import type { StoredBusiness, StoredCourier, StoredConversation, StoredMessage, DeliveryNotification, StoredDelivery } from './storage.service';
 
 // ─── Mappers: DB row → StoredXxx ─────────────────────────────────
 
@@ -164,25 +164,50 @@ const LS_KEYS = {
   conversations: 'app_conversations',
   messages: 'app_messages',
   notifications: 'app_delivery_notifications',
+  deliveries: 'app_deliveries',
 };
+
+function dbToDelivery(row: Record<string, unknown>): StoredDelivery {
+  return {
+    id: row.id as string,
+    businessId: row.business_id as string,
+    businessName: row.business_name as string,
+    pickupAddress: row.pickup_address as string,
+    dropAddress: row.drop_address as string,
+    customerName: (row.customer_name as string | undefined) || undefined,
+    customerPhone: (row.customer_phone as string | undefined) || undefined,
+    description: (row.description as string | undefined) || undefined,
+    price: Number(row.price) || 0,
+    status: row.status as StoredDelivery['status'],
+    courierId: (row.courier_id as string | undefined) || undefined,
+    courierName: (row.courier_name as string | undefined) || undefined,
+    createdAt: row.created_at as string,
+    acceptedAt: (row.accepted_at as string | undefined) || undefined,
+    pickedUpAt: (row.picked_up_at as string | undefined) || undefined,
+    deliveredAt: (row.delivered_at as string | undefined) || undefined,
+    cancelledAt: (row.cancelled_at as string | undefined) || undefined,
+  };
+}
 
 // ─── Pull from Supabase → localStorage ───────────────────────────
 
 export async function syncDown(): Promise<void> {
   try {
-    const [bizRes, courRes, convRes, msgRes, notifRes] = await Promise.all([
+    const [bizRes, courRes, convRes, msgRes, notifRes, delivRes] = await Promise.all([
       supabase.from('businesses').select('*'),
       supabase.from('couriers').select('*'),
       supabase.from('conversations').select('*'),
       supabase.from('messages').select('*').order('created_at', { ascending: true }),
       supabase.from('delivery_notifications').select('*').gte('created_at', new Date(Date.now() - 30 * 60 * 1000).toISOString()),
+      supabase.from('deliveries').select('*').order('created_at', { ascending: false }),
     ]);
 
-    if (bizRes.data)   localStorage.setItem(LS_KEYS.businesses,     JSON.stringify(bizRes.data.map(dbToBusiness)));
-    if (courRes.data)  localStorage.setItem(LS_KEYS.couriers,        JSON.stringify(courRes.data.map(dbToCourier)));
-    if (convRes.data)  localStorage.setItem(LS_KEYS.conversations,   JSON.stringify(convRes.data.map(dbToConversation)));
-    if (msgRes.data)   localStorage.setItem(LS_KEYS.messages,        JSON.stringify(msgRes.data.map(dbToMessage)));
-    if (notifRes.data) localStorage.setItem(LS_KEYS.notifications,   JSON.stringify(notifRes.data.map(dbToNotification)));
+    if (bizRes.data)    localStorage.setItem(LS_KEYS.businesses,     JSON.stringify(bizRes.data.map(dbToBusiness)));
+    if (courRes.data)   localStorage.setItem(LS_KEYS.couriers,        JSON.stringify(courRes.data.map(dbToCourier)));
+    if (convRes.data)   localStorage.setItem(LS_KEYS.conversations,   JSON.stringify(convRes.data.map(dbToConversation)));
+    if (msgRes.data)    localStorage.setItem(LS_KEYS.messages,        JSON.stringify(msgRes.data.map(dbToMessage)));
+    if (notifRes.data)  localStorage.setItem(LS_KEYS.notifications,   JSON.stringify(notifRes.data.map(dbToNotification)));
+    if (delivRes.data)  localStorage.setItem(LS_KEYS.deliveries,      JSON.stringify(delivRes.data.map(d => dbToDelivery(d as Record<string, unknown>))));
 
     // Populate businessName/courierName in conversations from local data
     if (convRes.data && bizRes.data && courRes.data) {
@@ -265,6 +290,29 @@ export async function upsertDeliveryNotification(n: DeliveryNotification): Promi
     dismissed_by: n.dismissedBy,
   }, { onConflict: 'id' });
   if (error) console.error('[sync] upsertDeliveryNotification error:', error.message);
+}
+
+export async function upsertDelivery(d: StoredDelivery): Promise<void> {
+  const { error } = await supabase.from('deliveries').upsert({
+    id: d.id,
+    business_id: d.businessId,
+    business_name: d.businessName,
+    pickup_address: d.pickupAddress,
+    drop_address: d.dropAddress,
+    customer_name: d.customerName ?? null,
+    customer_phone: d.customerPhone ?? null,
+    description: d.description ?? null,
+    price: d.price,
+    status: d.status,
+    courier_id: d.courierId ?? null,
+    courier_name: d.courierName ?? null,
+    created_at: d.createdAt,
+    accepted_at: d.acceptedAt ?? null,
+    picked_up_at: d.pickedUpAt ?? null,
+    delivered_at: d.deliveredAt ?? null,
+    cancelled_at: d.cancelledAt ?? null,
+  }, { onConflict: 'id' });
+  if (error) console.error('[sync] upsertDelivery error:', error.message);
 }
 
 export async function upsertResetToken(token: string, email: string, userType: string, expiresAt: number): Promise<void> {

@@ -69,12 +69,33 @@ export interface StoredConversation {
   createdAt: string;
 }
 
+export interface StoredDelivery {
+  id: string;
+  businessId: string;
+  businessName: string;
+  pickupAddress: string;
+  dropAddress: string;
+  customerName?: string;
+  customerPhone?: string;
+  description?: string;
+  price: number;
+  status: 'pending' | 'accepted' | 'picked_up' | 'delivered' | 'cancelled';
+  courierId?: string;
+  courierName?: string;
+  createdAt: string;
+  acceptedAt?: string;
+  pickedUpAt?: string;
+  deliveredAt?: string;
+  cancelledAt?: string;
+}
+
 // ─── Keys ────────────────────────────────────────────────────
 const KEYS = {
   businesses: 'app_businesses',
   couriers: 'app_couriers',
   conversations: 'app_conversations',
   messages: 'app_messages',
+  deliveries: 'app_deliveries',
 } as const;
 
 // ─── Helpers ─────────────────────────────────────────────────
@@ -373,6 +394,43 @@ export function getUnreadCount(userId: string, userType: 'business' | 'courier')
     }
     return sum;
   }, 0);
+}
+
+// ─── Deliveries ───────────────────────────────────────────────
+export function getDeliveries(): StoredDelivery[] {
+  return read<StoredDelivery>(KEYS.deliveries);
+}
+
+export function getDeliveriesByBusiness(businessId: string): StoredDelivery[] {
+  return getDeliveries().filter((d) => d.businessId === businessId);
+}
+
+export function getDeliveriesByCourier(courierId: string): StoredDelivery[] {
+  return getDeliveries().filter((d) => d.courierId === courierId);
+}
+
+export function addDelivery(
+  data: Omit<StoredDelivery, 'id' | 'createdAt'>
+): StoredDelivery {
+  const list = getDeliveries();
+  const record: StoredDelivery = {
+    ...data,
+    id: uid(),
+    createdAt: new Date().toISOString(),
+  };
+  write(KEYS.deliveries, [...list, record]);
+  sync.upsertDelivery(record).catch(console.error);
+  return record;
+}
+
+export function updateDelivery(id: string, data: Partial<StoredDelivery>): StoredDelivery {
+  const list = getDeliveries();
+  const idx = list.findIndex((d) => d.id === id);
+  if (idx === -1) throw new Error('Delivery not found');
+  list[idx] = { ...list[idx], ...data };
+  write(KEYS.deliveries, list);
+  sync.upsertDelivery(list[idx]).catch(console.error);
+  return list[idx];
 }
 
 // ─── Password Reset Tokens ────────────────────────────────────

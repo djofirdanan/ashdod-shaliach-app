@@ -8,6 +8,7 @@ interface ExtendedAuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
+  role: 'admin' | 'business' | 'courier' | null;
   currentPortalUser: { id: string; type: 'business' | 'courier'; name: string } | null;
 }
 
@@ -16,6 +17,7 @@ const initialState: ExtendedAuthState = {
   isAuthenticated: false,
   isLoading: false,
   error: null,
+  role: null,
   currentPortalUser: null,
 };
 
@@ -37,6 +39,7 @@ export const loginUser = createAsyncThunk(
       // 1. Check hardcoded admin
       if (email.toLowerCase() === ADMIN_EMAIL.toLowerCase() && password === ADMIN_PASSWORD) {
         localStorage.setItem('admin_token', 'admin-token');
+        localStorage.setItem('admin_role', 'admin');
         return { user: ADMIN_USER, role: 'admin' as const };
       }
 
@@ -53,6 +56,7 @@ export const loginUser = createAsyncThunk(
           return rejectWithValue('החשבון ממתין לאישור המנהל. תקבל מייל כשיאושר ✉️');
         }
         localStorage.setItem('admin_token', `business-${business.id}`);
+        localStorage.setItem('admin_role', 'business');
         const user: AdminUser = {
           id: business.id,
           name: business.businessName,
@@ -76,6 +80,7 @@ export const loginUser = createAsyncThunk(
           return rejectWithValue('החשבון ממתין לאישור המנהל. תקבל מייל כשיאושר ✉️');
         }
         localStorage.setItem('admin_token', `courier-${courier.id}`);
+        localStorage.setItem('admin_role', 'courier');
         const user: AdminUser = {
           id: courier.id,
           name: courier.name,
@@ -97,6 +102,7 @@ export const loginUser = createAsyncThunk(
 
 export const logoutUser = createAsyncThunk('auth/logout', async () => {
   localStorage.removeItem('admin_token');
+  localStorage.removeItem('admin_role');
 });
 
 const authSlice = createSlice({
@@ -127,6 +133,7 @@ const authSlice = createSlice({
         state.isLoading = false;
         state.user = action.payload.user;
         state.isAuthenticated = true;
+        state.role = action.payload.role;
       })
       .addCase(loginUser.rejected, (state, action) => {
         state.isLoading = false;
@@ -135,6 +142,7 @@ const authSlice = createSlice({
       .addCase(logoutUser.fulfilled, (state) => {
         state.user = null;
         state.isAuthenticated = false;
+        state.role = null;
         state.currentPortalUser = null;
       });
   },

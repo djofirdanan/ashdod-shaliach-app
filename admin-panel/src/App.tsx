@@ -21,6 +21,30 @@ import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import Chat from './pages/Chat';
 
+// Business portal
+import BusinessLayout from './portals/business/BusinessLayout';
+import BusinessDashboard from './portals/business/pages/BusinessDashboard';
+import NewDelivery from './portals/business/pages/NewDelivery';
+import BusinessDeliveries from './portals/business/pages/BusinessDeliveries';
+import BusinessChat from './portals/business/pages/BusinessChat';
+import BusinessProfile from './portals/business/pages/BusinessProfile';
+
+// Courier portal
+import CourierLayout from './portals/courier/CourierLayout';
+import CourierDashboard from './portals/courier/pages/CourierDashboard';
+import AvailableDeliveries from './portals/courier/pages/AvailableDeliveries';
+import CourierDeliveries from './portals/courier/pages/CourierDeliveries';
+import CourierChat from './portals/courier/pages/CourierChat';
+import CourierProfile from './portals/courier/pages/CourierProfile';
+
+// Determine the correct home path based on stored role
+function getRoleHome(): string {
+  const role = localStorage.getItem('admin_role');
+  if (role === 'business') return '/business/dashboard';
+  if (role === 'courier') return '/courier/dashboard';
+  return '/dashboard';
+}
+
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const token = localStorage.getItem('admin_token');
   if (!token) {
@@ -43,7 +67,16 @@ const App: React.FC = () => {
             <Route path="/register" element={<Register />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route
+              path="/"
+              element={
+                localStorage.getItem('admin_token')
+                  ? <Navigate to={getRoleHome()} replace />
+                  : <Navigate to="/login" replace />
+              }
+            />
+
+            {/* ── Admin portal ── */}
             <Route
               element={
                 <ProtectedRoute>
@@ -61,6 +94,40 @@ const App: React.FC = () => {
               <Route path="/bonuses" element={<Bonuses />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/settings" element={<Settings />} />
+            </Route>
+
+            {/* ── Business portal ── */}
+            <Route
+              path="/business"
+              element={
+                <ProtectedRoute>
+                  <BusinessLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<Navigate to="/business/dashboard" replace />} />
+              <Route path="dashboard" element={<BusinessDashboard />} />
+              <Route path="new-delivery" element={<NewDelivery />} />
+              <Route path="deliveries" element={<BusinessDeliveries />} />
+              <Route path="chat" element={<BusinessChat />} />
+              <Route path="profile" element={<BusinessProfile />} />
+            </Route>
+
+            {/* ── Courier portal ── */}
+            <Route
+              path="/courier"
+              element={
+                <ProtectedRoute>
+                  <CourierLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<Navigate to="/courier/dashboard" replace />} />
+              <Route path="dashboard" element={<CourierDashboard />} />
+              <Route path="available" element={<AvailableDeliveries />} />
+              <Route path="deliveries" element={<CourierDeliveries />} />
+              <Route path="chat" element={<CourierChat />} />
+              <Route path="profile" element={<CourierProfile />} />
             </Route>
           </Routes>
         </BrowserRouter>

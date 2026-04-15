@@ -185,7 +185,8 @@ const Login: React.FC = () => {
       const result = await login(email, password);
       if (loginUser.fulfilled.match(result)) {
         toast.success('ברוך הבא!');
-        navigate('/dashboard');
+        const role = localStorage.getItem('admin_role');
+        navigate(role === 'business' ? '/business/dashboard' : role === 'courier' ? '/courier/dashboard' : '/dashboard');
       } else {
         toast.error((result.payload as string) || 'פרטי כניסה שגויים');
       }
