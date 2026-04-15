@@ -107,6 +107,44 @@ export async function sendAccountApproved(to: string, name: string): Promise<boo
   });
 }
 
+export async function sendPasswordReset(to: string, resetLink: string): Promise<boolean> {
+  return sendEmail({
+    to,
+    subject: '🔑 איפוס סיסמה — אשדוד-שליח',
+    html: `
+      <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f6f9fc; padding: 24px; border-radius: 12px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <div style="display: inline-block; background: linear-gradient(135deg, #533afd, #ea2261); border-radius: 12px; padding: 12px 20px;">
+            <span style="color: white; font-size: 18px; font-weight: 900;">🚀 אשדוד-שליח</span>
+          </div>
+        </div>
+        <div style="background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 12px rgba(0,0,0,0.08);">
+          <h1 style="color: #061b31; font-size: 22px; margin-bottom: 8px;">איפוס סיסמה 🔑</h1>
+          <p style="color: #6b7c93; font-size: 15px; line-height: 1.6; margin-bottom: 20px;">
+            קיבלנו בקשה לאיפוס הסיסמה שלך. לחץ על הכפתור כדי לבחור סיסמה חדשה:
+          </p>
+          <div style="text-align: center; margin: 28px 0;">
+            <a href="${resetLink}" style="display: inline-block; background: linear-gradient(135deg, #533afd, #ea2261); color: white; text-decoration: none; padding: 14px 36px; border-radius: 10px; font-weight: bold; font-size: 16px; letter-spacing: 0.3px;">
+              ← איפוס סיסמה
+            </a>
+          </div>
+          <div style="background: #fff8e1; border-radius: 8px; padding: 14px 16px; margin-bottom: 20px; border-right: 4px solid #f59e0b;">
+            <p style="color: #92400e; font-size: 13px; margin: 0;">⏰ הקישור תקף לשעה אחת בלבד.</p>
+          </div>
+          <p style="color: #8898aa; font-size: 13px; line-height: 1.6;">
+            אם לא ביקשת איפוס סיסמה — אפשר להתעלם מהמייל הזה, החשבון שלך בטוח.
+          </p>
+          <hr style="border: none; border-top: 1px solid #e8ecf0; margin: 20px 0;" />
+          <p style="color: #c1cdd8; font-size: 12px; word-break: break-all;">
+            קישור ישיר: <a href="${resetLink}" style="color: #533afd;">${resetLink}</a>
+          </p>
+        </div>
+        <p style="text-align: center; color: #c1cdd8; font-size: 12px; margin-top: 16px;">© ${new Date().getFullYear()} אשדוד-שליח. כל הזכויות שמורות.</p>
+      </div>
+    `,
+  });
+}
+
 export async function sendNewDeliveryNotification(
   to: string,
   courierName: string,

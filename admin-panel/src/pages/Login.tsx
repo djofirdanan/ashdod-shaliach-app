@@ -348,14 +348,13 @@ const Login: React.FC = () => {
             />
 
             <div className="flex justify-start pt-1">
-              <button
-                type="button"
-                className="text-[12px] font-medium transition-colors"
+              <Link
+                to="/forgot-password"
+                className="text-[12px] font-medium transition-colors hover:underline"
                 style={{ color: cfg.color }}
-                onClick={() => toast('שחזור סיסמה — בקרוב!')}
               >
                 שכחת סיסמה?
-              </button>
+              </Link>
             </div>
 
             <Button

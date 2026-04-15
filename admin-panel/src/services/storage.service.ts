@@ -359,3 +359,86 @@ export function getUnreadCount(userId: string, userType: 'business' | 'courier')
     return sum;
   }, 0);
 }
+
+// ─── Password Reset Tokens ────────────────────────────────────
+interface ResetToken {
+  token: string;
+  email: string;
+  userType: 'business' | 'courier';
+  expiresAt: number; // epoch ms
+}
+
+const RESET_KEY = 'app_reset_tokens';
+
+function readResetTokens(): ResetToken[] {
+  try {
+    const raw = localStorage.getItem(RESET_KEY);
+    return raw ? (JSON.parse(raw) as ResetToken[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeResetTokens(tokens: ResetToken[]): void {
+  localStorage.setItem(RESET_KEY, JSON.stringify(tokens));
+}
+
+/** Generate a random hex token, store it, return the token string. Returns null if email not found. */
+export function createResetToken(email: string): { token: string; userType: 'business' | 'courier' } | null {
+  const normalizedEmail = email.trim().toLowerCase();
+
+  // Look up in businesses first, then couriers
+  const biz = getBusinessByEmail(normalizedEmail) || getBusinesses().find(b => b.email.toLowerCase() === normalizedEmail);
+  const cour = !biz && (getCourierByEmail(normalizedEmail) || getCouriers().find(c => c.email.toLowerCase() === normalizedEmail));
+
+  if (!biz && !cour) return null;
+
+  const userType: 'business' | 'courier' = biz ? 'business' : 'courier';
+
+  // Generate cryptographic random token
+  const array = new Uint8Array(24);
+  crypto.getRandomValues(array);
+  const token = Array.from(array).map(b => b.toString(16).padStart(2, '0')).join('');
+
+  // Remove old tokens for this email, add new one
+  const tokens = readResetTokens().filter(t => t.email.toLowerCase() !== normalizedEmail);
+  tokens.push({ token, email: normalizedEmail, userType, expiresAt: Date.now() + 60 * 60 * 1000 });
+  writeResetTokens(tokens);
+
+  return { token, userType };
+}
+
+/** Verify a reset token. Returns token record if valid, null otherwise. */
+export function verifyResetToken(token: string): ResetToken | null {
+  const tokens = readResetTokens();
+  const record = tokens.find(t => t.token === token);
+  if (!record) return null;
+  if (Date.now() > record.expiresAt) {
+    // Expired — clean up
+    writeResetTokens(tokens.filter(t => t.token !== token));
+    return null;
+  }
+  return record;
+}
+
+/** Apply a password reset: update the user's password and invalidate the token. */
+export function applyResetToken(token: string, newPassword: string): boolean {
+  const record = verifyResetToken(token);
+  if (!record) return false;
+
+  const hashed = hashPassword(newPassword);
+
+  if (record.userType === 'business') {
+    const biz = getBusinesses().find(b => b.email.toLowerCase() === record.email);
+    if (!biz) return false;
+    updateBusiness(biz.id, { password: hashed });
+  } else {
+    const cour = getCouriers().find(c => c.email.toLowerCase() === record.email);
+    if (!cour) return false;
+    updateCourier(cour.id, { password: hashed });
+  }
+
+  // Invalidate token
+  writeResetTokens(readResetTokens().filter(t => t.token !== token));
+  return true;
+}
