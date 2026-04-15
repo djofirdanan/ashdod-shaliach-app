@@ -22,6 +22,8 @@ export interface StoredBusiness {
   totalDeliveries: number;
   rating: number;
   lastOrderAt?: string;
+  logo?: string;           // base64 image
+  favoriteCouriers?: string[]; // courier IDs
 }
 
 export interface StoredCourier {
@@ -41,6 +43,21 @@ export interface StoredCourier {
   activeDeliveries: number;
   lastActiveAt?: string;
   earnings: { today: number; thisWeek: number; thisMonth: number; total: number };
+  photo?: string;            // base64 image
+  isAvailable?: boolean;     // availability toggle
+  favoriteBusinesses?: string[]; // business IDs
+}
+
+export interface StoredReview {
+  id: string;
+  reviewerId: string;
+  reviewerType: 'business' | 'courier';
+  targetId: string;
+  targetType: 'business' | 'courier';
+  rating: number;
+  comment?: string;
+  deliveryId?: string;
+  createdAt: string;
 }
 
 export interface StoredMessage {
@@ -96,6 +113,7 @@ const KEYS = {
   conversations: 'app_conversations',
   messages: 'app_messages',
   deliveries: 'app_deliveries',
+  reviews: 'app_reviews',
 } as const;
 
 // ─── Helpers ─────────────────────────────────────────────────
@@ -431,6 +449,37 @@ export function updateDelivery(id: string, data: Partial<StoredDelivery>): Store
   write(KEYS.deliveries, list);
   sync.upsertDelivery(list[idx]).catch(console.error);
   return list[idx];
+}
+
+// ─── Reviews ─────────────────────────────────────────────────
+export function getReviews(): StoredReview[] {
+  return read<StoredReview>(KEYS.reviews);
+}
+
+export function getReviewsByTarget(targetId: string): StoredReview[] {
+  return getReviews().filter((r) => r.targetId === targetId);
+}
+
+export function getReviewsByReviewer(reviewerId: string): StoredReview[] {
+  return getReviews().filter((r) => r.reviewerId === reviewerId);
+}
+
+export function addReview(
+  data: Omit<StoredReview, 'id' | 'createdAt'>
+): StoredReview {
+  const list = getReviews();
+  // Remove existing review by same reviewer for same target (one review per delivery/target)
+  const filtered = list.filter(
+    (r) => !(r.reviewerId === data.reviewerId && r.targetId === data.targetId && r.deliveryId === data.deliveryId)
+  );
+  const record: StoredReview = {
+    ...data,
+    id: uid(),
+    createdAt: new Date().toISOString(),
+  };
+  write(KEYS.reviews, [...filtered, record]);
+  sync.upsertReview(record).catch(console.error);
+  return record;
 }
 
 // ─── Password Reset Tokens ────────────────────────────────────

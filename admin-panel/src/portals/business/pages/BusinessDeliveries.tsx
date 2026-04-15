@@ -1,7 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getDeliveriesByBusiness, type StoredDelivery } from '../../../services/storage.service';
-import { TruckIcon, PlusCircleIcon } from '@heroicons/react/24/outline';
+import {
+  getDeliveriesByBusiness,
+  getBusiness,
+  addDeliveryNotification,
+  type StoredDelivery,
+} from '../../../services/storage.service';
+import { TruckIcon, PlusCircleIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import toast from 'react-hot-toast';
 
 type Tab = 'active' | 'completed' | 'all';
 
@@ -33,12 +39,33 @@ const BusinessDeliveries: React.FC = () => {
 
   const [deliveries, setDeliveries] = useState<StoredDelivery[]>([]);
   const [tab, setTab] = useState<Tab>('active');
+  const [resending, setResending] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadDeliveries = () => {
     if (!businessId) return;
     const d = getDeliveriesByBusiness(businessId);
     setDeliveries(d.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+  };
+
+  useEffect(() => {
+    loadDeliveries();
   }, [businessId]);
+
+  const handleResend = async (d: StoredDelivery) => {
+    if (!businessId) return;
+    setResending(d.id);
+    const biz = getBusiness(businessId);
+    addDeliveryNotification({
+      businessId,
+      businessName: biz?.businessName ?? 'עסק',
+      pickupAddress: d.pickupAddress,
+      dropAddress: d.dropAddress,
+      description: d.description,
+      price: d.price,
+    });
+    toast.success('קריאה חדשה נשלחה לשליחים!');
+    setResending(null);
+  };
 
   const filtered = deliveries.filter((d) => {
     if (tab === 'active') return ['pending', 'accepted', 'picked_up'].includes(d.status);
@@ -149,16 +176,29 @@ const BusinessDeliveries: React.FC = () => {
               {/* Footer row */}
               <div className="flex items-center justify-between mt-3 pt-3" style={{ borderTop: '1px solid #f0f4f8' }}>
                 <span className="text-[13px] font-bold" style={{ color: '#533afd' }}>₪{d.price}</span>
-                {d.courierName && (
-                  <span className="text-[11px]" style={{ color: '#8898aa' }}>
-                    שליח: {d.courierName}
-                  </span>
-                )}
-                {d.customerName && !d.courierName && (
-                  <span className="text-[11px]" style={{ color: '#8898aa' }}>
-                    ל: {d.customerName}
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {d.courierName && (
+                    <span className="text-[11px]" style={{ color: '#8898aa' }}>
+                      שליח: {d.courierName}
+                    </span>
+                  )}
+                  {d.customerName && !d.courierName && (
+                    <span className="text-[11px]" style={{ color: '#8898aa' }}>
+                      ל: {d.customerName}
+                    </span>
+                  )}
+                  {d.status === 'pending' && (
+                    <button
+                      onClick={() => handleResend(d)}
+                      disabled={resending === d.id}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition-all active:scale-95 disabled:opacity-60"
+                      style={{ background: '#eef2ff', color: '#533afd' }}
+                    >
+                      <ArrowPathIcon className="w-3.5 h-3.5" />
+                      שלח שוב
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           ))}

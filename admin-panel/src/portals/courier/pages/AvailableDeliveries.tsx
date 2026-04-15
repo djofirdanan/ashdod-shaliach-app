@@ -1,20 +1,24 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import type { RootState } from '../../../store';
 import {
   getPendingNotifications,
   acceptNotification,
+  dismissNotification,
   updateDelivery,
   getDeliveries,
   getCourier,
+  getOrCreateConversation,
   type DeliveryNotification,
 } from '../../../services/storage.service';
 import { syncNotificationsDown, syncDeliveriesDown } from '../../../services/sync.service';
-import { BellIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { BellIcon, ArrowPathIcon, TrashIcon } from '@heroicons/react/24/outline';
 
 const AvailableDeliveries: React.FC = () => {
   const user = useSelector((s: RootState) => s.auth.user);
+  const navigate = useNavigate();
   const token = localStorage.getItem('admin_token') ?? '';
   const courierId = token.startsWith('courier-') ? token.replace('courier-', '') : '';
 
@@ -23,14 +27,13 @@ const AvailableDeliveries: React.FC = () => {
 
   const refresh = useCallback(async () => {
     if (!courierId) return;
-    // Sync from Supabase first so we catch notifications from other devices
     await Promise.all([syncNotificationsDown(), syncDeliveriesDown()]);
     setNotifications(getPendingNotifications(courierId));
   }, [courierId]);
 
   useEffect(() => {
     refresh();
-    const id = setInterval(refresh, 6000); // every 6s (includes network call)
+    const id = setInterval(refresh, 6000);
     return () => clearInterval(id);
   }, [refresh]);
 
@@ -38,10 +41,8 @@ const AvailableDeliveries: React.FC = () => {
     if (!courierId || !user) return;
     setAccepting(notif.id);
     try {
-      // Mark notification as taken
       acceptNotification(notif.id, courierId);
 
-      // Find the matching delivery and update it
       const allDeliveries = getDeliveries();
       const matching = allDeliveries.find(
         (d) =>
@@ -53,6 +54,7 @@ const AvailableDeliveries: React.FC = () => {
       const courierData = getCourier(courierId);
       const courierName = courierData?.name ?? user.name ?? 'שליח';
 
+      let deliveryId = matching?.id;
       if (matching) {
         updateDelivery(matching.id, {
           status: 'accepted',
@@ -62,8 +64,12 @@ const AvailableDeliveries: React.FC = () => {
         });
       }
 
-      toast.success('קיבלת את המשלוח! בדרך לאיסוף...');
-      refresh();
+      // Open chat with business
+      const conv = getOrCreateConversation(notif.businessId, courierId);
+      toast.success('קיבלת את המשלוח! עובר לצ׳אט...');
+      const params = new URLSearchParams({ convId: conv.id });
+      if (deliveryId) params.set('deliveryId', deliveryId);
+      navigate(`/courier/chat?${params.toString()}`);
     } catch (err) {
       console.error(err);
       toast.error('שגיאה בקבלת המשלוח');
@@ -72,19 +78,54 @@ const AvailableDeliveries: React.FC = () => {
     }
   };
 
+  const handleDismiss = (notif: DeliveryNotification) => {
+    if (!courierId) return;
+    dismissNotification(notif.id, courierId);
+    setNotifications(prev => prev.filter(n => n.id !== notif.id));
+  };
+
+  const handleClearAll = () => {
+    if (!courierId) return;
+    notifications.forEach(n => dismissNotification(n.id, courierId));
+    setNotifications([]);
+    toast.success('כל ההודעות נוקו');
+  };
+
   return (
     <div className="max-w-lg mx-auto px-4 py-5">
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
-        <h1 className="text-[20px] font-black" style={{ color: '#061b31' }}>משלוחים פנויים</h1>
-        <button
-          onClick={refresh}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold transition-all active:scale-95"
-          style={{ background: '#f0f4f8', color: '#533afd', border: '1px solid #e8ecf0' }}
-        >
-          <ArrowPathIcon className="w-4 h-4" />
-          רענן
-        </button>
+        <h1 className="text-[20px] font-black" style={{ color: '#061b31' }}>
+          משלוחים פנויים
+          {notifications.length > 0 && (
+            <span
+              className="mr-2 text-[13px] px-2 py-0.5 rounded-full font-bold"
+              style={{ background: '#ea2261', color: '#fff' }}
+            >
+              {notifications.length}
+            </span>
+          )}
+        </h1>
+        <div className="flex items-center gap-2">
+          {notifications.length > 0 && (
+            <button
+              onClick={handleClearAll}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold transition-all active:scale-95"
+              style={{ background: '#fff0f0', color: '#ef4444', border: '1px solid #fecdd3' }}
+            >
+              <TrashIcon className="w-4 h-4" />
+              נקה
+            </button>
+          )}
+          <button
+            onClick={refresh}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold transition-all active:scale-95"
+            style={{ background: '#f0f4f8', color: '#533afd', border: '1px solid #e8ecf0' }}
+          >
+            <ArrowPathIcon className="w-4 h-4" />
+            רענן
+          </button>
+        </div>
       </div>
 
       {notifications.length === 0 ? (
@@ -100,7 +141,7 @@ const AvailableDeliveries: React.FC = () => {
           </div>
           <p className="font-bold text-[16px]" style={{ color: '#061b31' }}>אין משלוחים פנויים כרגע</p>
           <p className="text-[12px]" style={{ color: '#8898aa' }}>
-            המערכת מחפשת משלוחים חדשים כל 5 שניות...
+            המערכת מסנכרנת עם השרת כל 6 שניות...
           </p>
         </div>
       ) : (
@@ -178,15 +219,24 @@ const AvailableDeliveries: React.FC = () => {
                 </div>
               )}
 
-              {/* Accept button */}
-              <button
-                onClick={() => handleAccept(n)}
-                disabled={accepting === n.id}
-                className="w-full py-3 rounded-xl text-white font-black text-[14px] transition-all active:scale-95 disabled:opacity-60"
-                style={{ background: 'linear-gradient(135deg, #533afd, #ea2261)', boxShadow: '0 4px 12px rgba(83,58,253,0.25)' }}
-              >
-                {accepting === n.id ? 'מקבל...' : 'קבל משלוח'}
-              </button>
+              {/* Action buttons */}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleAccept(n)}
+                  disabled={accepting === n.id}
+                  className="flex-1 py-3 rounded-xl text-white font-black text-[14px] transition-all active:scale-95 disabled:opacity-60"
+                  style={{ background: 'linear-gradient(135deg, #533afd, #ea2261)', boxShadow: '0 4px 12px rgba(83,58,253,0.25)' }}
+                >
+                  {accepting === n.id ? 'מקבל...' : '✅ קבל משלוח'}
+                </button>
+                <button
+                  onClick={() => handleDismiss(n)}
+                  className="px-4 py-3 rounded-xl font-bold text-[13px] transition-all active:scale-95"
+                  style={{ background: '#f0f4f8', color: '#8898aa', border: '1px solid #e8ecf0' }}
+                >
+                  ✕
+                </button>
+              </div>
             </div>
           ))}
         </div>

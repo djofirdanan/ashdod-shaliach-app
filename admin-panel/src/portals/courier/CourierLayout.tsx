@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import type { RootState, AppDispatch } from '../../store';
 import { logoutUser } from '../../store/authSlice';
-import { getPendingNotifications } from '../../services/storage.service';
+import { getPendingNotifications, getCourier, updateCourier } from '../../services/storage.service';
+import { DeliveryNotificationOverlay } from '../../components/DeliveryNotificationOverlay';
 import {
   HomeIcon,
   BellIcon,
@@ -12,6 +13,7 @@ import {
   UserCircleIcon,
   ArrowRightOnRectangleIcon,
 } from '@heroicons/react/24/outline';
+import toast from 'react-hot-toast';
 
 const CourierLayout: React.FC = () => {
   const navigate = useNavigate();
@@ -23,15 +25,31 @@ const CourierLayout: React.FC = () => {
   const courierId = token.startsWith('courier-') ? token.replace('courier-', '') : '';
 
   const [pendingCount, setPendingCount] = useState(0);
+  const [isAvailable, setIsAvailable] = useState(true);
+
+  const refreshAvailability = useCallback(() => {
+    if (!courierId) return;
+    const c = getCourier(courierId);
+    setIsAvailable(c?.isAvailable ?? true);
+  }, [courierId]);
 
   useEffect(() => {
     const refresh = () => {
       if (courierId) setPendingCount(getPendingNotifications(courierId).length);
     };
     refresh();
+    refreshAvailability();
     const id = setInterval(refresh, 5000);
     return () => clearInterval(id);
-  }, [courierId]);
+  }, [courierId, refreshAvailability]);
+
+  const handleToggleAvailability = () => {
+    if (!courierId) return;
+    const next = !isAvailable;
+    updateCourier(courierId, { isAvailable: next });
+    setIsAvailable(next);
+    toast.success(next ? 'אתה זמין לקבל משלוחים' : 'סימנת את עצמך כלא זמין');
+  };
 
   const handleLogout = async () => {
     await dispatch(logoutUser());
@@ -68,14 +86,31 @@ const CourierLayout: React.FC = () => {
             <p className="text-white/60 text-[11px]">{user?.name ?? 'פורטל שליחים'}</p>
           </div>
         </div>
-        <button
-          onClick={handleLogout}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all hover:opacity-80"
-          style={{ background: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.15)' }}
-        >
-          <ArrowRightOnRectangleIcon className="w-4 h-4 text-white" />
-          <span className="text-white text-[12px] font-semibold">יציאה</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Availability toggle */}
+          <button
+            onClick={handleToggleAvailability}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-bold transition-all active:scale-95"
+            style={{
+              background: isAvailable ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.15)',
+              border: `1px solid ${isAvailable ? 'rgba(16,185,129,0.4)' : 'rgba(239,68,68,0.3)'}`,
+              color: isAvailable ? '#34d399' : '#f87171',
+            }}
+          >
+            <span
+              className="w-2 h-2 rounded-full"
+              style={{ background: isAvailable ? '#10b981' : '#ef4444' }}
+            />
+            {isAvailable ? 'זמין' : 'לא זמין'}
+          </button>
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-1 px-2 py-1.5 rounded-lg transition-all hover:opacity-80"
+            style={{ background: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.15)' }}
+          >
+            <ArrowRightOnRectangleIcon className="w-4 h-4 text-white" />
+          </button>
+        </div>
       </header>
 
       {/* Page content */}
@@ -131,6 +166,9 @@ const CourierLayout: React.FC = () => {
           );
         })}
       </nav>
+
+      {/* Delivery popup overlay */}
+      <DeliveryNotificationOverlay />
     </div>
   );
 };

@@ -9,7 +9,7 @@
  */
 
 import { supabase } from '../lib/supabase';
-import type { StoredBusiness, StoredCourier, StoredConversation, StoredMessage, DeliveryNotification, StoredDelivery } from './storage.service';
+import type { StoredBusiness, StoredCourier, StoredConversation, StoredMessage, DeliveryNotification, StoredDelivery, StoredReview } from './storage.service';
 
 // ─── Mappers: DB row → StoredXxx ─────────────────────────────────
 
@@ -35,6 +35,8 @@ function dbToBusiness(row: Record<string, unknown>): StoredBusiness {
     totalDeliveries: Number(row.total_deliveries) || 0,
     rating: Number(row.rating) || 5,
     lastOrderAt: (row.last_order_at as string | undefined) || undefined,
+    logo: (row.logo as string | undefined) || undefined,
+    favoriteCouriers: (row.favorite_couriers as string[]) || [],
   };
 }
 
@@ -58,6 +60,8 @@ function businessToDb(b: StoredBusiness): Record<string, unknown> {
     total_deliveries: b.totalDeliveries,
     rating: b.rating,
     last_order_at: b.lastOrderAt ?? null,
+    logo: b.logo ?? null,
+    favorite_couriers: b.favoriteCouriers ?? [],
   };
 }
 
@@ -84,6 +88,9 @@ function dbToCourier(row: Record<string, unknown>): StoredCourier {
       thisMonth: Number(row.earnings_this_month) || 0,
       total: Number(row.earnings_total) || 0,
     },
+    photo: (row.photo as string | undefined) || undefined,
+    isAvailable: row.is_available != null ? Boolean(row.is_available) : true,
+    favoriteBusinesses: (row.favorite_businesses as string[]) || [],
   };
 }
 
@@ -108,6 +115,9 @@ function courierToDb(c: StoredCourier): Record<string, unknown> {
     earnings_this_week: c.earnings.thisWeek,
     earnings_this_month: c.earnings.thisMonth,
     earnings_total: c.earnings.total,
+    photo: c.photo ?? null,
+    is_available: c.isAvailable ?? true,
+    favorite_businesses: c.favoriteBusinesses ?? [],
   };
 }
 
@@ -355,6 +365,21 @@ export async function upsertDelivery(d: StoredDelivery): Promise<void> {
     cancelled_at: d.cancelledAt ?? null,
   }, { onConflict: 'id' });
   if (error) console.error('[sync] upsertDelivery error:', error.message);
+}
+
+export async function upsertReview(r: StoredReview): Promise<void> {
+  const { error } = await supabase.from('reviews').upsert({
+    id: r.id,
+    reviewer_id: r.reviewerId,
+    reviewer_type: r.reviewerType,
+    target_id: r.targetId,
+    target_type: r.targetType,
+    rating: r.rating,
+    comment: r.comment ?? null,
+    delivery_id: r.deliveryId ?? null,
+    created_at: r.createdAt,
+  }, { onConflict: 'id' });
+  if (error) console.error('[sync] upsertReview error:', error.message);
 }
 
 export async function upsertResetToken(token: string, email: string, userType: string, expiresAt: number): Promise<void> {

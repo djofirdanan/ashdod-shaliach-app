@@ -1,41 +1,266 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   getConversations,
   getMessages,
   addMessage,
   markMessagesRead,
+  getDeliveries,
+  updateDelivery,
+  updateCourier,
+  getCourier,
   type StoredConversation,
   type StoredMessage,
+  type StoredDelivery,
 } from '../../../services/storage.service';
+import { syncDeliveriesDown } from '../../../services/sync.service';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../../../store';
-import { ChatBubbleLeftRightIcon, PaperAirplaneIcon } from '@heroicons/react/24/outline';
+import {
+  ChatBubbleLeftRightIcon,
+  PaperAirplaneIcon,
+  TruckIcon,
+  MapPinIcon,
+  ClockIcon,
+  CheckCircleIcon,
+} from '@heroicons/react/24/outline';
+import toast from 'react-hot-toast';
 
+const ETA_OPTIONS = ['5 דקות', '10 דקות', '15 דקות', '20 דקות', '30 דקות'];
+
+const statusLabel: Record<StoredDelivery['status'], string> = {
+  pending: 'ממתין לשליח',
+  accepted: 'שליח בדרך לאיסוף',
+  picked_up: 'בדרך ללקוח',
+  delivered: 'נמסר ✓',
+  cancelled: 'בוטל',
+};
+
+/* ─── Delivery context banner ─────────────────── */
+const DeliveryBanner: React.FC<{
+  delivery: StoredDelivery;
+  courierId: string;
+  userName: string;
+  convId: string;
+  onStatusUpdate: () => void;
+}> = ({ delivery, courierId, userName, convId, onStatusUpdate }) => {
+  const [showEta, setShowEta] = useState(false);
+  const [updating, setUpdating] = useState(false);
+
+  const canPickUp = delivery.status === 'accepted';
+  const canDeliver = delivery.status === 'picked_up';
+  const isDone = delivery.status === 'delivered' || delivery.status === 'cancelled';
+
+  const sendSystemMsg = (text: string) => {
+    addMessage(convId, {
+      senderId: courierId,
+      senderName: userName,
+      senderType: 'courier',
+      content: text,
+      messageType: 'text',
+    });
+  };
+
+  const handleEta = (eta: string) => {
+    sendSystemMsg(`⏱️ אני מגיע בעוד ${eta}`);
+    setShowEta(false);
+    toast.success(`נשלח: אני מגיע בעוד ${eta}`);
+  };
+
+  const handlePickedUp = () => {
+    setUpdating(true);
+    updateDelivery(delivery.id, { status: 'picked_up', pickedUpAt: new Date().toISOString() });
+    sendSystemMsg('📦 אספתי את החבילה — בדרך ללקוח!');
+    toast.success('סטטוס עודכן: נאסף');
+    setUpdating(false);
+    onStatusUpdate();
+  };
+
+  const handleDelivered = () => {
+    setUpdating(true);
+    updateDelivery(delivery.id, { status: 'delivered', deliveredAt: new Date().toISOString() });
+    // Update courier stats
+    const c = getCourier(courierId);
+    if (c) {
+      updateCourier(courierId, {
+        totalDeliveries: (c.totalDeliveries || 0) + 1,
+        activeDeliveries: Math.max(0, (c.activeDeliveries || 1) - 1),
+        earnings: {
+          ...c.earnings,
+          today: c.earnings.today + (delivery.price || 0),
+          thisWeek: c.earnings.thisWeek + (delivery.price || 0),
+          thisMonth: c.earnings.thisMonth + (delivery.price || 0),
+          total: c.earnings.total + (delivery.price || 0),
+        },
+      });
+    }
+    sendSystemMsg('✅ המשלוח נמסר! עבודה מצוינת!');
+    toast.success('משלוח הושלם!');
+    setUpdating(false);
+    onStatusUpdate();
+  };
+
+  return (
+    <div
+      className="px-4 py-3 space-y-2"
+      style={{ background: isDone ? '#f0fdf4' : '#eef2ff', borderBottom: '1px solid #e8ecf0' }}
+    >
+      {/* Status + addresses */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-1">
+            <TruckIcon className="w-4 h-4 flex-shrink-0" style={{ color: isDone ? '#10b981' : '#533afd' }} />
+            <span
+              className="text-[11px] font-black px-2 py-0.5 rounded-full"
+              style={{
+                background: isDone ? '#dcfce7' : '#e0e7ff',
+                color: isDone ? '#10b981' : '#533afd',
+              }}
+            >
+              {statusLabel[delivery.status]}
+            </span>
+            {delivery.price > 0 && (
+              <span className="text-[12px] font-black" style={{ color: '#533afd' }}>₪{delivery.price}</span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 text-[11px]" style={{ color: '#6b7280' }}>
+            <MapPinIcon className="w-3 h-3 text-green-500 flex-shrink-0" />
+            <span className="truncate">{delivery.pickupAddress}</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-[11px]" style={{ color: '#6b7280' }}>
+            <MapPinIcon className="w-3 h-3 text-red-400 flex-shrink-0" />
+            <span className="truncate">{delivery.dropAddress}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Action buttons */}
+      {!isDone && (
+        <div className="flex gap-2 flex-wrap">
+          {/* ETA button */}
+          <div className="relative">
+            <button
+              onClick={() => setShowEta(!showEta)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-bold transition-all active:scale-95"
+              style={{ background: '#fff', border: '1px solid #e0e7ff', color: '#533afd' }}
+            >
+              <ClockIcon className="w-3.5 h-3.5" />
+              ETA
+            </button>
+            {showEta && (
+              <div
+                className="absolute top-full right-0 mt-1 rounded-xl overflow-hidden z-10"
+                style={{ background: '#fff', border: '1px solid #e8ecf0', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', minWidth: 130 }}
+              >
+                {ETA_OPTIONS.map((eta) => (
+                  <button
+                    key={eta}
+                    onClick={() => handleEta(eta)}
+                    className="w-full px-4 py-2 text-[12px] font-semibold text-right hover:bg-purple-50 transition-colors"
+                    style={{ color: '#061b31' }}
+                  >
+                    {eta}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {canPickUp && (
+            <button
+              onClick={handlePickedUp}
+              disabled={updating}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-bold transition-all active:scale-95 disabled:opacity-60"
+              style={{ background: '#fff7ed', border: '1px solid #fed7aa', color: '#d97706' }}
+            >
+              📦 אספתי
+            </button>
+          )}
+
+          {canDeliver && (
+            <button
+              onClick={handleDelivered}
+              disabled={updating}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-bold transition-all active:scale-95 disabled:opacity-60"
+              style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#16a34a' }}
+            >
+              <CheckCircleIcon className="w-3.5 h-3.5" />
+              מסרתי ✅
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/* ─── Main Component ──────────────────────────── */
 const CourierChat: React.FC = () => {
   const user = useSelector((s: RootState) => s.auth.user);
+  const location = useLocation();
+  const navigate = useNavigate();
+
   const token = localStorage.getItem('admin_token') ?? '';
   const courierId = token.startsWith('courier-') ? token.replace('courier-', '') : '';
 
+  // Parse URL params
+  const searchParams = new URLSearchParams(location.search);
+  const initialConvId = searchParams.get('convId');
+  const urlDeliveryId = searchParams.get('deliveryId');
+
   const [conversations, setConversations] = useState<StoredConversation[]>([]);
-  const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
+  const [selectedConvId, setSelectedConvId] = useState<string | null>(initialConvId);
   const [messages, setMessages] = useState<StoredMessage[]>([]);
   const [text, setText] = useState('');
+  const [delivery, setDelivery] = useState<StoredDelivery | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const loadConvs = () => {
     const all = getConversations().filter((c) => c.courierId === courierId);
     setConversations(all.sort((a, b) => (b.lastMessageAt ?? '').localeCompare(a.lastMessageAt ?? '')));
   };
 
+  const loadDelivery = async () => {
+    if (!urlDeliveryId) return;
+    // Sync deliveries from Supabase first to get latest status
+    await syncDeliveriesDown();
+    const all = getDeliveries();
+    const d = all.find(x => x.id === urlDeliveryId);
+    setDelivery(d ?? null);
+  };
+
   useEffect(() => {
     loadConvs();
-  }, [courierId]);
+    loadDelivery();
+  }, [courierId, urlDeliveryId]);
+
+  // Auto-select conv if passed via URL
+  useEffect(() => {
+    if (initialConvId && !selectedConvId) {
+      setSelectedConvId(initialConvId);
+    }
+  }, [initialConvId]);
 
   useEffect(() => {
     if (!selectedConvId) return;
     setMessages(getMessages(selectedConvId));
     markMessagesRead(selectedConvId, 'courier');
     loadConvs();
-  }, [selectedConvId]);
+    // Poll for new messages
+    const id = setInterval(() => {
+      setMessages(getMessages(selectedConvId));
+      if (urlDeliveryId) {
+        const d = getDeliveries().find(x => x.id === urlDeliveryId);
+        setDelivery(d ?? null);
+      }
+    }, 4000);
+    return () => clearInterval(id);
+  }, [selectedConvId, urlDeliveryId]);
+
+  // Auto-scroll to bottom
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   const handleSend = () => {
     if (!text.trim() || !selectedConvId || !user) return;
@@ -50,8 +275,18 @@ const CourierChat: React.FC = () => {
     setMessages(getMessages(selectedConvId));
   };
 
+  const handleBack = () => {
+    // Clear URL params when going back
+    if (initialConvId) {
+      navigate('/courier/chat', { replace: true });
+    }
+    setSelectedConvId(null);
+    setDelivery(null);
+  };
+
   const selectedConv = conversations.find((c) => c.id === selectedConvId);
 
+  // ─── Conversation list ─────────────────────────
   if (!selectedConvId) {
     return (
       <div className="max-w-lg mx-auto px-4 py-5">
@@ -110,6 +345,7 @@ const CourierChat: React.FC = () => {
     );
   }
 
+  // ─── Active chat ───────────────────────────────
   return (
     <div className="flex flex-col h-[calc(100vh-130px)] max-w-lg mx-auto">
       {/* Chat header */}
@@ -118,7 +354,7 @@ const CourierChat: React.FC = () => {
         style={{ background: '#fff', borderBottom: '1px solid #e8ecf0' }}
       >
         <button
-          onClick={() => setSelectedConvId(null)}
+          onClick={handleBack}
           className="text-[13px] font-semibold"
           style={{ color: '#533afd' }}
         >
@@ -130,6 +366,21 @@ const CourierChat: React.FC = () => {
           </p>
         </div>
       </div>
+
+      {/* Delivery context banner */}
+      {delivery && (
+        <DeliveryBanner
+          delivery={delivery}
+          courierId={courierId}
+          userName={user?.name ?? 'שליח'}
+          convId={selectedConvId}
+          onStatusUpdate={() => {
+            setMessages(getMessages(selectedConvId));
+            const d = getDeliveries().find(x => x.id === urlDeliveryId);
+            setDelivery(d ?? null);
+          }}
+        />
+      )}
 
       {/* Messages */}
       <div
@@ -149,7 +400,7 @@ const CourierChat: React.FC = () => {
               className={`flex ${isMine ? 'justify-start' : 'justify-end'}`}
             >
               <div
-                className="max-w-[75%] px-3.5 py-2.5 rounded-2xl text-[13px]"
+                className="max-w-[78%] px-3.5 py-2.5 rounded-2xl text-[13px]"
                 style={{
                   background: isMine ? 'linear-gradient(135deg, #533afd, #ea2261)' : '#fff',
                   color: isMine ? '#fff' : '#061b31',
@@ -163,6 +414,7 @@ const CourierChat: React.FC = () => {
             </div>
           );
         })}
+        <div ref={messagesEndRef} />
       </div>
 
       {/* Input */}
