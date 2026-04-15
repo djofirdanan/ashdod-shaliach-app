@@ -26,6 +26,7 @@ import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import Chat from './pages/Chat';
+import AdminSupport from './pages/AdminSupport';
 
 // Business portal
 import BusinessLayout from './portals/business/BusinessLayout';
@@ -34,6 +35,7 @@ import NewDelivery from './portals/business/pages/NewDelivery';
 import BusinessDeliveries from './portals/business/pages/BusinessDeliveries';
 import BusinessChat from './portals/business/pages/BusinessChat';
 import BusinessProfile from './portals/business/pages/BusinessProfile';
+import BusinessSupport from './portals/business/pages/BusinessSupport';
 
 // Courier portal
 import CourierLayout from './portals/courier/CourierLayout';
@@ -42,6 +44,7 @@ import AvailableDeliveries from './portals/courier/pages/AvailableDeliveries';
 import CourierDeliveries from './portals/courier/pages/CourierDeliveries';
 import CourierChat from './portals/courier/pages/CourierChat';
 import CourierProfile from './portals/courier/pages/CourierProfile';
+import CourierSupport from './portals/courier/pages/CourierSupport';
 
 // Determine the correct home path based on stored role
 function getRoleHome(): string {
@@ -133,6 +136,7 @@ const App: React.FC = () => {
               <Route path="/bonuses" element={<Bonuses />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/support" element={<AdminSupport />} />
             </Route>
 
             {/* ── Business portal ── */}
@@ -150,6 +154,7 @@ const App: React.FC = () => {
               <Route path="deliveries" element={<BusinessDeliveries />} />
               <Route path="chat" element={<BusinessChat />} />
               <Route path="profile" element={<BusinessProfile />} />
+              <Route path="support" element={<BusinessSupport />} />
             </Route>
 
             {/* ── Courier portal ── */}
@@ -167,6 +172,7 @@ const App: React.FC = () => {
               <Route path="deliveries" element={<CourierDeliveries />} />
               <Route path="chat" element={<CourierChat />} />
               <Route path="profile" element={<CourierProfile />} />
+              <Route path="support" element={<CourierSupport />} />
             </Route>
           </Routes>
         </BrowserRouter>

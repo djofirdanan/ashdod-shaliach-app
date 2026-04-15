@@ -24,6 +24,11 @@ export interface StoredBusiness {
   lastOrderAt?: string;
   logo?: string;           // base64 image
   favoriteCouriers?: string[]; // courier IDs
+  emailOnDeliveryAdded?: boolean;
+  emailOnDeliveryAccepted?: boolean;
+  emailOnDeliveryPickedUp?: boolean;
+  emailOnDeliveryDelivered?: boolean;
+  emailOnDeliveryCancelled?: boolean;
 }
 
 export interface StoredCourier {
@@ -46,6 +51,7 @@ export interface StoredCourier {
   photo?: string;            // base64 image
   isAvailable?: boolean;     // availability toggle
   favoriteBusinesses?: string[]; // business IDs
+  emailOnNewDelivery?: boolean; // email notification pref
 }
 
 export interface StoredReview {
@@ -110,6 +116,37 @@ export interface StoredDelivery {
   customerPaid?: boolean;     // true = customer already paid; false = courier collects
 }
 
+// ─── Support ticket & messages ──────────────────────────────
+export interface SupportTicket {
+  id: string;                     // `support_${userId}`
+  userId: string;
+  userType: 'business' | 'courier';
+  userName: string;
+  userEmail: string;
+  status: 'open' | 'replied' | 'closed';
+  subject: string;
+  lastMessage?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SupportMessage {
+  id: string;
+  ticketId: string;
+  senderType: 'user' | 'admin';
+  senderName: string;
+  content: string;
+  createdAt: string;
+}
+
+// ─── Courier live location ────────────────────────────────────
+export interface CourierLocation {
+  courierId: string;
+  latitude: number;
+  longitude: number;
+  updatedAt: string;
+}
+
 // ─── Keys ────────────────────────────────────────────────────
 const KEYS = {
   businesses: 'app_businesses',
@@ -118,6 +155,9 @@ const KEYS = {
   messages: 'app_messages',
   deliveries: 'app_deliveries',
   reviews: 'app_reviews',
+  supportTickets: 'app_support_tickets',
+  supportMessages: 'app_support_messages',
+  courierLocations: 'app_courier_locations',
 } as const;
 
 // ─── Helpers ─────────────────────────────────────────────────
@@ -193,9 +233,12 @@ export function addDeliveryNotification(
 }
 
 export function getPendingNotifications(courierId: string): DeliveryNotification[] {
+  const courier = getCourier(courierId);
+  // Unavailable courier receives NO notifications
+  if (courier?.isAvailable === false) return [];
+
   const list = read<DeliveryNotification>(NOTIF_KEY);
   const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString(); // 10 min
-  const courier = getCourier(courierId);
   return list.filter(
     (n) =>
       !n.dismissedBy.includes(courierId) &&
@@ -494,6 +537,104 @@ export function addReview(
   write(KEYS.reviews, [...filtered, record]);
   sync.upsertReview(record).catch(console.error);
   return record;
+}
+
+// ─── Support ─────────────────────────────────────────────────
+export function getSupportTickets(): SupportTicket[] {
+  return read<SupportTicket>(KEYS.supportTickets).sort(
+    (a, b) => b.updatedAt.localeCompare(a.updatedAt)
+  );
+}
+
+export function getOrCreateSupportTicket(
+  userId: string,
+  userType: 'business' | 'courier'
+): SupportTicket {
+  const list = read<SupportTicket>(KEYS.supportTickets);
+  const id = `support_${userId}`;
+  const existing = list.find((t) => t.id === id);
+  if (existing) return existing;
+
+  const user = userType === 'business' ? getBusiness(userId) : getCourier(userId);
+  const ticket: SupportTicket = {
+    id,
+    userId,
+    userType,
+    userName: userType === 'business'
+      ? (user as StoredBusiness | undefined)?.businessName ?? userId
+      : (user as StoredCourier | undefined)?.name ?? userId,
+    userEmail: user?.email ?? '',
+    status: 'open',
+    subject: 'פנייה לתמיכה',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  write(KEYS.supportTickets, [...list, ticket]);
+  sync.upsertSupportTicket(ticket).catch(console.error);
+  return ticket;
+}
+
+export function updateSupportTicket(id: string, data: Partial<SupportTicket>): void {
+  const list = read<SupportTicket>(KEYS.supportTickets);
+  const idx = list.findIndex((t) => t.id === id);
+  if (idx === -1) return;
+  list[idx] = { ...list[idx], ...data, updatedAt: new Date().toISOString() };
+  write(KEYS.supportTickets, list);
+  sync.upsertSupportTicket(list[idx]).catch(console.error);
+}
+
+export function getSupportMessages(ticketId: string): SupportMessage[] {
+  return read<SupportMessage>(KEYS.supportMessages)
+    .filter((m) => m.ticketId === ticketId)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+export function addSupportMessage(
+  ticketId: string,
+  senderType: 'user' | 'admin',
+  senderName: string,
+  content: string
+): SupportMessage {
+  const list = read<SupportMessage>(KEYS.supportMessages);
+  const msg: SupportMessage = {
+    id: uid(),
+    ticketId,
+    senderType,
+    senderName,
+    content,
+    createdAt: new Date().toISOString(),
+  };
+  write(KEYS.supportMessages, [...list, msg]);
+  sync.insertSupportMessage(msg).catch(console.error);
+
+  // Update ticket
+  updateSupportTicket(ticketId, {
+    status: senderType === 'admin' ? 'replied' : 'open',
+    lastMessage: content.slice(0, 80),
+  });
+  return msg;
+}
+
+export function getUnrepliedSupportCount(): number {
+  return read<SupportTicket>(KEYS.supportTickets).filter((t) => t.status === 'open').length;
+}
+
+// ─── Courier Location ─────────────────────────────────────────
+export function updateCourierLocation(
+  courierId: string,
+  lat: number,
+  lng: number
+): void {
+  const list = read<CourierLocation>(KEYS.courierLocations);
+  const idx = list.findIndex((l) => l.courierId === courierId);
+  const loc: CourierLocation = { courierId, latitude: lat, longitude: lng, updatedAt: new Date().toISOString() };
+  if (idx === -1) write(KEYS.courierLocations, [...list, loc]);
+  else { list[idx] = loc; write(KEYS.courierLocations, list); }
+  sync.upsertCourierLocation(loc).catch(console.error);
+}
+
+export function getCourierLocation(courierId: string): CourierLocation | undefined {
+  return read<CourierLocation>(KEYS.courierLocations).find((l) => l.courierId === courierId);
 }
 
 // ─── Password Reset Tokens ────────────────────────────────────

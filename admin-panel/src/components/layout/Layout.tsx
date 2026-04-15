@@ -6,6 +6,7 @@ import {
   UserGroupIcon,
   BuildingStorefrontIcon,
   ChatBubbleLeftRightIcon,
+  LifebuoyIcon,
 } from '@heroicons/react/24/outline';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
@@ -24,14 +25,15 @@ const PAGE_TITLES: Record<string, string> = {
   '/reports': 'דוחות',
   '/settings': 'הגדרות',
   '/dashboard': 'לוח בקרה',
+  '/support': 'תמיכה',
 };
 
 const BOTTOM_NAV = [
-  { path: '/dashboard', label: 'דשבורד', icon: <HomeIcon className="w-5 h-5" /> },
-  { path: '/deliveries', label: 'משלוחים', icon: <TruckIcon className="w-5 h-5" /> },
-  { path: '/chat', label: "צ'אט", icon: <ChatBubbleLeftRightIcon className="w-5 h-5" /> },
-  { path: '/couriers', label: 'שליחים', icon: <UserGroupIcon className="w-5 h-5" /> },
-  { path: '/businesses', label: 'עסקים', icon: <BuildingStorefrontIcon className="w-5 h-5" /> },
+  { path: '/dashboard', label: 'דשבורד', icon: <HomeIcon className="w-5 h-5" />, badge: 'none' },
+  { path: '/deliveries', label: 'משלוחים', icon: <TruckIcon className="w-5 h-5" />, badge: 'none' },
+  { path: '/chat', label: "צ'אט", icon: <ChatBubbleLeftRightIcon className="w-5 h-5" />, badge: 'chat' },
+  { path: '/couriers', label: 'שליחים', icon: <UserGroupIcon className="w-5 h-5" />, badge: 'none' },
+  { path: '/support', label: 'תמיכה', icon: <LifebuoyIcon className="w-5 h-5" />, badge: 'support' },
 ];
 
 export const Layout: React.FC = () => {
@@ -42,6 +44,7 @@ export const Layout: React.FC = () => {
     return localStorage.getItem('darkMode') === 'true';
   });
   const [chatUnread, setChatUnread] = useState(0);
+  const [supportUnread, setSupportUnread] = useState(0);
 
   useEffect(() => {
     if (darkMode) {
@@ -56,6 +59,7 @@ export const Layout: React.FC = () => {
     const calc = () => {
       const convs = storageService.getConversations();
       setChatUnread(convs.reduce((s, c) => s + c.unreadBusiness + c.unreadCourier, 0));
+      setSupportUnread(storageService.getUnrepliedSupportCount());
     };
     calc();
     const interval = setInterval(calc, 5000);
@@ -111,7 +115,7 @@ export const Layout: React.FC = () => {
           }}
         >
           {BOTTOM_NAV.map((item) => {
-            const isChat = item.path === '/chat';
+            const badgeCount = item.badge === 'chat' ? chatUnread : item.badge === 'support' ? supportUnread : 0;
             return (
               <NavLink
                 key={item.path}
@@ -124,12 +128,12 @@ export const Layout: React.FC = () => {
                   <>
                     <span className="relative">
                       <span style={{ color: isActive ? '#533afd' : '#9ca3af' }}>{item.icon}</span>
-                      {isChat && chatUnread > 0 && (
+                      {badgeCount > 0 && (
                         <span
                           className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full text-[9px] font-bold text-white flex items-center justify-center"
                           style={{ background: '#ea2261' }}
                         >
-                          {chatUnread > 9 ? '9+' : chatUnread}
+                          {badgeCount > 9 ? '9+' : badgeCount}
                         </span>
                       )}
                     </span>

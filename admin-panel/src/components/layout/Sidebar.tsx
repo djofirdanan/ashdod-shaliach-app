@@ -15,6 +15,7 @@ import {
   ChevronRightIcon,
   ArrowRightOnRectangleIcon,
   ChatBubbleLeftRightIcon,
+  LifebuoyIcon,
 } from '@heroicons/react/24/outline';
 import clsx from 'clsx';
 import { useAuth } from '../../hooks/useAuth';
@@ -68,6 +69,7 @@ const navItems: Omit<NavItem, 'badge'>[] = [
   { path: '/pricing',     label: 'תמחור',     icon: <CurrencyDollarIcon className="w-4.5 h-4.5" /> },
   { path: '/bonuses',     label: 'בונוסים',   icon: <GiftIcon className="w-4.5 h-4.5" /> },
   { path: '/reports',     label: 'דוחות',     icon: <ChartBarIcon className="w-4.5 h-4.5" /> },
+  { path: '/support',     label: 'תמיכה',     icon: <LifebuoyIcon className="w-4.5 h-4.5" /> },
   { path: '/settings',    label: 'הגדרות',    icon: <Cog6ToothIcon className="w-4.5 h-4.5" /> },
 ];
 

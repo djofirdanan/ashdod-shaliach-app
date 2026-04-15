@@ -3,7 +3,7 @@ import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import type { RootState, AppDispatch } from '../../store';
 import { logoutUser } from '../../store/authSlice';
-import { getPendingNotifications, getCourier, updateCourier } from '../../services/storage.service';
+import { getPendingNotifications, getCourier, updateCourier, updateCourierLocation, getDeliveriesByCourier } from '../../services/storage.service';
 import { DeliveryNotificationOverlay } from '../../components/DeliveryNotificationOverlay';
 import {
   HomeIcon,
@@ -43,6 +43,24 @@ const CourierLayout: React.FC = () => {
     const id = setInterval(refresh, 5000);
     return () => clearInterval(id);
   }, [courierId, refreshAvailability]);
+
+  // Share live location when courier has an active delivery
+  useEffect(() => {
+    if (!courierId || !navigator.geolocation) return;
+    const shareLocation = () => {
+      const deliveries = getDeliveriesByCourier(courierId);
+      const hasActive = deliveries.some((d) => d.status === 'accepted' || d.status === 'picked_up');
+      if (!hasActive) return;
+      navigator.geolocation.getCurrentPosition(
+        (pos) => updateCourierLocation(courierId, pos.coords.latitude, pos.coords.longitude),
+        () => {},
+        { timeout: 5000, enableHighAccuracy: true }
+      );
+    };
+    shareLocation();
+    const locId = setInterval(shareLocation, 30_000);
+    return () => clearInterval(locId);
+  }, [courierId]);
 
   const handleToggleAvailability = () => {
     setShowAvailConfirm(true); // always show confirmation first

@@ -399,6 +399,53 @@ const CourierProfile: React.FC = () => {
 
       {activeTab === 'info' && (
         <>
+          {/* Email notifications */}
+          <Section title="🔔 התראות מייל">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[13px] font-bold" style={{ color: '#061b31' }}>משלוח חדש זמין</p>
+                  <p className="text-[11px]" style={{ color: '#8898aa' }}>קבל מייל כשמשלוח חדש מתפרסם</p>
+                </div>
+                <button
+                  onClick={() => {
+                    if (!courier) return;
+                    const next = !courier.emailOnNewDelivery;
+                    const updated = updateCourier(courierId, { emailOnNewDelivery: next });
+                    setCourier(updated);
+                    toast.success(next ? 'התראות מייל הופעלו' : 'התראות מייל כובו');
+                  }}
+                  className="relative w-12 h-6 rounded-full transition-colors"
+                  style={{ background: courier?.emailOnNewDelivery ? '#533afd' : '#e8ecf0' }}
+                >
+                  <span
+                    className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"
+                    style={{ transform: courier?.emailOnNewDelivery ? 'translateX(-26px)' : 'translateX(-2px)' }}
+                  />
+                </button>
+              </div>
+              <p className="text-[10px]" style={{ color: '#c0cadd' }}>
+                * דורש הגדרת שירות מייל (EmailJS / SMTP) בהגדרות האדמין
+              </p>
+            </div>
+          </Section>
+
+          {/* Support */}
+          <div
+            className="rounded-2xl p-4 flex items-center gap-3 cursor-pointer transition-all hover:shadow-md"
+            style={{ background: '#fff', border: '1px solid #e8ecf0' }}
+            onClick={() => navigate('/courier/support')}
+          >
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: '#eef2ff' }}>
+              <span className="text-[18px]">🎧</span>
+            </div>
+            <div className="flex-1">
+              <p className="text-[14px] font-black" style={{ color: '#061b31' }}>צור קשר / תמיכה</p>
+              <p className="text-[11px]" style={{ color: '#8898aa' }}>שלח הודעה לצוות התמיכה</p>
+            </div>
+            <span style={{ color: '#8898aa' }}>{'<'}</span>
+          </div>
+
           {/* Edit details */}
           <Section title="פרטים אישיים">
             {!editMode ? (

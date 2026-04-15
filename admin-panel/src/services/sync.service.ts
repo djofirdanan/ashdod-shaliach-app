@@ -9,7 +9,7 @@
  */
 
 import { supabase } from '../lib/supabase';
-import type { StoredBusiness, StoredCourier, StoredConversation, StoredMessage, DeliveryNotification, StoredDelivery, StoredReview } from './storage.service';
+import type { StoredBusiness, StoredCourier, StoredConversation, StoredMessage, DeliveryNotification, StoredDelivery, StoredReview, SupportTicket, SupportMessage, CourierLocation } from './storage.service';
 
 // ─── Mappers: DB row → StoredXxx ─────────────────────────────────
 
@@ -37,6 +37,11 @@ function dbToBusiness(row: Record<string, unknown>): StoredBusiness {
     lastOrderAt: (row.last_order_at as string | undefined) || undefined,
     logo: (row.logo as string | undefined) || undefined,
     favoriteCouriers: (row.favorite_couriers as string[]) || [],
+    emailOnDeliveryAdded: row.email_on_delivery_added != null ? Boolean(row.email_on_delivery_added) : false,
+    emailOnDeliveryAccepted: row.email_on_delivery_accepted != null ? Boolean(row.email_on_delivery_accepted) : false,
+    emailOnDeliveryPickedUp: row.email_on_delivery_picked_up != null ? Boolean(row.email_on_delivery_picked_up) : false,
+    emailOnDeliveryDelivered: row.email_on_delivery_delivered != null ? Boolean(row.email_on_delivery_delivered) : false,
+    emailOnDeliveryCancelled: row.email_on_delivery_cancelled != null ? Boolean(row.email_on_delivery_cancelled) : false,
   };
 }
 
@@ -62,6 +67,11 @@ function businessToDb(b: StoredBusiness): Record<string, unknown> {
     last_order_at: b.lastOrderAt ?? null,
     logo: b.logo ?? null,
     favorite_couriers: b.favoriteCouriers ?? [],
+    email_on_delivery_added: b.emailOnDeliveryAdded ?? false,
+    email_on_delivery_accepted: b.emailOnDeliveryAccepted ?? false,
+    email_on_delivery_picked_up: b.emailOnDeliveryPickedUp ?? false,
+    email_on_delivery_delivered: b.emailOnDeliveryDelivered ?? false,
+    email_on_delivery_cancelled: b.emailOnDeliveryCancelled ?? false,
   };
 }
 
@@ -91,6 +101,7 @@ function dbToCourier(row: Record<string, unknown>): StoredCourier {
     photo: (row.photo as string | undefined) || undefined,
     isAvailable: row.is_available != null ? Boolean(row.is_available) : true,
     favoriteBusinesses: (row.favorite_businesses as string[]) || [],
+    emailOnNewDelivery: row.email_on_new_delivery != null ? Boolean(row.email_on_new_delivery) : false,
   };
 }
 
@@ -118,6 +129,7 @@ function courierToDb(c: StoredCourier): Record<string, unknown> {
     photo: c.photo ?? null,
     is_available: c.isAvailable ?? true,
     favorite_businesses: c.favoriteBusinesses ?? [],
+    email_on_new_delivery: c.emailOnNewDelivery ?? false,
   };
 }
 
@@ -458,4 +470,121 @@ export async function upsertResetToken(token: string, email: string, userType: s
 export async function deleteResetToken(token: string): Promise<void> {
   const { error } = await supabase.from('reset_tokens').delete().eq('token', token);
   if (error) console.error('[sync] deleteResetToken error:', error.message);
+}
+
+// ─── Support Tickets & Messages ────────────────────────────────
+export async function upsertSupportTicket(t: SupportTicket): Promise<void> {
+  const { error } = await supabase.from('support_tickets').upsert({
+    id: t.id,
+    user_id: t.userId,
+    user_type: t.userType,
+    user_name: t.userName,
+    user_email: t.userEmail,
+    status: t.status,
+    subject: t.subject,
+    created_at: t.createdAt,
+    updated_at: t.updatedAt,
+  }, { onConflict: 'id' });
+  if (error) console.error('[sync] upsertSupportTicket error:', error.message);
+}
+
+export async function insertSupportMessage(m: SupportMessage): Promise<void> {
+  const { error } = await supabase.from('support_messages').upsert({
+    id: m.id,
+    ticket_id: m.ticketId,
+    sender_type: m.senderType,
+    sender_name: m.senderName,
+    content: m.content,
+    created_at: m.createdAt,
+  }, { onConflict: 'id' });
+  if (error) console.error('[sync] insertSupportMessage error:', error.message);
+}
+
+/** Pull ALL support tickets + their messages from Supabase → localStorage (admin use). */
+export async function syncSupportDown(): Promise<void> {
+  try {
+    const [ticketRes, msgRes] = await Promise.all([
+      supabase.from('support_tickets').select('*').order('updated_at', { ascending: false }),
+      supabase.from('support_messages').select('*').order('created_at', { ascending: true }),
+    ]);
+    if (ticketRes.data) {
+      const tickets: SupportTicket[] = ticketRes.data.map((r) => ({
+        id: r.id as string,
+        userId: r.user_id as string,
+        userType: r.user_type as 'business' | 'courier',
+        userName: r.user_name as string,
+        userEmail: r.user_email as string,
+        status: r.status as SupportTicket['status'],
+        subject: r.subject as string,
+        createdAt: r.created_at as string,
+        updatedAt: r.updated_at as string,
+      }));
+      localStorage.setItem('app_support_tickets', JSON.stringify(tickets));
+    }
+    if (msgRes.data) {
+      const msgs: SupportMessage[] = msgRes.data.map((r) => ({
+        id: r.id as string,
+        ticketId: r.ticket_id as string,
+        senderType: r.sender_type as 'user' | 'admin',
+        senderName: r.sender_name as string,
+        content: r.content as string,
+        createdAt: r.created_at as string,
+      }));
+      localStorage.setItem('app_support_messages', JSON.stringify(msgs));
+    }
+  } catch (err) {
+    console.warn('[sync] syncSupportDown failed:', err);
+  }
+}
+
+/** Pull messages for one support ticket. */
+export async function syncSupportMessagesDown(ticketId: string): Promise<void> {
+  try {
+    const { data } = await supabase
+      .from('support_messages')
+      .select('*')
+      .eq('ticket_id', ticketId)
+      .order('created_at', { ascending: true });
+    if (data) {
+      const raw = localStorage.getItem('app_support_messages');
+      const all: SupportMessage[] = raw ? JSON.parse(raw) : [];
+      const others = all.filter((m) => m.ticketId !== ticketId);
+      const fresh: SupportMessage[] = data.map((r) => ({
+        id: r.id as string,
+        ticketId: r.ticket_id as string,
+        senderType: r.sender_type as 'user' | 'admin',
+        senderName: r.sender_name as string,
+        content: r.content as string,
+        createdAt: r.created_at as string,
+      }));
+      localStorage.setItem('app_support_messages', JSON.stringify([...others, ...fresh]));
+    }
+  } catch (err) {
+    console.warn('[sync] syncSupportMessagesDown failed:', err);
+  }
+}
+
+// ─── Courier live location ─────────────────────────────────────
+export async function upsertCourierLocation(loc: CourierLocation): Promise<void> {
+  const { error } = await supabase.from('courier_locations').upsert({
+    courier_id: loc.courierId,
+    latitude: loc.latitude,
+    longitude: loc.longitude,
+    updated_at: loc.updatedAt,
+  }, { onConflict: 'courier_id' });
+  if (error) console.error('[sync] upsertCourierLocation error:', error.message);
+}
+
+export async function getCourierLocationFromDB(courierId: string): Promise<{ latitude: number; longitude: number; updatedAt: string } | null> {
+  try {
+    const { data } = await supabase
+      .from('courier_locations')
+      .select('*')
+      .eq('courier_id', courierId)
+      .single();
+    if (!data) return null;
+    return { latitude: data.latitude as number, longitude: data.longitude as number, updatedAt: data.updated_at as string };
+  } catch {
+    return null;
+  }
 }

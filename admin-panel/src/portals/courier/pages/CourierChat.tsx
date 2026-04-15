@@ -21,8 +21,11 @@ import {
   MapPinIcon,
   ClockIcon,
   CheckCircleIcon,
+  SpeakerWaveIcon,
+  SpeakerXMarkIcon,
 } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
+import { playNewMessage, getMuted, setMuted } from '../../../utils/sounds';
 
 const ETA_OPTIONS = ['5 דקות', '10 דקות', '15 דקות', '20 דקות', '30 דקות'];
 
@@ -212,7 +215,10 @@ const CourierChat: React.FC = () => {
   const [messages, setMessages] = useState<StoredMessage[]>([]);
   const [text, setText] = useState('');
   const [delivery, setDelivery] = useState<StoredDelivery | null>(null);
+  const [muted, setMutedState] = useState(getMuted());
+  const [showOlder, setShowOlder] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const prevMsgCount = useRef(0);
 
   const loadConvs = () => {
     const all = getConversations().filter((c) => c.courierId === courierId);
@@ -249,10 +255,17 @@ const CourierChat: React.FC = () => {
     markMessagesRead(selectedConvId, 'courier');
     loadConvs();
 
+    prevMsgCount.current = getMessages(selectedConvId).length;
     // Poll Supabase every 3s for new messages (real-time cross-device)
     const poll = async () => {
       await syncMessagesDown(selectedConvId);
-      setMessages(getMessages(selectedConvId));
+      const fresh = getMessages(selectedConvId);
+      if (fresh.length > prevMsgCount.current) {
+        const newest = fresh[fresh.length - 1];
+        if (newest.senderType !== 'courier') playNewMessage();
+        prevMsgCount.current = fresh.length;
+        setMessages(fresh);
+      }
       if (urlDeliveryId) {
         await syncDeliveriesDown();
         const d = getDeliveries().find(x => x.id === urlDeliveryId);
@@ -310,45 +323,62 @@ const CourierChat: React.FC = () => {
               כאשר תקבל משלוח, תוכל לדבר עם בעל העסק כאן
             </p>
           </div>
-        ) : (
-          <div className="space-y-2">
-            {conversations.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => setSelectedConvId(c.id)}
-                className="w-full text-right rounded-2xl p-4 flex items-center gap-3 transition-all hover:shadow-md"
-                style={{ background: '#fff', border: '1px solid #e8ecf0' }}
+        ) : (() => {
+          const todayStr = new Date().toDateString();
+          const recent = conversations.filter((c) => {
+            const d = c.lastMessageAt ? new Date(c.lastMessageAt) : new Date(c.createdAt);
+            return d.toDateString() === todayStr;
+          });
+          const older = conversations.filter((c) => {
+            const d = c.lastMessageAt ? new Date(c.lastMessageAt) : new Date(c.createdAt);
+            return d.toDateString() !== todayStr;
+          });
+          const ConvBtn = ({ c }: { c: StoredConversation }) => (
+            <button
+              key={c.id}
+              onClick={() => setSelectedConvId(c.id)}
+              className="w-full text-right rounded-2xl p-4 flex items-center gap-3 transition-all hover:shadow-md"
+              style={{ background: '#fff', border: '1px solid #e8ecf0' }}
+            >
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[14px] flex-shrink-0"
+                style={{ background: 'linear-gradient(135deg, #533afd, #ea2261)' }}
               >
-                <div
-                  className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[14px] flex-shrink-0"
-                  style={{ background: 'linear-gradient(135deg, #533afd, #ea2261)' }}
-                >
-                  {c.businessName[0] ?? 'ע'}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[14px] font-bold truncate" style={{ color: '#061b31' }}>
-                      {c.businessName}
-                    </p>
-                    {c.unreadCourier > 0 && (
-                      <span
-                        className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] text-white font-bold flex-shrink-0"
-                        style={{ background: '#ea2261' }}
-                      >
-                        {c.unreadCourier}
-                      </span>
-                    )}
-                  </div>
-                  {c.lastMessage && (
-                    <p className="text-[12px] truncate mt-0.5" style={{ color: '#8898aa' }}>
-                      {c.lastMessage}
-                    </p>
+                {c.businessName[0] ?? 'ע'}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <p className="text-[14px] font-bold truncate" style={{ color: '#061b31' }}>{c.businessName}</p>
+                  {c.unreadCourier > 0 && (
+                    <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] text-white font-bold flex-shrink-0" style={{ background: '#ea2261' }}>
+                      {c.unreadCourier}
+                    </span>
                   )}
                 </div>
-              </button>
-            ))}
-          </div>
-        )}
+                {c.lastMessage && <p className="text-[12px] truncate mt-0.5" style={{ color: '#8898aa' }}>{c.lastMessage}</p>}
+                {c.lastMessageAt && <p className="text-[10px] mt-0.5" style={{ color: '#c0cadd' }}>{new Date(c.lastMessageAt).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>}
+              </div>
+            </button>
+          );
+          return (
+            <div className="space-y-4">
+              {recent.length > 0 && (
+                <div>
+                  <p className="text-[11px] font-bold mb-2 px-1" style={{ color: '#8898aa' }}>היום</p>
+                  <div className="space-y-2">{recent.map((c) => <ConvBtn key={c.id} c={c} />)}</div>
+                </div>
+              )}
+              {older.length > 0 && (
+                <div>
+                  <button onClick={() => setShowOlder(!showOlder)} className="text-[11px] font-bold px-1 mb-2 flex items-center gap-1" style={{ color: '#8898aa' }}>
+                    {showOlder ? '▾' : '▸'} שיחות ישנות ({older.length})
+                  </button>
+                  {showOlder && <div className="space-y-2">{older.map((c) => <ConvBtn key={c.id} c={c} />)}</div>}
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
     );
   }
@@ -361,11 +391,7 @@ const CourierChat: React.FC = () => {
         className="flex items-center gap-3 px-4 py-3"
         style={{ background: '#fff', borderBottom: '1px solid #e8ecf0' }}
       >
-        <button
-          onClick={handleBack}
-          className="text-[13px] font-semibold"
-          style={{ color: '#533afd' }}
-        >
+        <button onClick={handleBack} className="text-[13px] font-semibold" style={{ color: '#533afd' }}>
           ← חזרה
         </button>
         <div className="flex-1">
@@ -373,6 +399,13 @@ const CourierChat: React.FC = () => {
             {selectedConv?.businessName ?? 'עסק'}
           </p>
         </div>
+        <button
+          onClick={() => { const next = !muted; setMuted(next); setMutedState(next); toast.success(next ? '🔇 סאונד מושתק' : '🔊 סאונד פעיל'); }}
+          className="w-8 h-8 rounded-xl flex items-center justify-center"
+          style={{ background: '#f0f4f8', color: '#8898aa' }}
+        >
+          {muted ? <SpeakerXMarkIcon className="w-4 h-4" /> : <SpeakerWaveIcon className="w-4 h-4" />}
+        </button>
       </div>
 
       {/* Delivery context banner */}

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import type { AppDispatch } from '../../../store';
 import { logoutUser } from '../../../store/authSlice';
@@ -340,6 +340,61 @@ const BusinessProfile: React.FC = () => {
 
       {activeTab === 'info' && (
         <>
+          {/* Email notifications */}
+          <Section title="🔔 התראות מייל">
+            <div className="space-y-3">
+              {([
+                { key: 'emailOnDeliveryAdded' as keyof StoredBusiness, label: 'משלוח חדש נוצר', desc: 'קבל מייל כשנוצר משלוח חדש' },
+                { key: 'emailOnDeliveryAccepted' as keyof StoredBusiness, label: 'שליח קיבל משלוח', desc: 'כששליח מקבל את המשלוח שלך' },
+                { key: 'emailOnDeliveryPickedUp' as keyof StoredBusiness, label: 'חבילה נאספה', desc: 'כשהשליח אסף את החבילה' },
+                { key: 'emailOnDeliveryDelivered' as keyof StoredBusiness, label: 'משלוח נמסר ללקוח', desc: 'כשהמשלוח הגיע ליעד' },
+                { key: 'emailOnDeliveryCancelled' as keyof StoredBusiness, label: 'משלוח בוטל', desc: 'כשמשלוח מבוטל' },
+              ]).map(({ key, label, desc }) => (
+                <div key={key as string} className="flex items-center justify-between py-1">
+                  <div>
+                    <p className="text-[13px] font-bold" style={{ color: '#061b31' }}>{label}</p>
+                    <p className="text-[11px]" style={{ color: '#8898aa' }}>{desc}</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (!biz) return;
+                      const next = !biz[key];
+                      const updated = updateBusiness(businessId, { [key]: next } as Partial<StoredBusiness>);
+                      setBiz(updated);
+                      toast.success(next ? 'הופעל' : 'כובה');
+                    }}
+                    className="relative w-12 h-6 rounded-full transition-colors flex-shrink-0"
+                    style={{ background: biz?.[key] ? '#533afd' : '#e8ecf0' }}
+                  >
+                    <span
+                      className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"
+                      style={{ transform: biz?.[key] ? 'translateX(-26px)' : 'translateX(-2px)' }}
+                    />
+                  </button>
+                </div>
+              ))}
+              <p className="text-[10px] pt-1" style={{ color: '#c0cadd' }}>
+                * דורש הגדרת שירות מייל בהגדרות האדמין
+              </p>
+            </div>
+          </Section>
+
+          {/* Support */}
+          <Link
+            to="/business/support"
+            className="rounded-2xl p-4 flex items-center gap-3 transition-all hover:shadow-md"
+            style={{ background: '#fff', border: '1px solid #e8ecf0', display: 'flex' }}
+          >
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: '#eef2ff' }}>
+              <span className="text-[18px]">🎧</span>
+            </div>
+            <div className="flex-1">
+              <p className="text-[14px] font-black" style={{ color: '#061b31' }}>צור קשר / תמיכה</p>
+              <p className="text-[11px]" style={{ color: '#8898aa' }}>שלח הודעה לצוות התמיכה</p>
+            </div>
+            <span style={{ color: '#8898aa' }}>{'<'}</span>
+          </Link>
+
           {/* Details section */}
           <Section title="פרטי עסק">
             {!editMode ? (
