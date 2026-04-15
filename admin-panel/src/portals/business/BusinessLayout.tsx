@@ -12,6 +12,8 @@ import {
   getSupportMessages,
 } from '../../services/storage.service';
 import { supabase } from '../../lib/supabase';
+import { getConversations } from '../../services/storage.service';
+import { playNewMessage } from '../../utils/sounds';
 import {
   HomeIcon,
   PlusCircleIcon,
@@ -187,6 +189,13 @@ const BusinessLayout: React.FC = () => {
 
   const popupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ── New-message toasts ───────────────────────────────────────
+  interface MsgToast { id: string; name: string; preview: string; path: string; }
+  const [msgToasts, setMsgToasts]   = useState<MsgToast[]>([]);
+  const lastSeenAt   = useRef<Record<string, string>>({});
+  const toastSeenIds = useRef<Set<string>>(new Set());
+  const toastInitRef = useRef(false);
+
   // Clear popup after 10 seconds
   const showPopup = (p: StatusPopup) => {
     setStatusPopup(p);
@@ -300,6 +309,86 @@ const BusinessLayout: React.FC = () => {
     };
   }, []);
 
+  // ── Detect new messages and show toast ──────────────────────
+  useEffect(() => {
+    if (!businessId) return;
+
+    const check = () => {
+      const convs = getConversations().filter(c => c.businessId === businessId);
+      const sp = new URLSearchParams(location.search);
+      const activeConvId = sp.get('convId');
+      const isSupportOpen = location.pathname === '/business/chat' && sp.get('support') === '1';
+
+      // ── Regular conversations ─────────────────────────────────
+      for (const conv of convs) {
+        const at = conv.lastMessageAt;
+        if (!at) continue;
+
+        if (!toastInitRef.current) {
+          lastSeenAt.current[conv.id] = at;
+          continue;
+        }
+
+        const prev = lastSeenAt.current[conv.id];
+        if (prev && at > prev && conv.unreadBusiness > 0) {
+          const toastId = `${conv.id}__${at}`;
+          const isOpen = location.pathname === '/business/chat' && activeConvId === conv.id;
+          if (!isOpen && !toastSeenIds.current.has(toastId)) {
+            toastSeenIds.current.add(toastId);
+            playNewMessage();
+            setMsgToasts(prev => [
+              ...prev.slice(-2),
+              { id: toastId, name: conv.courierName || 'שליח', preview: conv.lastMessage || 'הודעה חדשה', path: `/business/chat?convId=${conv.id}` },
+            ]);
+          }
+        }
+        lastSeenAt.current[conv.id] = at;
+      }
+
+      // ── Support messages ──────────────────────────────────────
+      try {
+        const ticket = getOrCreateSupportTicket(businessId, 'business');
+        const msgs = getSupportMessages(ticket.id);
+        const lastAdminMsg = [...msgs].reverse().find(m => m.senderType === 'admin');
+        if (lastAdminMsg) {
+          const at = lastAdminMsg.createdAt;
+          if (!toastInitRef.current) {
+            lastSeenAt.current['__support__'] = at;
+          } else {
+            const prev = lastSeenAt.current['__support__'];
+            if (prev && at > prev && !isSupportOpen) {
+              const toastId = `support__${at}`;
+              if (!toastSeenIds.current.has(toastId)) {
+                toastSeenIds.current.add(toastId);
+                playNewMessage();
+                setMsgToasts(prev => [
+                  ...prev.slice(-2),
+                  { id: toastId, name: 'מוקד שירות', preview: lastAdminMsg.content, path: '/business/chat?support=1' },
+                ]);
+              }
+            }
+            lastSeenAt.current['__support__'] = at;
+          }
+        }
+      } catch { /* ignore */ }
+
+      toastInitRef.current = true;
+    };
+
+    check();
+    const id = setInterval(check, 3000);
+    return () => clearInterval(id);
+  }, [businessId, location.pathname, location.search]);
+
+  // ── Auto-dismiss toasts after 5 s ───────────────────────────
+  useEffect(() => {
+    if (msgToasts.length === 0) return;
+    const timers = msgToasts.map(t =>
+      setTimeout(() => setMsgToasts(p => p.filter(x => x.id !== t.id)), 5000)
+    );
+    return () => timers.forEach(clearTimeout);
+  }, [msgToasts]);
+
   const handleLogout = async () => {
     await dispatch(logoutUser());
     navigate('/login');
@@ -343,6 +432,61 @@ const BusinessLayout: React.FC = () => {
           יציאה
         </button>
       </header>
+
+      {/* ── New-message toasts ── */}
+      {msgToasts.length > 0 && (
+        <div
+          dir="rtl"
+          className="fixed top-14 left-0 right-0 z-[500] flex flex-col gap-2 px-3 pt-2 pointer-events-none"
+        >
+          {msgToasts.map((t) => (
+            <div
+              key={t.id}
+              className="pointer-events-auto flex items-center gap-3 px-3 py-2.5 rounded-2xl shadow-lg"
+              style={{
+                background: '#fff',
+                border: '1px solid #E8E8E8',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.13)',
+                animation: 'slideDownToast 0.3s ease',
+                maxWidth: 400,
+                marginLeft: 'auto',
+                marginRight: 'auto',
+              }}
+            >
+              {/* Avatar */}
+              <div
+                className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[13px] font-black flex-shrink-0"
+                style={{ background: 'linear-gradient(135deg, #009DE0, #1BA672)' }}
+              >
+                {t.name[0]}
+              </div>
+              {/* Text */}
+              <button
+                className="flex-1 min-w-0 text-right"
+                onClick={() => { navigate(t.path); setMsgToasts(p => p.filter(x => x.id !== t.id)); }}
+              >
+                <p className="text-[12px] font-black truncate" style={{ color: '#202125' }}>{t.name}</p>
+                <p className="text-[11px] truncate" style={{ color: '#757575' }}>{t.preview}</p>
+              </button>
+              {/* Close */}
+              <button
+                className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
+                style={{ background: '#F4F4F4', color: '#AAAAAA' }}
+                onClick={() => setMsgToasts(p => p.filter(x => x.id !== t.id))}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <style>{`
+        @keyframes slideDownToast {
+          from { transform: translateY(-16px); opacity: 0; }
+          to   { transform: translateY(0);    opacity: 1; }
+        }
+      `}</style>
 
       {/* ── Persistent courier-waiting banner ── */}
       {waitingDelivery && (
