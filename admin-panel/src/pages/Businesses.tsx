@@ -12,6 +12,9 @@ import {
   PencilIcon,
   TrashIcon,
   BoltIcon,
+  KeyIcon,
+  EyeIcon,
+  EyeSlashIcon,
 } from '@heroicons/react/24/outline';
 import { StarIcon as StarSolid } from '@heroicons/react/24/solid';
 import toast from 'react-hot-toast';
@@ -22,6 +25,7 @@ import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
 import * as storageService from '../services/storage.service';
 import type { StoredBusiness } from '../services/storage.service';
+import { decodePassword } from '../services/storage.service';
 import { formatCurrency } from '../utils/formatters';
 import { DEFAULT_PRICING_ZONES } from '../utils/constants';
 import { setUser, setPortalUser } from '../store/authSlice';
@@ -71,51 +75,78 @@ interface BizFormProps {
   value: BizFormState;
   onChange: (v: BizFormState) => void;
   editMode?: boolean;
+  currentPasswordHash?: string;
 }
 
-const BizForm: React.FC<BizFormProps> = ({ value, onChange, editMode }) => (
-  <div className="space-y-4" dir="rtl">
-    <div className="grid grid-cols-2 gap-3">
-      <Input label="שם העסק *" value={value.businessName} onChange={(e) => onChange({ ...value, businessName: e.target.value })} />
-      <Input label="איש קשר *" value={value.contactPerson} onChange={(e) => onChange({ ...value, contactPerson: e.target.value })} />
-    </div>
-    <div className="grid grid-cols-2 gap-3">
-      <Input label="אימייל *" type="email" dir="ltr" value={value.email} onChange={(e) => onChange({ ...value, email: e.target.value })} />
-      <Input label="טלפון *" type="tel" dir="ltr" value={value.phone} onChange={(e) => onChange({ ...value, phone: e.target.value })} />
-    </div>
-    <div className="grid grid-cols-2 gap-3">
-      <Input label="רחוב *" value={value.street} onChange={(e) => onChange({ ...value, street: e.target.value })} />
-      <Input label="עיר" value={value.city} onChange={(e) => onChange({ ...value, city: e.target.value })} />
-    </div>
-    <div className="grid grid-cols-2 gap-3">
-      <div>
-        <label className="block text-[12px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#3c4257' }}>אזור</label>
-        <select value={value.zone} onChange={(e) => onChange({ ...value, zone: e.target.value })}
-          className="w-full px-3 py-2.5 rounded-[6px] text-sm border outline-none" style={{ borderColor: '#e0e6ed', background: '#f8fafc', color: '#061b31', fontFamily: 'inherit' }}>
-          <option value="">-- בחר --</option>
-          {zones.map((z) => <option key={z} value={z}>{z}</option>)}
-        </select>
+const BizForm: React.FC<BizFormProps> = ({ value, onChange, editMode, currentPasswordHash }) => {
+  const [showPw, setShowPw] = React.useState(false);
+  const currentPw = currentPasswordHash ? decodePassword(currentPasswordHash) : '';
+  return (
+    <div className="space-y-4" dir="rtl">
+      <div className="grid grid-cols-2 gap-3">
+        <Input label="שם העסק *" value={value.businessName} onChange={(e) => onChange({ ...value, businessName: e.target.value })} />
+        <Input label="איש קשר *" value={value.contactPerson} onChange={(e) => onChange({ ...value, contactPerson: e.target.value })} />
       </div>
-      <div>
-        <label className="block text-[12px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#3c4257' }}>קטגוריה</label>
-        <select value={value.category} onChange={(e) => onChange({ ...value, category: e.target.value })}
-          className="w-full px-3 py-2.5 rounded-[6px] text-sm border outline-none" style={{ borderColor: '#e0e6ed', background: '#f8fafc', color: '#061b31', fontFamily: 'inherit' }}>
-          {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
+      <div className="grid grid-cols-2 gap-3">
+        <Input label="אימייל *" type="email" dir="ltr" value={value.email} onChange={(e) => onChange({ ...value, email: e.target.value })} />
+        <Input label="טלפון *" type="tel" dir="ltr" value={value.phone} onChange={(e) => onChange({ ...value, phone: e.target.value })} />
       </div>
-    </div>
-    <div className="grid grid-cols-2 gap-3">
-      {!editMode && (
-        <Input label="סיסמה *" type="password" dir="ltr" placeholder="••••••" value={value.password} onChange={(e) => onChange({ ...value, password: e.target.value })} />
+      <div className="grid grid-cols-2 gap-3">
+        <Input label="רחוב *" value={value.street} onChange={(e) => onChange({ ...value, street: e.target.value })} />
+        <Input label="עיר" value={value.city} onChange={(e) => onChange({ ...value, city: e.target.value })} />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-[12px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#3c4257' }}>אזור</label>
+          <select value={value.zone} onChange={(e) => onChange({ ...value, zone: e.target.value })}
+            className="w-full px-3 py-2.5 rounded-[6px] text-sm border outline-none" style={{ borderColor: '#e0e6ed', background: '#f8fafc', color: '#061b31', fontFamily: 'inherit' }}>
+            <option value="">-- בחר --</option>
+            {zones.map((z) => <option key={z} value={z}>{z}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-[12px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#3c4257' }}>קטגוריה</label>
+          <select value={value.category} onChange={(e) => onChange({ ...value, category: e.target.value })}
+            className="w-full px-3 py-2.5 rounded-[6px] text-sm border outline-none" style={{ borderColor: '#e0e6ed', background: '#f8fafc', color: '#061b31', fontFamily: 'inherit' }}>
+            {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* Password section */}
+      {editMode && currentPw && (
+        <div className="rounded-xl p-3" style={{ background: '#f0f4ff', border: '1px solid #d0d9f7' }}>
+          <p className="text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">סיסמה נוכחית</p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 text-sm font-mono text-gray-800 bg-white px-3 py-1.5 rounded-lg border border-gray-200">
+              {showPw ? currentPw : '••••••••'}
+            </code>
+            <button type="button" onClick={() => setShowPw(!showPw)} className="p-1.5 rounded-lg hover:bg-white transition-colors">
+              {showPw ? <EyeSlashIcon className="w-4 h-4 text-gray-500" /> : <EyeIcon className="w-4 h-4 text-gray-500" />}
+            </button>
+          </div>
+        </div>
       )}
-      <Input label="יתרה (₪)" type="number" dir="ltr" value={String(value.balance)} onChange={(e) => onChange({ ...value, balance: Number(e.target.value) })} />
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <Input
+            label={editMode ? 'סיסמה חדשה (ריק = ללא שינוי)' : 'סיסמה *'}
+            type="password" dir="ltr"
+            placeholder="••••••"
+            value={value.password}
+            onChange={(e) => onChange({ ...value, password: e.target.value })}
+          />
+        </div>
+        <Input label="יתרה (₪)" type="number" dir="ltr" value={String(value.balance)} onChange={(e) => onChange({ ...value, balance: Number(e.target.value) })} />
+      </div>
+      <label className="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" checked={value.isActive} onChange={(e) => onChange({ ...value, isActive: e.target.checked })} className="w-4 h-4 accent-purple-600" />
+        <span className="text-sm font-medium text-gray-700">פעיל</span>
+      </label>
     </div>
-    <label className="flex items-center gap-2 cursor-pointer">
-      <input type="checkbox" checked={value.isActive} onChange={(e) => onChange({ ...value, isActive: e.target.checked })} className="w-4 h-4 accent-purple-600" />
-      <span className="text-sm font-medium text-gray-700">פעיל</span>
-    </label>
-  </div>
-);
+  );
+};
 
 // ─── Main Page ────────────────────────────────────────────────
 const Businesses: React.FC = () => {
@@ -129,6 +160,8 @@ const Businesses: React.FC = () => {
   const [deleteModal, setDeleteModal] = useState<{ open: boolean; biz: StoredBusiness | null }>({ open: false, biz: null });
   const [blockModal, setBlockModal] = useState<{ open: boolean; biz: StoredBusiness | null }>({ open: false, biz: null });
   const [blockReason, setBlockReason] = useState('');
+  const [credModal, setCredModal] = useState<{ open: boolean; biz: StoredBusiness | null }>({ open: false, biz: null });
+  const [showCredPw, setShowCredPw] = useState(false);
 
   // Forms
   const [addForm, setAddForm] = useState<BizFormState>(emptyBizForm());
@@ -222,7 +255,7 @@ const Businesses: React.FC = () => {
     const wasInactive = !editModal.biz.isActive;
     const nowActive = editForm.isActive;
     try {
-      storageService.updateBusiness(editModal.biz.id, {
+      const updateData: Partial<StoredBusiness> = {
         businessName: editForm.businessName,
         contactPerson: editForm.contactPerson,
         email: editForm.email,
@@ -231,7 +264,11 @@ const Businesses: React.FC = () => {
         category: editForm.category,
         isActive: editForm.isActive,
         balance: editForm.balance,
-      });
+      };
+      if (editForm.password.trim()) {
+        updateData.password = storageService.hashPassword(editForm.password.trim());
+      }
+      storageService.updateBusiness(editModal.biz.id, updateData);
       // Send approval email when admin activates a previously inactive account
       if (wasInactive && nowActive) {
         sendAccountApproved(editForm.email, editForm.businessName).catch(() => {});
@@ -414,35 +451,29 @@ const Businesses: React.FC = () => {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1 flex-wrap">
+                      {/* Credentials */}
+                      <button title="פרטי גישה" onClick={() => { setShowCredPw(false); setCredModal({ open: true, biz }); }}
+                        className="p-1.5 rounded-lg text-xs font-medium transition-colors bg-amber-50 text-amber-700 hover:bg-amber-100">
+                        <KeyIcon className="w-3.5 h-3.5" />
+                      </button>
                       {/* Quick Login */}
-                      <button
-                        title="כניסה מהירה"
-                        onClick={() => handleQuickLogin(biz)}
-                        className="p-1.5 rounded-lg text-xs font-medium transition-colors bg-purple-50 text-purple-700 hover:bg-purple-100"
-                      >
+                      <button title="כניסה מהירה" onClick={() => handleQuickLogin(biz)}
+                        className="p-1.5 rounded-lg text-xs font-medium transition-colors bg-purple-50 text-purple-700 hover:bg-purple-100">
                         <BoltIcon className="w-3.5 h-3.5" />
                       </button>
                       {/* Edit */}
-                      <button
-                        title="עריכה"
-                        onClick={() => openEdit(biz)}
-                        className="p-1.5 rounded-lg text-xs font-medium transition-colors bg-blue-50 text-blue-700 hover:bg-blue-100"
-                      >
+                      <button title="עריכה" onClick={() => openEdit(biz)}
+                        className="p-1.5 rounded-lg text-xs font-medium transition-colors bg-blue-50 text-blue-700 hover:bg-blue-100">
                         <PencilIcon className="w-3.5 h-3.5" />
                       </button>
                       {/* Block/Unblock */}
-                      <button
-                        onClick={() => biz.isBlocked ? handleUnblock(biz) : setBlockModal({ open: true, biz })}
-                        className={`p-1.5 rounded-lg text-xs font-medium transition-colors ${biz.isBlocked ? 'bg-green-50 text-green-700 hover:bg-green-100' : 'bg-red-50 text-red-700 hover:bg-red-100'}`}
-                      >
+                      <button onClick={() => biz.isBlocked ? handleUnblock(biz) : setBlockModal({ open: true, biz })}
+                        className={`p-1.5 rounded-lg text-xs font-medium transition-colors ${biz.isBlocked ? 'bg-green-50 text-green-700 hover:bg-green-100' : 'bg-red-50 text-red-700 hover:bg-red-100'}`}>
                         {biz.isBlocked ? <CheckCircleIcon className="w-3.5 h-3.5" /> : <NoSymbolIcon className="w-3.5 h-3.5" />}
                       </button>
                       {/* Delete */}
-                      <button
-                        title="מחיקה"
-                        onClick={() => setDeleteModal({ open: true, biz })}
-                        className="p-1.5 rounded-lg text-xs font-medium transition-colors bg-gray-50 text-gray-600 hover:bg-red-50 hover:text-red-700"
-                      >
+                      <button title="מחיקה" onClick={() => setDeleteModal({ open: true, biz })}
+                        className="p-1.5 rounded-lg text-xs font-medium transition-colors bg-gray-50 text-gray-600 hover:bg-red-50 hover:text-red-700">
                         <TrashIcon className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -530,7 +561,7 @@ const Businesses: React.FC = () => {
         }
       >
         <form onSubmit={handleEdit}>
-          <BizForm value={editForm} onChange={setEditForm} editMode />
+          <BizForm value={editForm} onChange={setEditForm} editMode currentPasswordHash={editModal.biz?.password} />
         </form>
       </Modal>
 
@@ -544,6 +575,31 @@ const Businesses: React.FC = () => {
         }
       >
         <p className="text-sm text-gray-600">האם אתה בטוח שברצונך למחוק את העסק <strong>{deleteModal.biz?.businessName}</strong>? פעולה זו אינה ניתנת לביטול.</p>
+      </Modal>
+
+      {/* ── CREDENTIALS MODAL ── */}
+      <Modal isOpen={credModal.open} onClose={() => setCredModal({ open: false, biz: null })} title={`פרטי גישה — ${credModal.biz?.businessName}`} size="sm">
+        {credModal.biz && (
+          <div className="space-y-4 text-right" dir="rtl">
+            <div className="rounded-xl p-4" style={{ background: '#f8fafc', border: '1px solid #e8ecf0' }}>
+              <p className="text-[11px] font-semibold text-gray-400 mb-1 uppercase tracking-wide">אימייל</p>
+              <p className="font-mono text-sm text-gray-800 select-all">{credModal.biz.email}</p>
+            </div>
+            <div className="rounded-xl p-4" style={{ background: '#f8fafc', border: '1px solid #e8ecf0' }}>
+              <p className="text-[11px] font-semibold text-gray-400 mb-2 uppercase tracking-wide">סיסמה</p>
+              <div className="flex items-center gap-2">
+                <p className="font-mono text-sm text-gray-800 flex-1 select-all">
+                  {showCredPw ? decodePassword(credModal.biz.password) : '••••••••••'}
+                </p>
+                <button type="button" onClick={() => setShowCredPw(!showCredPw)}
+                  className="p-1.5 rounded-lg hover:bg-gray-200 transition-colors flex-shrink-0">
+                  {showCredPw ? <EyeSlashIcon className="w-4 h-4 text-gray-500" /> : <EyeIcon className="w-4 h-4 text-gray-500" />}
+                </button>
+              </div>
+            </div>
+            <p className="text-[11px] text-gray-400 text-center">לשינוי פרטים — לחץ על כפתור העריכה ✏️</p>
+          </div>
+        )}
       </Modal>
 
       {/* ── BLOCK MODAL ── */}

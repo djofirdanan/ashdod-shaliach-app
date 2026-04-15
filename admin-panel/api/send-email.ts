@@ -1,22 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import nodemailer from 'nodemailer';
 
-// SMTP config for ashdodindex.co.il
-const transporter = nodemailer.createTransport({
-  host: 'mail.ashdodindex.co.il',
-  port: 465,
-  secure: true, // SSL
-  auth: {
-    user: 'delivers@ashdodindex.co.il',
-    pass: '339529Aa!@',
-  },
-  tls: {
-    rejectUnauthorized: false,
-  },
-});
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -35,21 +20,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'Missing required fields: to, subject' });
   }
 
+  // Create transporter fresh per request (avoid connection timeout issues)
+  const transporter = nodemailer.createTransport({
+    host: 'mail.ashdodindex.co.il',
+    port: 465,
+    secure: true,
+    auth: {
+      user: 'delivers@ashdodindex.co.il',
+      pass: '339529Aa!@',
+    },
+    tls: {
+      rejectUnauthorized: false,
+    },
+    connectionTimeout: 8000,
+    socketTimeout: 8000,
+  });
+
   try {
     const info = await transporter.sendMail({
-      from: '"אשדוד-שליח" <delivers@ashdodindex.co.il>',
+      from: '"אשדוד-שליח 🚀" <delivers@ashdodindex.co.il>',
       to,
       subject,
-      html: html || text || '',
+      html: html || `<p>${text || ''}</p>`,
       text: text || '',
     });
 
+    console.log('[email] sent:', info.messageId, '→', to);
     return res.status(200).json({ success: true, messageId: info.messageId });
   } catch (err) {
-    console.error('Email error:', err);
+    console.error('[email] error:', err);
     return res.status(500).json({
       error: 'Failed to send email',
-      details: err instanceof Error ? err.message : 'Unknown error',
+      details: err instanceof Error ? err.message : String(err),
     });
   }
 }

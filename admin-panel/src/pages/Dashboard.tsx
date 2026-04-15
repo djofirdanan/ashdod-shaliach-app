@@ -15,6 +15,8 @@ import { Skeleton, TableSkeleton } from '../components/ui/LoadingSkeleton';
 import type { DailyRevenueData, HourlyDeliveryData } from '../types';
 import { formatCurrency } from '../utils/formatters';
 import * as storageService from '../services/storage.service';
+import { addDeliveryNotification } from '../services/storage.service';
+import toast from 'react-hot-toast';
 import clsx from 'clsx';
 
 interface DashboardStats {
@@ -224,23 +226,40 @@ const Dashboard: React.FC = () => {
             <p className="text-[13px] mb-4" style={{ color: 'rgba(255,255,255,0.55)' }}>
               הנה סיכום הפעילות של היום — הכל תחת שליטה
             </p>
-            <button
-              onClick={handleRefresh}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-[6px] text-[13px] font-semibold text-white transition-all"
-              style={{
-                background: 'rgba(255,255,255,0.12)',
-                border: '1px solid rgba(255,255,255,0.18)',
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.18)';
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.12)';
-              }}
-            >
-              <ArrowPathIcon className={clsx('w-3.5 h-3.5', isRefreshing && 'animate-spin')} />
-              עדכן נתונים
-            </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={handleRefresh}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-[6px] text-[13px] font-semibold text-white transition-all"
+                style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.18)' }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.18)'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.12)'; }}
+              >
+                <ArrowPathIcon className={clsx('w-3.5 h-3.5', isRefreshing && 'animate-spin')} />
+                עדכן נתונים
+              </button>
+              {/* Test button — sends a sample delivery notification */}
+              <button
+                onClick={() => {
+                  const businesses = storageService.getBusinesses();
+                  const biz = businesses[0];
+                  addDeliveryNotification({
+                    businessId: biz?.id || 'test',
+                    businessName: biz?.businessName || 'פיצה רומא',
+                    pickupAddress: `${biz?.address?.street || 'רוטשילד 12'}, ${biz?.address?.city || 'אשדוד'}`,
+                    dropAddress: 'הרצל 45, אשדוד',
+                    description: 'פיצה ושתייה × 2 — שימו לב לכניסה האחורית',
+                    price: 35,
+                  });
+                  toast.success('📦 התראת משלוח נשלחה לכל השליחים!');
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-[6px] text-[13px] font-bold text-white transition-all"
+                style={{ background: 'rgba(234,34,97,0.35)', border: '1px solid rgba(234,34,97,0.5)' }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(234,34,97,0.5)'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(234,34,97,0.35)'; }}
+              >
+                🧪 בדיקה: שלח התראת משלוח
+              </button>
+            </div>
           </div>
 
           {/* Clock */}

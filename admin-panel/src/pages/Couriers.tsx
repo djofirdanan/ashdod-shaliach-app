@@ -12,6 +12,9 @@ import {
   PencilIcon,
   TrashIcon,
   BoltIcon,
+  KeyIcon,
+  EyeIcon,
+  EyeSlashIcon,
 } from '@heroicons/react/24/outline';
 import { StarIcon as StarSolid } from '@heroicons/react/24/solid';
 import toast from 'react-hot-toast';
@@ -28,6 +31,7 @@ import type { VehicleType } from '../types';
 import { setUser, setPortalUser } from '../store/authSlice';
 import { sendAccountApproved } from '../services/email.service';
 import type { RootState } from '../store';
+import { decodePassword } from '../services/storage.service';
 
 const vehicleLabels: Record<VehicleType, string> = {
   motorcycle: VEHICLE_TYPE_LABELS.motorcycle,
@@ -65,39 +69,68 @@ interface CourFormProps {
   editMode?: boolean;
 }
 
-const CourForm: React.FC<CourFormProps> = ({ value, onChange, editMode }) => (
-  <div className="space-y-4" dir="rtl">
-    <Input label="שם מלא *" value={value.name} onChange={(e) => onChange({ ...value, name: e.target.value })} />
-    <div className="grid grid-cols-2 gap-3">
-      <Input label="אימייל *" type="email" dir="ltr" value={value.email} onChange={(e) => onChange({ ...value, email: e.target.value })} />
-      <Input label="טלפון *" type="tel" dir="ltr" value={value.phone} onChange={(e) => onChange({ ...value, phone: e.target.value })} />
-    </div>
-    <div className="grid grid-cols-2 gap-3">
-      <div>
-        <label className="block text-[12px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#3c4257' }}>סוג רכב</label>
-        <select value={value.vehicle}
-          onChange={(e) => onChange({ ...value, vehicle: e.target.value as typeof value.vehicle })}
-          className="w-full px-3 py-2.5 rounded-[6px] text-sm border outline-none"
-          style={{ borderColor: '#e0e6ed', background: '#f8fafc', color: '#061b31', fontFamily: 'inherit' }}>
-          <option value="motorcycle">אופנוע</option>
-          <option value="bicycle">אופניים</option>
-          <option value="car">רכב</option>
-          <option value="scooter">קטנוע</option>
-        </select>
+interface CourFormProps {
+  value: CourFormState;
+  onChange: (v: CourFormState) => void;
+  editMode?: boolean;
+  currentPasswordHash?: string;
+}
+
+const CourForm: React.FC<CourFormProps> = ({ value, onChange, editMode, currentPasswordHash }) => {
+  const [showPw, setShowPw] = React.useState(false);
+  const currentPw = currentPasswordHash ? decodePassword(currentPasswordHash) : '';
+  return (
+    <div className="space-y-4" dir="rtl">
+      <Input label="שם מלא *" value={value.name} onChange={(e) => onChange({ ...value, name: e.target.value })} />
+      <div className="grid grid-cols-2 gap-3">
+        <Input label="אימייל *" type="email" dir="ltr" value={value.email} onChange={(e) => onChange({ ...value, email: e.target.value })} />
+        <Input label="טלפון *" type="tel" dir="ltr" value={value.phone} onChange={(e) => onChange({ ...value, phone: e.target.value })} />
       </div>
-      {value.vehicle !== 'bicycle' && (
-        <Input label="לוחית רישוי" dir="ltr" placeholder="12-345-67" value={value.vehiclePlate} onChange={(e) => onChange({ ...value, vehiclePlate: e.target.value })} />
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-[12px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#3c4257' }}>סוג רכב</label>
+          <select value={value.vehicle}
+            onChange={(e) => onChange({ ...value, vehicle: e.target.value as typeof value.vehicle })}
+            className="w-full px-3 py-2.5 rounded-[6px] text-sm border outline-none"
+            style={{ borderColor: '#e0e6ed', background: '#f8fafc', color: '#061b31', fontFamily: 'inherit' }}>
+            <option value="motorcycle">אופנוע</option>
+            <option value="bicycle">אופניים</option>
+            <option value="car">רכב</option>
+            <option value="scooter">קטנוע</option>
+          </select>
+        </div>
+        {value.vehicle !== 'bicycle' && (
+          <Input label="לוחית רישוי" dir="ltr" placeholder="12-345-67" value={value.vehiclePlate} onChange={(e) => onChange({ ...value, vehiclePlate: e.target.value })} />
+        )}
+      </div>
+
+      {editMode && currentPw && (
+        <div className="rounded-xl p-3" style={{ background: '#f0f4ff', border: '1px solid #d0d9f7' }}>
+          <p className="text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wide">סיסמה נוכחית</p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 text-sm font-mono text-gray-800 bg-white px-3 py-1.5 rounded-lg border border-gray-200">
+              {showPw ? currentPw : '••••••••'}
+            </code>
+            <button type="button" onClick={() => setShowPw(!showPw)} className="p-1.5 rounded-lg hover:bg-white transition-colors">
+              {showPw ? <EyeSlashIcon className="w-4 h-4 text-gray-500" /> : <EyeIcon className="w-4 h-4 text-gray-500" />}
+            </button>
+          </div>
+        </div>
       )}
+
+      <Input
+        label={editMode ? 'סיסמה חדשה (ריק = ללא שינוי)' : 'סיסמה *'}
+        type="password" dir="ltr" placeholder="••••••"
+        value={value.password}
+        onChange={(e) => onChange({ ...value, password: e.target.value })}
+      />
+      <label className="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" checked={value.isActive} onChange={(e) => onChange({ ...value, isActive: e.target.checked })} className="w-4 h-4 accent-purple-600" />
+        <span className="text-sm font-medium text-gray-700">פעיל</span>
+      </label>
     </div>
-    {!editMode && (
-      <Input label="סיסמה *" type="password" dir="ltr" placeholder="••••••" value={value.password} onChange={(e) => onChange({ ...value, password: e.target.value })} />
-    )}
-    <label className="flex items-center gap-2 cursor-pointer">
-      <input type="checkbox" checked={value.isActive} onChange={(e) => onChange({ ...value, isActive: e.target.checked })} className="w-4 h-4 accent-purple-600" />
-      <span className="text-sm font-medium text-gray-700">פעיל</span>
-    </label>
-  </div>
-);
+  );
+};
 
 // ─── Main Page ────────────────────────────────────────────────
 const Couriers: React.FC = () => {
@@ -112,6 +145,8 @@ const Couriers: React.FC = () => {
   const [blockModal, setBlockModal] = useState<{ open: boolean; courier: StoredCourier | null }>({ open: false, courier: null });
   const [blockReason, setBlockReason] = useState('');
   const [detailModal, setDetailModal] = useState<{ open: boolean; courier: StoredCourier | null }>({ open: false, courier: null });
+  const [credModal, setCredModal] = useState<{ open: boolean; courier: StoredCourier | null }>({ open: false, courier: null });
+  const [showCredPw, setShowCredPw] = useState(false);
 
   // Forms
   const [addForm, setAddForm] = useState<CourFormState>(emptyCourForm());
@@ -198,14 +233,18 @@ const Couriers: React.FC = () => {
     const wasInactive = !editModal.courier.isActive;
     const nowActive = editForm.isActive;
     try {
-      storageService.updateCourier(editModal.courier.id, {
+      const updateData: Partial<StoredCourier> = {
         name: editForm.name,
         email: editForm.email,
         phone: editForm.phone,
         vehicle: editForm.vehicle,
         vehiclePlate: editForm.vehicle !== 'bicycle' ? editForm.vehiclePlate || undefined : undefined,
         isActive: editForm.isActive,
-      });
+      };
+      if (editForm.password.trim()) {
+        updateData.password = storageService.hashPassword(editForm.password.trim());
+      }
+      storageService.updateCourier(editModal.courier.id, updateData);
       // Send approval email when admin activates a previously inactive courier
       if (wasInactive && nowActive) {
         sendAccountApproved(editForm.email, editForm.name).catch(() => {});
@@ -394,6 +433,10 @@ const Couriers: React.FC = () => {
                   </td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-1">
+                      <button title="פרטי גישה" onClick={() => { setShowCredPw(false); setCredModal({ open: true, courier }); }}
+                        className="p-1.5 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100">
+                        <KeyIcon className="w-3.5 h-3.5" />
+                      </button>
                       <button title="כניסה מהירה" onClick={() => handleQuickLogin(courier)}
                         className="p-1.5 rounded-lg bg-purple-50 text-purple-700 hover:bg-purple-100">
                         <BoltIcon className="w-3.5 h-3.5" />
@@ -489,7 +532,7 @@ const Couriers: React.FC = () => {
           </>
         }
       >
-        <form onSubmit={handleEdit}><CourForm value={editForm} onChange={setEditForm} editMode /></form>
+        <form onSubmit={handleEdit}><CourForm value={editForm} onChange={setEditForm} editMode currentPasswordHash={editModal.courier?.password} /></form>
       </Modal>
 
       {/* ── DETAIL MODAL ── */}
@@ -534,6 +577,31 @@ const Couriers: React.FC = () => {
                 ))}
               </div>
             </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ── CREDENTIALS MODAL ── */}
+      <Modal isOpen={credModal.open} onClose={() => setCredModal({ open: false, courier: null })} title={`פרטי גישה — ${credModal.courier?.name}`} size="sm">
+        {credModal.courier && (
+          <div className="space-y-4 text-right" dir="rtl">
+            <div className="rounded-xl p-4" style={{ background: '#f8fafc', border: '1px solid #e8ecf0' }}>
+              <p className="text-[11px] font-semibold text-gray-400 mb-1 uppercase tracking-wide">אימייל</p>
+              <p className="font-mono text-sm text-gray-800 select-all">{credModal.courier.email}</p>
+            </div>
+            <div className="rounded-xl p-4" style={{ background: '#f8fafc', border: '1px solid #e8ecf0' }}>
+              <p className="text-[11px] font-semibold text-gray-400 mb-2 uppercase tracking-wide">סיסמה</p>
+              <div className="flex items-center gap-2">
+                <p className="font-mono text-sm text-gray-800 flex-1 select-all">
+                  {showCredPw ? decodePassword(credModal.courier.password) : '••••••••••'}
+                </p>
+                <button type="button" onClick={() => setShowCredPw(!showCredPw)}
+                  className="p-1.5 rounded-lg hover:bg-gray-200 transition-colors flex-shrink-0">
+                  {showCredPw ? <EyeSlashIcon className="w-4 h-4 text-gray-500" /> : <EyeIcon className="w-4 h-4 text-gray-500" />}
+                </button>
+              </div>
+            </div>
+            <p className="text-[11px] text-gray-400 text-center">לשינוי פרטים — לחץ על כפתור העריכה ✏️</p>
           </div>
         )}
       </Modal>

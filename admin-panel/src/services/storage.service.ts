@@ -94,11 +94,77 @@ function uid(): string {
 
 // ─── Password ────────────────────────────────────────────────
 export function hashPassword(pw: string): string {
-  return btoa(pw + '_ash_salt');
+  return btoa(unescape(encodeURIComponent(pw + '_ash_salt')));
+}
+
+export function decodePassword(hash: string): string {
+  try {
+    return decodeURIComponent(escape(atob(hash))).replace('_ash_salt', '');
+  } catch {
+    return '••••••';
+  }
 }
 
 export function verifyPassword(pw: string, hash: string): boolean {
   return hashPassword(pw) === hash;
+}
+
+// ─── Delivery Notifications ───────────────────────────────────
+export interface DeliveryNotification {
+  id: string;
+  businessId: string;
+  businessName: string;
+  pickupAddress: string;
+  dropAddress: string;
+  description?: string;
+  price?: number;
+  createdAt: string;
+  dismissedBy: string[]; // courier IDs
+  takenBy?: string;      // courier ID who accepted
+}
+
+const NOTIF_KEY = 'app_delivery_notifications';
+
+export function addDeliveryNotification(
+  data: Omit<DeliveryNotification, 'id' | 'createdAt' | 'dismissedBy'>
+): DeliveryNotification {
+  const list = read<DeliveryNotification>(NOTIF_KEY);
+  const record: DeliveryNotification = {
+    ...data,
+    id: uid(),
+    createdAt: new Date().toISOString(),
+    dismissedBy: [],
+  };
+  write(NOTIF_KEY, [...list, record]);
+  // Trigger cross-tab storage event
+  localStorage.setItem('app_notif_ping', record.createdAt);
+  return record;
+}
+
+export function getPendingNotifications(courierId: string): DeliveryNotification[] {
+  const list = read<DeliveryNotification>(NOTIF_KEY);
+  const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString(); // 10 min
+  return list.filter(
+    (n) => !n.dismissedBy.includes(courierId) && !n.takenBy && n.createdAt > cutoff
+  );
+}
+
+export function dismissNotification(notifId: string, courierId: string): void {
+  const list = read<DeliveryNotification>(NOTIF_KEY);
+  const idx = list.findIndex((n) => n.id === notifId);
+  if (idx !== -1) {
+    list[idx] = { ...list[idx], dismissedBy: [...list[idx].dismissedBy, courierId] };
+    write(NOTIF_KEY, list);
+  }
+}
+
+export function acceptNotification(notifId: string, courierId: string): void {
+  const list = read<DeliveryNotification>(NOTIF_KEY);
+  const idx = list.findIndex((n) => n.id === notifId);
+  if (idx !== -1) {
+    list[idx] = { ...list[idx], takenBy: courierId };
+    write(NOTIF_KEY, list);
+  }
 }
 
 // ─── Businesses ──────────────────────────────────────────────

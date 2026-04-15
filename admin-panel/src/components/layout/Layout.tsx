@@ -10,6 +10,7 @@ import {
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import * as storageService from '../../services/storage.service';
+import { DeliveryNotificationOverlay } from '../DeliveryNotificationOverlay';
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'לוח בקרה',
@@ -95,6 +96,9 @@ export const Layout: React.FC = () => {
         <main className="flex-1 overflow-y-auto p-3 md:p-6 pb-20 md:pb-6" style={{ background: '#F0F4FF' }}>
           <Outlet />
         </main>
+
+        {/* Delivery notification overlay (shows only for couriers) */}
+        <DeliveryNotificationOverlay />
 
         {/* Mobile bottom navigation */}
         <nav
