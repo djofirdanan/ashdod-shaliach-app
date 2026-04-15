@@ -75,7 +75,7 @@ export const Header: React.FC<HeaderProps> = ({
         {onMenuToggle && (
           <button
             onClick={onMenuToggle}
-            className="p-2 rounded-[6px] transition-colors lg:hidden"
+            className="p-2 rounded-[6px] transition-colors md:hidden"
             style={{ color: '#6b7c93' }}
             onMouseEnter={(e) => {
               (e.currentTarget as HTMLButtonElement).style.background = 'rgba(83,58,253,0.06)';

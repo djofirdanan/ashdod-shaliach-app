@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { loginUser } from '../store/authSlice';
+import { syncDown } from '../services/sync.service';
 import {
   TruckIcon,
   BuildingStorefrontIcon,
@@ -167,11 +168,18 @@ const Login: React.FC = () => {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showBanner, setShowBanner] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   // Show banner only in browser (not in native app shell)
   useEffect(() => {
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
     if (!isStandalone) setShowBanner(true);
+  }, []);
+
+  // On load: silently sync businesses & couriers from Supabase so cross-device login works
+  useEffect(() => {
+    setSyncing(true);
+    syncDown().finally(() => setSyncing(false));
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -182,6 +190,11 @@ const Login: React.FC = () => {
     }
     setIsLoading(true);
     try {
+      // If syncDown() is still running, wait briefly for it to finish
+      if (syncing) {
+        await syncDown();
+        setSyncing(false);
+      }
       const result = await login(email, password);
       if (loginUser.fulfilled.match(result)) {
         toast.success('ברוך הבא!');

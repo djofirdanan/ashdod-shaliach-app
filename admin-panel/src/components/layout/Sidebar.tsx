@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
@@ -16,10 +16,12 @@ import {
   ArrowRightOnRectangleIcon,
   ChatBubbleLeftRightIcon,
   LifebuoyIcon,
+  ArrowPathIcon,
 } from '@heroicons/react/24/outline';
 import clsx from 'clsx';
 import { useAuth } from '../../hooks/useAuth';
 import * as storageService from '../../services/storage.service';
+import { clearCacheAndResync } from '../../services/sync.service';
 import { setUser, setPortalUser } from '../../store/authSlice';
 import type { RootState } from '../../store';
 
@@ -84,6 +86,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, mobileOpe
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const dispatch = useDispatch();
+  const [clearingCache, setClearingCache] = useState(false);
+
+  const handleClearCache = async () => {
+    setClearingCache(true);
+    try {
+      await clearCacheAndResync();
+      setTimeout(() => window.location.reload(), 400);
+    } catch {
+      setClearingCache(false);
+    }
+  };
   const chatUnread = useChatUnread();
   const pendingApproval = usePendingApproval();
   const currentPortalUser = useSelector((state: RootState) => state.auth.currentPortalUser);
@@ -309,6 +322,50 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, mobileOpe
             ))}
           </ul>
         </nav>
+
+        {/* Cache clear button */}
+        <div className={clsx('mx-3 mb-2', collapsed && 'flex justify-center')}>
+          <button
+            onClick={handleClearCache}
+            disabled={clearingCache}
+            title="נקה קאש ורענן"
+            className={clsx(
+              'flex items-center gap-2.5 rounded-[6px] transition-all duration-150 group relative w-full disabled:opacity-60',
+              collapsed ? 'p-2.5 justify-center' : 'px-3 py-2.5'
+            )}
+            style={{ color: 'rgba(255,255,255,0.45)' }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.06)';
+              (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.85)';
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.background = '';
+              (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.45)';
+            }}
+          >
+            <span className="flex-shrink-0 w-[18px] h-[18px]">
+              <ArrowPathIcon className={clsx('w-[18px] h-[18px]', clearingCache && 'animate-spin')} />
+            </span>
+            {!collapsed && (
+              <span className="text-[13.5px] font-medium whitespace-nowrap leading-none">
+                {clearingCache ? 'מרענן...' : 'נקה קאש'}
+              </span>
+            )}
+            {/* Collapsed tooltip */}
+            {collapsed && (
+              <div
+                className="absolute left-full ml-3 px-3 py-1.5 text-white text-xs rounded-[6px] opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50"
+                style={{
+                  background: '#1c1e54',
+                  boxShadow: '0 7px 14px 0 rgba(50,50,93,0.10), 0 3px 6px 0 rgba(0,0,0,0.07)',
+                  border: '1px solid rgba(83,58,253,0.25)',
+                }}
+              >
+                נקה קאש
+              </div>
+            )}
+          </button>
+        </div>
 
         {/* Live indicator */}
         {!collapsed && (

@@ -3,7 +3,7 @@ import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import type { RootState, AppDispatch } from '../../store';
 import { logoutUser } from '../../store/authSlice';
-import { getPendingNotifications, getCourier, updateCourier, updateCourierLocation, getDeliveriesByCourier, getDeliveries, getOrCreateConversation, updateDelivery } from '../../services/storage.service';
+import { getPendingNotifications, getCourier, updateCourier, updateCourierLocation, getDeliveriesByCourier, getDeliveries, getOrCreateConversation, updateDelivery, getUnreadCount, getOrCreateSupportTicket, getSupportMessages } from '../../services/storage.service';
 import { pingCandidateHeartbeat, getCandidacyStatus, withdrawFromQueue } from '../../services/sync.service';
 import { DeliveryNotificationOverlay } from '../../components/DeliveryNotificationOverlay';
 import {
@@ -34,6 +34,7 @@ const CourierLayout: React.FC = () => {
   const courierId = token.startsWith('courier-') ? token.replace('courier-', '') : '';
 
   const [pendingCount,      setPendingCount]      = useState(0);
+  const [chatUnread,        setChatUnread]        = useState(0);
   const [isAvailable,       setIsAvailable]       = useState(true);
   const [showAvailConfirm,  setShowAvailConfirm]  = useState(false);
   const [courierName,       setCourierName]       = useState('');
@@ -52,7 +53,18 @@ const CourierLayout: React.FC = () => {
 
   useEffect(() => {
     const refresh = () => {
-      if (courierId) setPendingCount(getPendingNotifications(courierId).length);
+      if (!courierId) return;
+      setPendingCount(getPendingNotifications(courierId).length);
+      const convUnread = getUnreadCount(courierId, 'courier');
+      try {
+        const t = getOrCreateSupportTicket(courierId, 'courier');
+        const msgs = getSupportMessages(t.id);
+        const lastRead = localStorage.getItem(`support_last_read_${courierId}`) ?? '2000-01-01T00:00:00.000Z';
+        const supportUnread = msgs.filter(m => m.senderType === 'admin' && m.createdAt > lastRead).length;
+        setChatUnread(convUnread + supportUnread);
+      } catch {
+        setChatUnread(convUnread);
+      }
     };
     refresh();
     refreshAvailability();
@@ -166,7 +178,7 @@ const CourierLayout: React.FC = () => {
     { label: 'ראשי',     path: '/courier/dashboard',  icon: HomeIcon,                iconSolid: HomeIconSolid,  badge: 0 },
     { label: 'פנויים',   path: '/courier/available',  icon: BellIcon,               iconSolid: BellIconSolid,  badge: pendingCount },
     { label: 'משלוחים', path: '/courier/deliveries', icon: TruckIcon,              iconSolid: TruckIconSolid, badge: 0 },
-    { label: 'צ׳אט',    path: '/courier/chat',       icon: ChatBubbleLeftRightIcon, iconSolid: ChatIconSolid,  badge: 0 },
+    { label: 'צ׳אט',    path: '/courier/chat',       icon: ChatBubbleLeftRightIcon, iconSolid: ChatIconSolid,  badge: chatUnread },
     { label: 'פרופיל',  path: '/courier/profile',    icon: UserCircleIcon,         iconSolid: UserIconSolid,  badge: 0 },
   ];
 

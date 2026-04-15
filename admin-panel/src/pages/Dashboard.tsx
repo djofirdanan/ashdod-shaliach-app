@@ -459,7 +459,7 @@ const Dashboard: React.FC = () => {
           onClick={e => { if (e.target === e.currentTarget) setShowTestModal(false); }}
         >
           <div
-            className="w-full max-w-md rounded-2xl p-6 space-y-4"
+            className="w-full max-w-md rounded-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto"
             style={{ background: '#fff', boxShadow: '0 24px 60px rgba(0,0,0,0.2)' }}
             dir="rtl"
           >

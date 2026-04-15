@@ -195,16 +195,18 @@ const Pricing: React.FC = () => {
             {zones.length} אזורי משלוח מוגדרים
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
           {hasUnsaved && (
             <>
               <Button
+                size="sm"
                 variant="secondary"
                 onClick={handleCancelAll}
               >
-                בטל שינויים
+                בטל
               </Button>
               <Button
+                size="sm"
                 variant="primary"
                 leftIcon={
                   saving
@@ -219,6 +221,7 @@ const Pricing: React.FC = () => {
             </>
           )}
           <Button
+            size="sm"
             variant="secondary"
             leftIcon={<PlusIcon className="w-4 h-4" />}
             onClick={() => setShowAddModal(true)}
@@ -265,10 +268,11 @@ const Pricing: React.FC = () => {
         </div>
       )}
 
-      {/* Table */}
+      {/* Table / Cards */}
       {zones.length > 0 && (
         <Card padding="none">
-          <div className="overflow-x-auto">
+          {/* Desktop Table */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 dark:border-gray-700">
@@ -340,7 +344,6 @@ const Pricing: React.FC = () => {
                         ₪{platformAmount}
                       </td>
                       <td className="px-4 py-3">
-                        {/* vehicleOnly: flag via description or zone name */}
                         {(zone.description?.includes('רכב') || zone.name?.includes('רכב')) && (
                           <Badge color="yellow">רכב בלבד</Badge>
                         )}
@@ -378,6 +381,93 @@ const Pricing: React.FC = () => {
                 })}
               </tbody>
             </table>
+          </div>
+
+          {/* Mobile Cards */}
+          <div className="md:hidden divide-y divide-gray-100 dark:divide-gray-700">
+            {zones.map((zone, index) => {
+              const displayPrice = getDisplayPrice(zone);
+              const courierAmount = Math.round((displayPrice * zone.courierShare) / 100);
+              const platformAmount = displayPrice - courierAmount;
+              const isEditing = editingId === zone.id;
+              const hasLocalChange = zone.id in editValues && editValues[zone.id] !== String(zone.basePrice);
+
+              return (
+                <div key={zone.id} className="p-4 space-y-3">
+                  {/* Zone name + index */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-400 font-medium w-5">{index + 1}</span>
+                      <span className="font-semibold text-gray-900 dark:text-white text-[14px]">{zone.name}</span>
+                      {hasLocalChange && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">
+                          לא שמור
+                        </span>
+                      )}
+                      {(zone.description?.includes('רכב') || zone.name?.includes('רכב')) && (
+                        <Badge color="yellow">רכב בלבד</Badge>
+                      )}
+                    </div>
+                    {/* Edit/Save/Cancel */}
+                    {isEditing ? (
+                      <div className="flex items-center gap-1.5">
+                        <button onClick={() => commitEdit(zone.id)}
+                          className="p-1.5 rounded-lg bg-green-50 text-green-600">
+                          <CheckIcon className="w-4 h-4" />
+                        </button>
+                        <button onClick={cancelEdit}
+                          className="p-1.5 rounded-lg bg-gray-50 text-gray-500">
+                          <XMarkIcon className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <button onClick={() => startEdit(zone)}
+                        className="p-1.5 rounded-lg bg-gray-50 text-gray-500">
+                        <PencilIcon className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Price row */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="rounded-xl p-2.5 text-center" style={{ background: '#f8fafc', border: '1px solid #e8ecf0' }}>
+                      <p className="text-[10px] text-gray-400 mb-1">מחיר ללקוח</p>
+                      {isEditing ? (
+                        <div className="flex items-center justify-center gap-1">
+                          <span className="text-[11px] text-gray-400">₪</span>
+                          <input
+                            type="number"
+                            value={editValues[zone.id] ?? String(zone.basePrice)}
+                            onChange={(e) => setEditValues((prev) => ({ ...prev, [zone.id]: e.target.value }))}
+                            className="w-14 px-1.5 py-1 border border-primary rounded-lg text-sm text-center bg-white focus:outline-none"
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') commitEdit(zone.id);
+                              if (e.key === 'Escape') cancelEdit();
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => startEdit(zone)}
+                          className={`font-bold text-[15px] ${getPriceColor(displayPrice)}`}
+                        >
+                          ₪{displayPrice}
+                        </button>
+                      )}
+                    </div>
+                    <div className="rounded-xl p-2.5 text-center" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+                      <p className="text-[10px] text-gray-400 mb-1">שליח</p>
+                      <p className="font-bold text-[15px] text-green-600">₪{courierAmount}</p>
+                    </div>
+                    <div className="rounded-xl p-2.5 text-center" style={{ background: '#fdf2f8', border: '1px solid #fbcfe8' }}>
+                      <p className="text-[10px] text-gray-400 mb-1">פלטפורמה</p>
+                      <p className="font-bold text-[15px] text-pink-600">₪{platformAmount}</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </Card>
       )}

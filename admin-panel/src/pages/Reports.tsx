@@ -313,54 +313,65 @@ const Reports: React.FC = () => {
                   <p className="text-sm">אין נתונים לתצוגה</p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-gray-100 dark:border-gray-700">
-                        {['#', 'אזור', 'משלוחים', 'הכנסות', 'אחוז'].map((h) => (
-                          <th
-                            key={h}
-                            className="text-right px-5 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400"
-                          >
-                            {h}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {reportData.byZone.map((row, idx) => {
-                        const pct =
-                          totalDeliveries > 0
-                            ? Math.round((row.count / totalDeliveries) * 100)
-                            : 0;
-                        return (
-                          <tr
-                            key={row.zone}
-                            className="border-b border-gray-50 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/20 transition-colors"
-                          >
-                            <td className="px-5 py-3 text-gray-400 text-xs">{idx + 1}</td>
-                            <td className="px-5 py-3 font-medium text-gray-900 dark:text-white">{row.zone}</td>
-                            <td className="px-5 py-3 text-gray-700 dark:text-gray-300">{row.count}</td>
-                            <td className="px-5 py-3 text-green-600 dark:text-green-400 font-medium">
-                              ₪{row.revenue.toLocaleString()}
-                            </td>
-                            <td className="px-5 py-3">
-                              <div className="flex items-center gap-2">
-                                <div className="flex-1 bg-gray-200 dark:bg-gray-600 rounded-full h-1.5 w-20">
-                                  <div
-                                    className="bg-primary h-1.5 rounded-full"
-                                    style={{ width: `${pct}%` }}
-                                  />
+                <>
+                  {/* Desktop Table */}
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-100 dark:border-gray-700">
+                          {['#', 'אזור', 'משלוחים', 'הכנסות', 'אחוז'].map((h) => (
+                            <th key={h} className="text-right px-5 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {reportData.byZone.map((row, idx) => {
+                          const pct = totalDeliveries > 0 ? Math.round((row.count / totalDeliveries) * 100) : 0;
+                          return (
+                            <tr key={row.zone} className="border-b border-gray-50 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/20 transition-colors">
+                              <td className="px-5 py-3 text-gray-400 text-xs">{idx + 1}</td>
+                              <td className="px-5 py-3 font-medium text-gray-900 dark:text-white">{row.zone}</td>
+                              <td className="px-5 py-3 text-gray-700 dark:text-gray-300">{row.count}</td>
+                              <td className="px-5 py-3 text-green-600 dark:text-green-400 font-medium">₪{row.revenue.toLocaleString()}</td>
+                              <td className="px-5 py-3">
+                                <div className="flex items-center gap-2">
+                                  <div className="flex-1 bg-gray-200 dark:bg-gray-600 rounded-full h-1.5 w-20">
+                                    <div className="bg-primary h-1.5 rounded-full" style={{ width: `${pct}%` }} />
+                                  </div>
+                                  <span className="text-xs text-gray-500">{pct}%</span>
                                 </div>
-                                <span className="text-xs text-gray-500">{pct}%</span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  {/* Mobile Cards */}
+                  <div className="md:hidden divide-y divide-gray-100 dark:divide-gray-700">
+                    {reportData.byZone.map((row, idx) => {
+                      const pct = totalDeliveries > 0 ? Math.round((row.count / totalDeliveries) * 100) : 0;
+                      return (
+                        <div key={row.zone} className="px-4 py-3 flex items-center gap-3">
+                          <span className="w-6 h-6 rounded-full bg-gray-100 text-gray-500 text-xs font-bold flex items-center justify-center flex-shrink-0">{idx + 1}</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-gray-900 dark:text-white text-[13px]">{row.zone}</p>
+                            <div className="flex items-center gap-1 mt-1">
+                              <div className="flex-1 bg-gray-200 rounded-full h-1.5">
+                                <div className="bg-primary h-1.5 rounded-full" style={{ width: `${pct}%` }} />
                               </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                              <span className="text-[11px] text-gray-400 flex-shrink-0">{pct}%</span>
+                            </div>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-[12px] font-semibold text-gray-700">{row.count} משלוחים</p>
+                            <p className="text-[11px] text-green-600 font-medium">₪{row.revenue.toLocaleString()}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
               )}
             </Card>
           )}
@@ -376,72 +387,71 @@ const Reports: React.FC = () => {
                   <p className="text-sm">אין נתונים לתצוגה</p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-gray-100 dark:border-gray-700">
-                        {['מקום', 'שם שליח', 'משלוחים', 'רווחים', 'דירוג'].map((h) => (
-                          <th
-                            key={h}
-                            className="text-right px-5 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400"
-                          >
-                            {h}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {reportData.topCouriers.map((courier, idx) => (
-                        <tr
-                          key={courier.name}
-                          className="border-b border-gray-50 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/20 transition-colors"
-                        >
-                          <td className="px-5 py-3">
-                            <span
-                              className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold inline-flex ${
-                                idx === 0
-                                  ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-                                  : idx === 1
-                                  ? 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
-                                  : idx === 2
-                                  ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
-                                  : 'bg-gray-50 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
-                              }`}
-                            >
-                              {idx + 1}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3">
-                            <div className="flex items-center gap-2">
-                              <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center flex-shrink-0">
-                                <span className="text-purple-700 dark:text-purple-400 font-semibold text-xs">
-                                  {courier.name.charAt(0)}
-                                </span>
-                              </div>
-                              <span className="font-medium text-gray-900 dark:text-white">
-                                {courier.name}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-5 py-3 font-semibold text-gray-900 dark:text-white">
-                            {courier.deliveries}
-                          </td>
-                          <td className="px-5 py-3 text-green-600 dark:text-green-400 font-semibold">
-                            ₪{courier.earnings.toLocaleString()}
-                          </td>
-                          <td className="px-5 py-3">
-                            <div className="flex items-center gap-1">
-                              <StarSolid className="w-4 h-4 text-yellow-400" />
-                              <span className="font-medium text-gray-700 dark:text-gray-300">
-                                {courier.rating}
-                              </span>
-                            </div>
-                          </td>
+                <>
+                  {/* Desktop Table */}
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-100 dark:border-gray-700">
+                          {['מקום', 'שם שליח', 'משלוחים', 'רווחים', 'דירוג'].map((h) => (
+                            <th key={h} className="text-right px-5 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400">{h}</th>
+                          ))}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {reportData.topCouriers.map((courier, idx) => (
+                          <tr key={courier.name} className="border-b border-gray-50 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/20 transition-colors">
+                            <td className="px-5 py-3">
+                              <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold inline-flex ${
+                                idx === 0 ? 'bg-yellow-100 text-yellow-700' : idx === 1 ? 'bg-gray-100 text-gray-600' : idx === 2 ? 'bg-orange-100 text-orange-700' : 'bg-gray-50 text-gray-500'
+                              }`}>{idx + 1}</span>
+                            </td>
+                            <td className="px-5 py-3">
+                              <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0">
+                                  <span className="text-purple-700 font-semibold text-xs">{courier.name.charAt(0)}</span>
+                                </div>
+                                <span className="font-medium text-gray-900 dark:text-white">{courier.name}</span>
+                              </div>
+                            </td>
+                            <td className="px-5 py-3 font-semibold text-gray-900 dark:text-white">{courier.deliveries}</td>
+                            <td className="px-5 py-3 text-green-600 dark:text-green-400 font-semibold">₪{courier.earnings.toLocaleString()}</td>
+                            <td className="px-5 py-3">
+                              <div className="flex items-center gap-1">
+                                <StarSolid className="w-4 h-4 text-yellow-400" />
+                                <span className="font-medium text-gray-700 dark:text-gray-300">{courier.rating}</span>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {/* Mobile Cards */}
+                  <div className="md:hidden divide-y divide-gray-100 dark:divide-gray-700">
+                    {reportData.topCouriers.map((courier, idx) => (
+                      <div key={courier.name} className="px-4 py-3 flex items-center gap-3">
+                        <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                          idx === 0 ? 'bg-yellow-100 text-yellow-700' : idx === 1 ? 'bg-gray-100 text-gray-600' : idx === 2 ? 'bg-orange-100 text-orange-700' : 'bg-gray-50 text-gray-500'
+                        }`}>{idx + 1}</span>
+                        <div className="w-9 h-9 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0">
+                          <span className="text-purple-700 font-semibold text-sm">{courier.name.charAt(0)}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-gray-900 text-[13px] truncate">{courier.name}</p>
+                          <p className="text-[11px] text-gray-500">{courier.deliveries} משלוחים</p>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className="text-[12px] font-semibold text-green-600">₪{courier.earnings.toLocaleString()}</p>
+                          <div className="flex items-center gap-0.5 justify-end">
+                            <StarSolid className="w-3 h-3 text-yellow-400" />
+                            <span className="text-[11px] text-gray-500">{courier.rating}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
               )}
             </Card>
           )}

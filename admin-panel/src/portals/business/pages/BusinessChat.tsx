@@ -419,7 +419,17 @@ const BusinessChat: React.FC = () => {
   }, [supportTicket, selectedConvId]);
 
   const selectedConv = conversations.find((c) => c.id === selectedConvId);
-  const selectedCourier = selectedConv ? getCourier(selectedConv.courierId) : null;
+  const [selectedCourierData, setSelectedCourierData] = useState<ReturnType<typeof getCourier> | null>(null);
+  const selectedCourier = selectedCourierData;
+
+  useEffect(() => {
+    if (selectedConvId && selectedConvId !== SUPPORT_ID) {
+      const conv = conversations.find(c => c.id === selectedConvId);
+      if (conv) setSelectedCourierData(getCourier(conv.courierId) ?? null);
+    } else {
+      setSelectedCourierData(null);
+    }
+  }, [selectedConvId, conversations]);
 
   useEffect(() => {
     if (!selectedConvId) return;
@@ -612,31 +622,31 @@ const BusinessChat: React.FC = () => {
         <h1 className="text-[20px] font-black mb-5" style={{ color: '#061b31' }}>הודעות</h1>
 
         {/* ── Pinned support thread ── */}
-        <div className="mb-4">
-          <p className="text-[11px] font-bold mb-2 px-1" style={{ color: '#8898aa' }}>שירות לקוחות</p>
+        <div className="mb-3">
+          <p className="text-[10px] font-bold mb-1.5 px-1" style={{ color: '#8898aa' }}>שירות לקוחות</p>
           <div
-            className="flex items-center gap-3 p-4 rounded-2xl cursor-pointer transition-all active:scale-[0.98]"
-            style={{ background: '#fff', border: '1.5px solid #533afd30', boxShadow: '0 2px 8px rgba(83,58,253,0.08)' }}
+            className="flex items-center gap-2.5 px-3 py-2.5 rounded-2xl cursor-pointer transition-all active:scale-[0.98]"
+            style={{ background: '#fff', border: '1px solid #533afd20', boxShadow: '0 1px 4px rgba(83,58,253,0.05)' }}
             onClick={() => setSelectedConvId(SUPPORT_ID)}
           >
             <div
-              className="w-10 h-10 rounded-full flex items-center justify-center text-[18px] flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg, #533afd22, #ea226122)', border: '1.5px solid #533afd30' }}
+              className="w-8 h-8 rounded-full flex items-center justify-center text-[13px] flex-shrink-0"
+              style={{ background: '#533afd12' }}
             >
               🎧
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between">
-                <p className="text-[14px] font-black" style={{ color: '#061b31' }}>מוקד שירות</p>
+                <p className="text-[13px] font-bold" style={{ color: '#061b31' }}>מוקד שירות</p>
                 {unreadSupport > 0 && (
-                  <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] text-white font-bold" style={{ background: '#ea2261' }}>
+                  <span className="w-4 h-4 rounded-full flex items-center justify-center text-[9px] text-white font-bold" style={{ background: '#ea2261' }}>
                     {unreadSupport > 9 ? '9+' : unreadSupport}
                   </span>
                 )}
               </div>
-              <p className="text-[12px] truncate mt-0.5" style={{ color: '#8898aa' }}>
+              <p className="text-[11px] truncate" style={{ color: '#8898aa' }}>
                 {lastSupportMsg
-                  ? `${lastSupportMsg.senderType === 'admin' ? '🎧 תמיכה: ' : ''}${lastSupportMsg.content}`
+                  ? `${lastSupportMsg.senderType === 'admin' ? 'תמיכה: ' : ''}${lastSupportMsg.content}`
                   : 'יש שאלה? צוות התמיכה כאן לעזור'}
               </p>
             </div>

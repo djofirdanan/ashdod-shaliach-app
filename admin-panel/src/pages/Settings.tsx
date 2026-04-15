@@ -9,6 +9,8 @@ import {
   EyeSlashIcon,
   ExclamationTriangleIcon,
   ArrowPathIcon,
+  CloudArrowUpIcon,
+  TrashIcon,
 } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 import { Card } from '../components/ui/Card';
@@ -17,6 +19,7 @@ import { Input } from '../components/ui/Input';
 import { Skeleton } from '../components/ui/LoadingSkeleton';
 import { fetchSystemSettings, updateSystemSettings } from '../services/admin.service';
 import type { SystemSettings } from '../services/admin.service';
+import { syncAllBusinessesUp, syncAllCouriersUp, clearCacheAndResync } from '../services/sync.service';
 
 // ─── Toggle ───────────────────────────────────────────────────────────────────
 
@@ -126,6 +129,8 @@ const Settings: React.FC = () => {
 
   const [savingGeneral, setSavingGeneral] = useState(false);
   const [savingDispatch, setSavingDispatch] = useState(false);
+  const [syncingUp, setSyncingUp] = useState(false);
+  const [clearingCache, setClearingCache] = useState(false);
 
   const loadSettings = () => {
     setError(null);
@@ -377,6 +382,91 @@ const Settings: React.FC = () => {
             </div>
             <div className="flex justify-end">
               <Button variant="primary" onClick={handleSaveApiKeys}>שמור מפתחות</Button>
+            </div>
+          </Card>
+
+          {/* ── Cross-device sync ── */}
+          <Card>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: '#e0f2fe' }}>
+                <CloudArrowUpIcon className="w-5 h-5" style={{ color: '#0284c7' }} />
+              </div>
+              <div>
+                <h2 className="text-base font-semibold text-gray-800 dark:text-white">סנכרון נתונים לשרת</h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400">פתרון לבעיית כניסה ממכשירים אחרים</p>
+              </div>
+            </div>
+            <div className="rounded-xl p-4 mb-4" style={{ background: '#f0f9ff', border: '1px solid #bae6fd' }}>
+              <p className="text-sm font-semibold mb-1" style={{ color: '#0369a1' }}>מתי להשתמש בזה?</p>
+              <p className="text-xs leading-relaxed" style={{ color: '#0369a1' }}>
+                אם עסק או שליח לא מצליחים להתחבר ממכשיר אחר (טלפון/מחשב אחר), לחץ על הכפתור למטה כדי לדחוף את כל הנתונים מהמחשב הזה לשרת. לאחר מכן הכניסה תעבוד מכל מכשיר.
+              </p>
+            </div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <Button
+                variant="primary"
+                leftIcon={syncingUp ? <ArrowPathIcon className="w-4 h-4 animate-spin" /> : <CloudArrowUpIcon className="w-4 h-4" />}
+                disabled={syncingUp}
+                onClick={async () => {
+                  setSyncingUp(true);
+                  try {
+                    const [bizCount, courCount] = await Promise.all([
+                      syncAllBusinessesUp(),
+                      syncAllCouriersUp(),
+                    ]);
+                    toast.success(`סנכרון הושלם! ${bizCount} עסקים + ${courCount} שליחים נדחפו לשרת`);
+                  } catch (e) {
+                    toast.error('שגיאה בסנכרון לשרת');
+                  } finally {
+                    setSyncingUp(false);
+                  }
+                }}
+                style={{ background: '#0284c7' }}
+              >
+                {syncingUp ? 'מסנכרן...' : 'דחוף נתונים לשרת עכשיו'}
+              </Button>
+              <p className="text-xs text-gray-400">פעולה זו בטוחה ואינה מוחקת נתונים</p>
+            </div>
+          </Card>
+
+          {/* ── Cache clear ── */}
+          <Card>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: '#fef2f2' }}>
+                <TrashIcon className="w-5 h-5" style={{ color: '#dc2626' }} />
+              </div>
+              <div>
+                <h2 className="text-base font-semibold text-gray-800 dark:text-white">ניקוי קאש</h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400">פתרון לבעיות תצוגה ונתונים ישנים</p>
+              </div>
+            </div>
+            <div className="rounded-xl p-4 mb-4" style={{ background: '#fef2f2', border: '1px solid #fecaca' }}>
+              <p className="text-sm font-semibold mb-1" style={{ color: '#dc2626' }}>מתי להשתמש?</p>
+              <p className="text-xs leading-relaxed" style={{ color: '#dc2626' }}>
+                אם הנתונים לא מתעדכנים, יש שגיאות בתצוגה, או שמשהו לא עובד כמו שצריך — ניקוי הקאש מוחק את הנתונים המקומיים ומוריד הכל מחדש מהשרת. לוגאאוט לא יתרחש.
+              </p>
+            </div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <Button
+                variant="danger"
+                leftIcon={clearingCache ? <ArrowPathIcon className="w-4 h-4 animate-spin" /> : <TrashIcon className="w-4 h-4" />}
+                disabled={clearingCache}
+                onClick={async () => {
+                  setClearingCache(true);
+                  try {
+                    await clearCacheAndResync();
+                    toast.success('הקאש נוקה ונתונים רוענו מהשרת');
+                    setTimeout(() => window.location.reload(), 1000);
+                  } catch {
+                    toast.error('שגיאה בניקוי הקאש');
+                  } finally {
+                    setClearingCache(false);
+                  }
+                }}
+              >
+                {clearingCache ? 'מנקה ומרענן...' : 'נקה קאש ורענן'}
+              </Button>
+              <p className="text-xs text-gray-400">הטוקן שלך נשמר — לא תצא מהמערכת</p>
             </div>
           </Card>
 

@@ -560,7 +560,7 @@ const Chat: React.FC = () => {
   })() : null;
 
   return (
-    <div className="h-[calc(100vh-60px)] flex flex-col" dir="rtl">
+    <div className="h-[calc(100vh-152px)] md:h-[calc(100vh-108px)] flex flex-col" dir="rtl">
       {/* Page header */}
       <div className="flex items-center justify-between px-2 pb-3 pt-1 flex-shrink-0">
         <div className="flex items-center gap-2">

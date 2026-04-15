@@ -162,71 +162,65 @@ const Deliveries: React.FC = () => {
 
       {/* Filter bar */}
       <div className="bg-white dark:bg-[#1E1F33] rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4">
-        <div className="flex flex-wrap items-end gap-3">
-          {/* Search */}
-          <div className="relative flex-1 min-w-48">
-            <MagnifyingGlassIcon className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="חפש מספר עקיבה, עסק, לקוח..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pr-9 pl-4 py-2 text-sm bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/30 focus:border-[#6C63FF] transition-all"
-            />
+        <div className="flex flex-col gap-3">
+          {/* Row 1: Search + Actions */}
+          <div className="flex gap-3">
+            <div className="relative flex-1 min-w-0">
+              <MagnifyingGlassIcon className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="חפש מספר עקיבה, עסק, לקוח..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pr-9 pl-4 py-2 text-sm bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/30 focus:border-[#6C63FF] transition-all"
+              />
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <Button
+                size="sm"
+                variant="secondary"
+                leftIcon={<ArrowPathIcon className="w-4 h-4" />}
+                onClick={() => loadDeliveries(search, page)}
+              >
+                <span className="hidden sm:inline">רענן</span>
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                leftIcon={
+                  exporting
+                    ? <ArrowPathIcon className="w-4 h-4 animate-spin" />
+                    : <ArrowDownTrayIcon className="w-4 h-4" />
+                }
+                onClick={handleExportCsv}
+                disabled={exporting}
+              >
+                <span className="hidden sm:inline">ייצא CSV</span>
+              </Button>
+            </div>
           </div>
 
-          {/* Status filter */}
-          <div className="w-44">
-            <Select
-              options={statusOptions}
-              value={statusFilter}
-              onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-            />
-          </div>
-
-          {/* Date from */}
-          <div className="w-36">
+          {/* Row 2: Status + Dates */}
+          <div className="flex flex-wrap gap-3">
+            <div className="flex-1 min-w-[140px]">
+              <Select
+                options={statusOptions}
+                value={statusFilter}
+                onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+              />
+            </div>
             <input
               type="date"
               value={dateFrom}
               onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
-              className="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/30 focus:border-[#6C63FF] transition-all"
+              className="flex-1 min-w-[120px] px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/30 focus:border-[#6C63FF] transition-all"
             />
-          </div>
-
-          {/* Date to */}
-          <div className="w-36">
             <input
               type="date"
               value={dateTo}
               onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
-              className="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/30 focus:border-[#6C63FF] transition-all"
+              className="flex-1 min-w-[120px] px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/30 focus:border-[#6C63FF] transition-all"
             />
-          </div>
-
-          {/* Actions */}
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="secondary"
-              leftIcon={<ArrowPathIcon className="w-4 h-4" />}
-              onClick={() => loadDeliveries(search, page)}
-            >
-              רענן
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              leftIcon={
-                exporting
-                  ? <ArrowPathIcon className="w-4 h-4 animate-spin" />
-                  : <ArrowDownTrayIcon className="w-4 h-4" />
-              }
-              onClick={handleExportCsv}
-              disabled={exporting}
-            >
-              ייצא CSV
-            </Button>
           </div>
         </div>
       </div>

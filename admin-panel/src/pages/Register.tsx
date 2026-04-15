@@ -13,6 +13,7 @@ import {
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import * as storageService from '../services/storage.service';
+import { addBusinessAsync, addCourierAsync } from '../services/storage.service';
 import { DEFAULT_PRICING_ZONES } from '../utils/constants';
 import { sendWelcomeBusiness, sendWelcomeCourier } from '../services/email.service';
 
@@ -129,7 +130,7 @@ const Register: React.FC = () => {
 
     setIsLoading(true);
     try {
-      storageService.addBusiness({
+      await addBusinessAsync({
         email: biz.email,
         password: storageService.hashPassword(biz.password),
         businessName: biz.businessName,
@@ -147,7 +148,7 @@ const Register: React.FC = () => {
       sendWelcomeBusiness(biz.email, biz.businessName).catch(() => {});
       setSuccess({ type: 'business', name: biz.businessName });
     } catch {
-      toast.error('שגיאה בהרשמה. נסה שוב');
+      toast.error('שגיאה בהרשמה. נסה שוב.');
     } finally {
       setIsLoading(false);
     }
@@ -174,7 +175,7 @@ const Register: React.FC = () => {
 
     setIsLoading(true);
     try {
-      storageService.addCourier({
+      await addCourierAsync({
         email: cour.email,
         password: storageService.hashPassword(cour.password),
         name: cour.name,
@@ -193,7 +194,7 @@ const Register: React.FC = () => {
       sendWelcomeCourier(cour.email, cour.name).catch(() => {});
       setSuccess({ type: 'courier', name: cour.name });
     } catch {
-      toast.error('שגיאה בהרשמה. נסה שוב');
+      toast.error('שגיאה בהרשמה. נסה שוב.');
     } finally {
       setIsLoading(false);
     }

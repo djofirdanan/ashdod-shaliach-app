@@ -58,16 +58,16 @@ export const Modal: React.FC<ModalProps> = ({
             >
               <Dialog.Panel
                 className={clsx(
-                  'w-full bg-white rounded-2xl mx-4',
+                  'w-full bg-white rounded-2xl mx-2 sm:mx-4 flex flex-col max-h-[92vh]',
                   sizeClasses[size]
                 )}
                 style={{ boxShadow: '0 25px 80px rgba(124, 58, 237, 0.20)' }}
               >
                 {/* Header */}
                 {title && (
-                  <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+                  <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
                     <Dialog.Title
-                      className="text-xl font-bold"
+                      className="text-[17px] font-bold"
                       style={{ color: '#1E1B4B' }}
                     >
                       {title}
@@ -82,12 +82,12 @@ export const Modal: React.FC<ModalProps> = ({
                   </div>
                 )}
 
-                {/* Body */}
-                <div className="p-6">{children}</div>
+                {/* Body — scrollable */}
+                <div className="p-5 overflow-y-auto flex-1">{children}</div>
 
                 {/* Footer */}
                 {footer && (
-                  <div className="flex items-center justify-start gap-3 px-6 pb-6 pt-2 border-t border-gray-100">
+                  <div className="flex items-center justify-start gap-3 px-5 pb-5 pt-2 border-t border-gray-100 flex-shrink-0">
                     {footer}
                   </div>
                 )}

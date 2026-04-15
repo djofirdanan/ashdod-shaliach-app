@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import type { AppDispatch } from '../../../store';
 import { logoutUser } from '../../../store/authSlice';
-import { clearCacheAndResync } from '../../../services/sync.service';
+import { clearCacheAndResync, syncDown } from '../../../services/sync.service';
 import {
   getCourier,
   updateCourier,
@@ -363,7 +363,11 @@ const CourierProfile: React.FC = () => {
     setReviews(getReviewsByTarget(courierId).filter(r => r.reviewerType === 'courier'));
   };
 
-  useEffect(() => { loadData(); }, [courierId]);
+  useEffect(() => {
+    if (!courierId) return;
+    // Pull fresh data from Supabase so profile always loads even after cache clear
+    syncDown().catch(() => {}).finally(() => loadData());
+  }, [courierId]);
 
   /* Photo upload */
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -372,27 +376,42 @@ const CourierProfile: React.FC = () => {
     const reader = new FileReader();
     reader.onload = () => {
       const base64 = reader.result as string;
-      const updated = updateCourier(courierId, { photo: base64 });
-      setCourier(updated);
-      toast.success('התמונה עודכנה!');
+      try {
+        const updated = updateCourier(courierId, { photo: base64 });
+        setCourier(updated);
+        toast.success('התמונה עודכנה!');
+      } catch {
+        toast.error('שגיאה בעדכון התמונה, נסה שוב');
+      }
     };
     reader.readAsDataURL(file);
   };
 
   /* Edit save */
-  const handleSaveDetails = () => {
+  const handleSaveDetails = async () => {
     if (!courierId) return;
-    const updated = updateCourier(courierId, {
-      name: editName.trim(),
-      phone: editPhone.trim(),
-      vehicle: editVehicle,
-      vehiclePlate: editPlate.trim() || undefined,
-      bitPhone: editBitPhone.trim() || undefined,
-      navPreference: editNavPref,
-    });
-    setCourier(updated);
-    setEditMode(false);
-    toast.success('הפרטים עודכנו!');
+    try {
+      const updated = updateCourier(courierId, {
+        name: editName.trim(),
+        phone: editPhone.trim(),
+        vehicle: editVehicle,
+        vehiclePlate: editPlate.trim() || undefined,
+        bitPhone: editBitPhone.trim() || undefined,
+        navPreference: editNavPref,
+      });
+      setCourier(updated);
+      setEditMode(false);
+      toast.success('הפרטים עודכנו!');
+    } catch {
+      // Courier not found in cache — sync then retry
+      try {
+        await syncDown();
+        loadData();
+        toast.error('ניסה שוב — נא ללחוץ שמור שוב');
+      } catch {
+        toast.error('שגיאה בשמירה, נסה שוב');
+      }
+    }
   };
 
   /* Password change */

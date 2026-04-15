@@ -8,6 +8,8 @@ import {
   getBusiness,
   getDeliveriesByBusiness,
   getOrCreateConversation,
+  getOrCreateSupportTicket,
+  getSupportMessages,
 } from '../../services/storage.service';
 import { supabase } from '../../lib/supabase';
 import {
@@ -200,7 +202,16 @@ const BusinessLayout: React.FC = () => {
   useEffect(() => {
     const refresh = () => {
       if (businessId) {
-        setUnread(getUnreadCount(businessId, 'business'));
+        const chatUnread = getUnreadCount(businessId, 'business');
+        try {
+          const t = getOrCreateSupportTicket(businessId, 'business');
+          const msgs = getSupportMessages(t.id);
+          const lastRead = localStorage.getItem(`support_last_read_${businessId}`) ?? '2000-01-01T00:00:00.000Z';
+          const supportUnread = msgs.filter(m => m.senderType === 'admin' && m.createdAt > lastRead).length;
+          setUnread(chatUnread + supportUnread);
+        } catch {
+          setUnread(chatUnread);
+        }
         const biz = getBusiness(businessId);
         if (biz) setBizName(biz.businessName);
       }
