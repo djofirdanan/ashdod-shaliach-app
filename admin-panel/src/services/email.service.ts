@@ -218,6 +218,35 @@ export async function sendAdminSupportNotification(
   });
 }
 
+export async function sendBroadcastEmail(
+  recipients: { email: string; name: string }[],
+  message: string
+): Promise<void> {
+  // Send to each recipient individually (fire-and-forget, don't block UI)
+  for (const { email, name } of recipients) {
+    sendEmail({
+      to: email,
+      subject: '📢 הודעה ממנהל מערכת אשדוד-שליח',
+      html: `
+        <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f6f9fc; padding: 24px; border-radius: 12px;">
+          <div style="background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 12px rgba(0,0,0,0.08);">
+            <div style="background: linear-gradient(135deg, #533afd, #ea2261); border-radius: 12px; padding: 16px 20px; margin-bottom: 24px;">
+              <h1 style="color: white; font-size: 18px; margin: 0;">📢 הודעה ממנהל המערכת</h1>
+            </div>
+            <p style="color: #6b7c93; margin-bottom: 16px;">שלום ${name},</p>
+            <div style="background: #f6f9fc; border-radius: 8px; padding: 16px; margin: 16px 0; border-right: 4px solid #533afd;">
+              <p style="color: #061b31; margin: 0; line-height: 1.8; font-size: 15px; white-space: pre-line;">${message}</p>
+            </div>
+            <p style="color: #8898aa; font-size: 12px; margin-top: 24px;">
+              ניתן לצפות בהודעה גם בצ׳אט האפליקציה תחת "מוקד שירות".
+            </p>
+          </div>
+        </div>
+      `,
+    }).catch(() => {}); // fire-and-forget per recipient
+  }
+}
+
 export async function sendNewDeliveryNotification(
   to: string,
   courierName: string,

@@ -1,6 +1,7 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import type { AdminUser } from '../types';
 import * as storageService from '../services/storage.service';
+import { getBusinessByEmailFromDB, getCourierByEmailFromDB } from '../services/sync.service';
 
 // Extended auth state with currentPortalUser
 interface ExtendedAuthState {
@@ -43,8 +44,21 @@ export const loginUser = createAsyncThunk(
         return { user: ADMIN_USER, role: 'admin' as const };
       }
 
-      // 2. Check localStorage businesses
-      const business = storageService.getBusinessByEmail(email);
+      // 2. Check businesses — Supabase is authoritative for isActive/isBlocked.
+      //    Always fetch fresh data from Supabase so an approved account is not
+      //    blocked by a stale localStorage entry (e.g. user registered → isActive:false
+      //    cached locally → admin approved in Supabase → user still sees old cache).
+      const [localBusiness, remoteBusiness] = await Promise.all([
+        Promise.resolve(storageService.getBusinessByEmail(email)),
+        getBusinessByEmailFromDB(email).catch(() => null),
+      ]);
+      // Prefer Supabase version; fall back to localStorage if Supabase is offline
+      let business = remoteBusiness ?? localBusiness ?? undefined;
+      if (business) {
+        // Keep localStorage in sync with Supabase version
+        const existing = storageService.getBusinesses().filter(b => b.email.toLowerCase() !== email.toLowerCase());
+        localStorage.setItem('app_businesses', JSON.stringify([...existing, business]));
+      }
       if (business) {
         if (!storageService.verifyPassword(password, business.password)) {
           return rejectWithValue('סיסמה שגויה');
@@ -53,7 +67,7 @@ export const loginUser = createAsyncThunk(
           return rejectWithValue('החשבון חסום. פנה למנהל המערכת');
         }
         if (!business.isActive) {
-          return rejectWithValue('החשבון ממתין לאישור המנהל. תקבל מייל כשיאושר ✉️');
+          return rejectWithValue('החשבון ממתין לאישור המנהל. תקבל מייל כשיאושר');
         }
         localStorage.setItem('admin_token', `business-${business.id}`);
         localStorage.setItem('admin_role', 'business');
@@ -67,8 +81,16 @@ export const loginUser = createAsyncThunk(
         return { user, role: 'business' as const };
       }
 
-      // 3. Check localStorage couriers
-      const courier = storageService.getCourierByEmail(email);
+      // 3. Check couriers — same pattern: Supabase is authoritative
+      const [localCourier, remoteCourier] = await Promise.all([
+        Promise.resolve(storageService.getCourierByEmail(email)),
+        getCourierByEmailFromDB(email).catch(() => null),
+      ]);
+      let courier = remoteCourier ?? localCourier ?? undefined;
+      if (courier) {
+        const existing = storageService.getCouriers().filter(c => c.email.toLowerCase() !== email.toLowerCase());
+        localStorage.setItem('app_couriers', JSON.stringify([...existing, courier]));
+      }
       if (courier) {
         if (!storageService.verifyPassword(password, courier.password)) {
           return rejectWithValue('סיסמה שגויה');
@@ -77,7 +99,7 @@ export const loginUser = createAsyncThunk(
           return rejectWithValue('החשבון חסום. פנה למנהל המערכת');
         }
         if (!courier.isActive) {
-          return rejectWithValue('החשבון ממתין לאישור המנהל. תקבל מייל כשיאושר ✉️');
+          return rejectWithValue('החשבון ממתין לאישור המנהל. תקבל מייל כשיאושר');
         }
         localStorage.setItem('admin_token', `courier-${courier.id}`);
         localStorage.setItem('admin_role', 'courier');

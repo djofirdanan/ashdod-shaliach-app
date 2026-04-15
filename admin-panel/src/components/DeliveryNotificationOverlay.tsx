@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 import {
   TruckIcon,
   MapPinIcon,
@@ -10,10 +11,11 @@ import {
 import type { RootState } from '../store';
 import * as storageService from '../services/storage.service';
 import type { DeliveryNotification } from '../services/storage.service';
-import { syncNotificationsDown, joinCandidatesQueue } from '../services/sync.service';
+import { syncNotificationsDown, joinCandidatesQueue, syncDeliveriesDown } from '../services/sync.service';
 import { supabase } from '../lib/supabase';
 import { playNewDelivery } from '../utils/sounds';
 import { Modal } from './ui/Modal';
+import toast from 'react-hot-toast';
 
 // ─── Single notification card ─────────────────────────────────
 const NotifCard: React.FC<{
@@ -249,6 +251,7 @@ const DetailModal: React.FC<{
 
 // ─── Main Overlay ─────────────────────────────────────────────
 export const DeliveryNotificationOverlay: React.FC = () => {
+  const navigate = useNavigate();
   const portalUser = useSelector((state: RootState) => state.auth.currentPortalUser);
 
   const courierToken = localStorage.getItem('admin_token') || '';
@@ -309,33 +312,46 @@ export const DeliveryNotificationOverlay: React.FC = () => {
   const handleAccept = async (notif: DeliveryNotification) => {
     if (!courierId) return;
 
-    // 1. Find matching pending delivery — prefer deliveryId link, fall back to address
-    const allDeliveries = storageService.getDeliveries();
-    const matching = allDeliveries.find(d =>
-      notif.deliveryId ? d.id === notif.deliveryId
-        : d.businessId === notif.businessId &&
-          d.pickupAddress === notif.pickupAddress &&
-          d.dropAddress === notif.dropAddress &&
-          d.status === 'pending'
-    );
-
     const courierData = storageService.getCourier(courierId);
     const courierName = courierData?.name ?? 'שליח';
     const courierRating = courierData?.rating ?? 5;
     const courierVehicle = courierData?.vehicle ?? 'motorcycle';
 
-    // 2. Join the candidates queue
-    if (matching) {
-      await joinCandidatesQueue(matching.id, courierId, courierName, courierRating, courierVehicle);
-      // Store pending candidacy in localStorage
-      localStorage.setItem('pending_candidacy', JSON.stringify({ deliveryId: matching.id, notifId: notif.id, joinedAt: new Date().toISOString() }));
+    // 1. Use deliveryId directly from notification (no localStorage lookup needed)
+    //    If notification doesn't have deliveryId, sync then search by address
+    let deliveryId = notif.deliveryId;
+
+    if (!deliveryId) {
+      await syncDeliveriesDown().catch(() => {});
+      const allDeliveries = storageService.getDeliveries();
+      const matching = allDeliveries.find(d =>
+        d.businessId === notif.businessId &&
+        d.pickupAddress === notif.pickupAddress &&
+        d.dropAddress === notif.dropAddress &&
+        d.status === 'pending'
+      );
+      deliveryId = matching?.id;
     }
 
-    // 3. Mark notification as taken (removes from overlay)
-    storageService.acceptNotification(notif.id, courierId);
+    // 2. Join the candidates queue using deliveryId
+    if (deliveryId) {
+      await joinCandidatesQueue(deliveryId, courierId, courierName, courierRating, courierVehicle);
+      localStorage.setItem('pending_candidacy', JSON.stringify({
+        deliveryId,
+        notifId: notif.id,
+        joinedAt: new Date().toISOString(),
+      }));
+      toast.success('אישרת! ממתין לאישור העסק 🕐');
+    } else {
+      toast.error('המשלוח כבר לא זמין');
+    }
 
-    // 4. Remove from overlay
+    // 3. Mark notification as taken & remove from overlay
+    storageService.acceptNotification(notif.id, courierId);
     setNotifications((prev) => prev.filter((n) => n.id !== notif.id));
+
+    // 4. Navigate to dashboard where candidacy polling is active
+    navigate('/courier/dashboard');
   };
 
   const handleDismiss = (notifId: string) => {

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import type { AppDispatch } from '../../../store';
 import { logoutUser } from '../../../store/authSlice';
+import { clearCacheAndResync } from '../../../services/sync.service';
 import {
   getCourier,
   updateCourier,
@@ -12,6 +13,8 @@ import {
   addReview,
   verifyPassword,
   hashPassword,
+  cleanupOldConversations,
+  cleanupCompletedDeliveryConvs,
   type StoredCourier,
   type StoredBusiness,
   type StoredReview,
@@ -26,6 +29,7 @@ import {
   XMarkIcon,
   BuildingStorefrontIcon,
   HeartIcon,
+  ArrowPathIcon,
 } from '@heroicons/react/24/outline';
 import { HeartIcon as HeartSolid } from '@heroicons/react/24/solid';
 import toast from 'react-hot-toast';
@@ -180,6 +184,121 @@ const PastBusinessCard: React.FC<{
           </div>
         </div>
       )}
+    </div>
+  );
+};
+
+/* ─── Clear Cache Floating Button ──────────────── */
+const ClearCacheButton: React.FC = () => {
+  const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  const handleClear = async () => {
+    if (!window.confirm('לנקות את הקאש ולמשוך נתונים טריים מהשרת?')) return;
+    setLoading(true);
+    try {
+      await clearCacheAndResync();
+      window.location.reload();
+    } catch {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed z-[999]"
+      style={{ bottom: 80, left: 16 }}
+      dir="rtl"
+    >
+      {expanded && (
+        <div
+          className="mb-2 px-4 py-3 rounded-2xl flex items-center gap-3 shadow-lg"
+          style={{ background: '#FFFFFF', border: '1px solid #E8E8E8', minWidth: 200 }}
+        >
+          <button
+            onClick={handleClear}
+            disabled={loading}
+            className="flex items-center gap-2 font-bold text-[13px] transition-all active:scale-95 disabled:opacity-60"
+            style={{ color: '#009DE0' }}
+          >
+            <ArrowPathIcon className={`w-4 h-4 flex-shrink-0 ${loading ? 'animate-spin' : ''}`} />
+            {loading ? 'מרענן...' : 'נקה קאש ורענן'}
+          </button>
+        </div>
+      )}
+      <button
+        onClick={() => setExpanded(p => !p)}
+        className="w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition-all active:scale-95"
+        style={{ background: '#009DE0' }}
+        title="נקה קאש"
+      >
+        <ArrowPathIcon className={`w-5 h-5 text-white ${loading ? 'animate-spin' : ''}`} />
+      </button>
+    </div>
+  );
+};
+
+/* ─── Chat Cleanup Section ────────────────────── */
+type CleanupPeriod = 'manual' | 'daily' | 'weekly' | 'monthly' | 'on_complete';
+const CLEANUP_OPTIONS: { value: CleanupPeriod; label: string; desc: string }[] = [
+  { value: 'manual',      label: 'ידני בלבד',          desc: 'מחק שיחות רק כשאתה בוחר' },
+  { value: 'on_complete', label: 'כשמשלוח הסתיים',     desc: 'מחיקה אוטומטית לאחר השלמת משלוח' },
+  { value: 'daily',       label: 'ניקוי יומי',          desc: 'מחיקת שיחות ישנות מדי יום' },
+  { value: 'weekly',      label: 'ניקוי שבועי',         desc: 'מחיקת שיחות ישנות מדי שבוע' },
+  { value: 'monthly',     label: 'ניקוי חודשי',         desc: 'מחיקת שיחות ישנות מדי חודש' },
+];
+const DAYS_MAP: Record<CleanupPeriod, number> = { manual: 0, on_complete: 0, daily: 1, weekly: 7, monthly: 30 };
+
+const ChatCleanupSection: React.FC<{ userId: string; userType: 'business' | 'courier' }> = ({ userId, userType }) => {
+  const storageKey = `chat_cleanup_${userType}_${userId}`;
+  const [period, setPeriod] = useState<CleanupPeriod>(() => (localStorage.getItem(storageKey) as CleanupPeriod) ?? 'manual');
+  const [cleaning, setCleaning] = useState(false);
+
+  const savePeriod = (p: CleanupPeriod) => {
+    setPeriod(p);
+    localStorage.setItem(storageKey, p);
+    toast.success('הגדרת ניקוי הצ\'אט נשמרה');
+    if (p === 'on_complete') cleanupCompletedDeliveryConvs(userId, userType);
+    else if (p !== 'manual') cleanupOldConversations(userId, userType, DAYS_MAP[p]);
+  };
+  const handleManualClean = () => {
+    setCleaning(true);
+    if (period === 'on_complete') cleanupCompletedDeliveryConvs(userId, userType);
+    else cleanupOldConversations(userId, userType, period === 'manual' ? 30 : DAYS_MAP[period]);
+    setCleaning(false);
+    toast.success('צ\'אטים ישנים נוקו');
+  };
+  return (
+    <div className="rounded-2xl overflow-hidden" style={{ background: CARD_BG, border: `1px solid ${BORDER}` }}>
+      <div className="px-4 pt-4 pb-3" style={{ borderBottom: `1px solid ${BORDER}` }}>
+        <p className="text-[10px] font-semibold uppercase tracking-widest mb-0.5" style={{ color: '#757575' }}>ניהול פרטיות</p>
+        <h2 className="text-[14px] font-black" style={{ color: TEXT }}>ניקוי צ׳אטים אוטומטי</h2>
+      </div>
+      <div className="p-4 space-y-3">
+        <p className="text-[12px]" style={{ color: '#757575' }}>בחר מתי למחוק שיחות ישנות אוטומטית</p>
+        <div className="space-y-2">
+          {CLEANUP_OPTIONS.map((opt) => (
+            <button key={opt.value} onClick={() => savePeriod(opt.value)}
+              className="w-full flex items-center gap-3 p-3 rounded-xl text-right transition-all"
+              style={{ background: period === opt.value ? `${BLUE}12` : BG, border: `1.5px solid ${period === opt.value ? BLUE : BORDER}` }}
+            >
+              <div className="w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center" style={{ borderColor: period === opt.value ? BLUE : BORDER }}>
+                {period === opt.value && <div className="w-2 h-2 rounded-full" style={{ background: BLUE }} />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-bold" style={{ color: period === opt.value ? BLUE : TEXT }}>{opt.label}</p>
+                <p className="text-[11px]" style={{ color: '#757575' }}>{opt.desc}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+        <button onClick={handleManualClean} disabled={cleaning}
+          className="w-full py-2.5 rounded-xl text-[13px] font-bold transition-all active:scale-95 disabled:opacity-60"
+          style={{ background: BG, border: `1px solid ${BORDER}`, color: '#757575' }}
+        >
+          {cleaning ? 'מנקה...' : 'נקה עכשיו'}
+        </button>
+      </div>
     </div>
   );
 };
@@ -455,11 +574,11 @@ const CourierProfile: React.FC = () => {
             </div>
           </Section>
 
-          {/* Support */}
+          {/* Support — opens directly in the chat messages area */}
           <div
             className="rounded-2xl p-4 flex items-center gap-3 cursor-pointer transition-all hover:shadow-md"
             style={{ background: CARD_BG, border: `1px solid ${BORDER}` }}
-            onClick={() => navigate('/courier/support')}
+            onClick={() => navigate('/courier/chat?support=1')}
           >
             <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: `${BLUE}15` }}>
               <span className="text-[18px]">🎧</span>
@@ -660,6 +779,12 @@ const CourierProfile: React.FC = () => {
           )}
         </div>
       )}
+
+      {/* ── Chat Cleanup Settings ── */}
+      <ChatCleanupSection userId={courierId} userType="courier" />
+
+      {/* Clear cache */}
+      <ClearCacheButton />
 
       {/* Logout */}
       <button

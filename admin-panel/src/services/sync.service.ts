@@ -161,7 +161,8 @@ function dbToMessage(row: Record<string, unknown>): StoredMessage {
     senderName: (row.sender_name as string) || '',
     senderType: row.sender_type as StoredMessage['senderType'],
     content: row.content as string,
-    messageType: 'text' as const,
+    messageType: ((row.message_type_v2 as StoredMessage['messageType']) || 'text'),
+    deliveryId: (row.delivery_id as string | undefined) || undefined,
     createdAt: row.created_at as string,
     readAt: (row.read_at as string | undefined) || undefined,
   };
@@ -222,6 +223,11 @@ function dbToDelivery(row: Record<string, unknown>): StoredDelivery {
     paymentMethod: (row.payment_method as 'cash' | 'bit' | undefined) || 'cash',
     customerPaid: row.customer_paid != null ? Boolean(row.customer_paid) : false,
     archived: row.archived != null ? Boolean(row.archived) : false,
+    proofPhotoUrl: (row.proof_photo_url as string | undefined) || undefined,
+    proofNote: (row.proof_note as string | undefined) || undefined,
+    proofSubmittedAt: (row.proof_submitted_at as string | undefined) || undefined,
+    cancelledBy: (row.cancelled_by as string | undefined) || undefined,
+    cancelAction: (row.cancel_action as 'find_new' | 'delete' | undefined) || undefined,
   };
 }
 
@@ -317,6 +323,43 @@ export async function upsertCourier(c: StoredCourier): Promise<void> {
   if (error) console.error('[sync] upsertCourier error:', error.message);
 }
 
+/** Delete a conversation + its messages from Supabase. */
+export async function deleteConversation(id: string): Promise<void> {
+  await supabase.from('messages').delete().eq('conversation_id', id);
+  const { error } = await supabase.from('conversations').delete().eq('id', id);
+  if (error) console.error('[sync] deleteConversation error:', error.message);
+}
+
+/** Push ALL businesses from localStorage → Supabase (admin use: fix cross-device login). */
+export async function syncAllBusinessesUp(): Promise<number> {
+  const raw = localStorage.getItem('app_businesses');
+  if (!raw) return 0;
+  const businesses: unknown[] = JSON.parse(raw);
+  let count = 0;
+  for (const b of businesses) {
+    const biz = b as Parameters<typeof businessToDb>[0];
+    const { error } = await supabase.from('businesses').upsert(businessToDb(biz), { onConflict: 'id' });
+    if (!error) count++;
+    else console.error('[sync] syncAllBusinessesUp error:', error.message);
+  }
+  return count;
+}
+
+/** Push ALL couriers from localStorage → Supabase (admin use: fix cross-device login). */
+export async function syncAllCouriersUp(): Promise<number> {
+  const raw = localStorage.getItem('app_couriers');
+  if (!raw) return 0;
+  const couriers: unknown[] = JSON.parse(raw);
+  let count = 0;
+  for (const c of couriers) {
+    const courier = c as Parameters<typeof courierToDb>[0];
+    const { error } = await supabase.from('couriers').upsert(courierToDb(courier), { onConflict: 'id' });
+    if (!error) count++;
+    else console.error('[sync] syncAllCouriersUp error:', error.message);
+  }
+  return count;
+}
+
 export async function deleteBusiness(id: string): Promise<void> {
   const { error } = await supabase.from('businesses').delete().eq('id', id);
   if (error) console.error('[sync] deleteBusiness error:', error.message);
@@ -351,6 +394,8 @@ export async function insertMessage(m: StoredMessage): Promise<void> {
     content: m.content,
     created_at: m.createdAt,
     read_at: m.readAt ?? null,
+    delivery_id: m.deliveryId ?? null,
+    message_type_v2: m.messageType ?? 'text',
   }, { onConflict: 'id' });
   if (error) console.error('[sync] insertMessage error:', error.message);
 }
@@ -464,6 +509,11 @@ export async function upsertDelivery(d: StoredDelivery): Promise<void> {
     payment_method: d.paymentMethod ?? 'cash',
     customer_paid: d.customerPaid ?? false,
     archived: d.archived ?? false,
+    proof_photo_url: d.proofPhotoUrl ?? null,
+    proof_note: d.proofNote ?? null,
+    proof_submitted_at: d.proofSubmittedAt ?? null,
+    cancelled_by: d.cancelledBy ?? null,
+    cancel_action: d.cancelAction ?? null,
   }, { onConflict: 'id' });
   if (error) console.error('[sync] upsertDelivery error:', error.message);
 }
@@ -595,6 +645,37 @@ export async function syncSupportMessagesDown(ticketId: string): Promise<void> {
   }
 }
 
+// ─── Auth helpers: look up business / courier by email in Supabase ────────────
+/** Used by the login thunk when localStorage is empty (e.g. first login on a new device). */
+export async function getBusinessByEmailFromDB(email: string): Promise<StoredBusiness | null> {
+  try {
+    const { data, error } = await supabase
+      .from('businesses')
+      .select('*')
+      .ilike('email', email.trim())
+      .limit(1);
+    if (error || !data || data.length === 0) return null;
+    return dbToBusiness(data[0] as Record<string, unknown>);
+  } catch {
+    return null;
+  }
+}
+
+/** Used by the login thunk when localStorage is empty (e.g. first login on a new device). */
+export async function getCourierByEmailFromDB(email: string): Promise<StoredCourier | null> {
+  try {
+    const { data, error } = await supabase
+      .from('couriers')
+      .select('*')
+      .ilike('email', email.trim())
+      .limit(1);
+    if (error || !data || data.length === 0) return null;
+    return dbToCourier(data[0] as Record<string, unknown>);
+  } catch {
+    return null;
+  }
+}
+
 // ─── Courier live location ─────────────────────────────────────
 export async function upsertCourierLocation(loc: CourierLocation): Promise<void> {
   const { error } = await supabase.from('courier_locations').upsert({
@@ -722,6 +803,104 @@ export async function withdrawFromQueue(deliveryId: string, courierId: string): 
     .update({ status: 'rejected' })
     .eq('delivery_id', deliveryId)
     .eq('courier_id', courierId);
+}
+
+/**
+ * Clear all app-level localStorage keys and re-pull everything fresh from Supabase.
+ * Preserves: admin_token, dark mode, pricing zones, chat cleanup prefs, nav prefs.
+ * Safe to call from any portal — pass the auth token back in after clearing.
+ */
+export async function clearCacheAndResync(): Promise<void> {
+  // Keys to preserve
+  const keep: Record<string, string | null> = {};
+  const PRESERVE = ['admin_token', 'dark_mode', 'app_pricing_zones', 'pending_candidacy'];
+  // Also preserve all chat_cleanup_* and other user-pref keys
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (!k) continue;
+    if (PRESERVE.includes(k) || k.startsWith('chat_cleanup_') || k.startsWith('courier_nav_')) {
+      keep[k] = localStorage.getItem(k);
+    }
+  }
+
+  // Remove everything that starts with 'app_'
+  const toRemove: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith('app_')) toRemove.push(k);
+  }
+  toRemove.forEach(k => localStorage.removeItem(k));
+
+  // Also clear transient state
+  localStorage.removeItem('pending_candidacy');
+
+  // Restore preserved values
+  for (const [k, v] of Object.entries(keep)) {
+    if (v !== null) localStorage.setItem(k, v);
+  }
+
+  // Re-pull everything from Supabase
+  await syncDown();
+}
+
+// ─── New delivery flow functions ──────────────────────────────
+
+/** Mark courier as viewing (called when courier opens detail modal) */
+export async function markCourierViewing(deliveryId: string, courierId: string, courierName: string, courierRating: number, courierVehicle: string): Promise<void> {
+  const { error } = await supabase.from('delivery_candidates').upsert({
+    delivery_id: deliveryId,
+    courier_id: courierId,
+    courier_name: courierName,
+    courier_rating: courierRating,
+    courier_vehicle: courierVehicle,
+    joined_at: new Date().toISOString(),
+    last_heartbeat: new Date().toISOString(),
+    status: 'waiting',
+    courier_status: 'viewing',
+    viewed_at: new Date().toISOString(),
+  }, { onConflict: 'delivery_id,courier_id' });
+  if (error) console.error('[sync] markCourierViewing:', error.message);
+}
+
+/** Courier approves delivery (joins queue with approved status) */
+export async function courierApproveDelivery(deliveryId: string, courierId: string): Promise<void> {
+  const { error } = await supabase.from('delivery_candidates')
+    .update({ courier_status: 'approved', last_heartbeat: new Date().toISOString() })
+    .eq('delivery_id', deliveryId)
+    .eq('courier_id', courierId);
+  if (error) console.error('[sync] courierApproveDelivery:', error.message);
+}
+
+/** Courier rejects delivery */
+export async function courierRejectDelivery(deliveryId: string, courierId: string): Promise<void> {
+  await supabase.from('delivery_candidates')
+    .update({ courier_status: 'rejected_by_courier' })
+    .eq('delivery_id', deliveryId)
+    .eq('courier_id', courierId);
+}
+
+/** Get stats for business waiting screen */
+export async function getCandidateStats(deliveryId: string): Promise<{ viewing: number; approved: number; rejectedByCourier: number }> {
+  const { data } = await supabase
+    .from('delivery_candidates')
+    .select('courier_status')
+    .eq('delivery_id', deliveryId);
+  if (!data) return { viewing: 0, approved: 0, rejectedByCourier: 0 };
+  return {
+    viewing:           data.filter(r => r.courier_status === 'viewing').length,
+    approved:          data.filter(r => r.courier_status === 'approved').length,
+    rejectedByCourier: data.filter(r => r.courier_status === 'rejected_by_courier').length,
+  };
+}
+
+/** Save delivery proof (photo + note) */
+export async function saveDeliveryProof(deliveryId: string, photoUrl: string | null, note: string | null): Promise<void> {
+  const { error } = await supabase.from('deliveries').update({
+    proof_photo_url: photoUrl ?? null,
+    proof_note: note ?? null,
+    proof_submitted_at: new Date().toISOString(),
+  }).eq('id', deliveryId);
+  if (error) console.error('[sync] saveDeliveryProof:', error.message);
 }
 
 /** Get a single courier's candidacy status for a delivery */

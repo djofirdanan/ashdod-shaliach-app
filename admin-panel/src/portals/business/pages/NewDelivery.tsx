@@ -12,8 +12,8 @@ import {
   TruckIcon,
   CalendarDaysIcon,
   CreditCardIcon,
-  InformationCircleIcon,
 } from '@heroicons/react/24/outline';
+import { ScheduledDeliveryPicker } from '../../../components/ui/ScheduledDeliveryPicker';
 import { DEFAULT_PRICING_ZONES } from '../../../utils/constants';
 
 // ── Wolt design tokens ──────────────────────────────────────────────────────
@@ -103,8 +103,7 @@ const NewDelivery: React.FC = () => {
 
   // Scheduled delivery
   const [isScheduled, setIsScheduled] = useState(false);
-  const [scheduledDate, setScheduledDate] = useState('');
-  const [scheduledTime, setScheduledTime] = useState('');
+  const [scheduledAt, setScheduledAt] = useState<Date | null>(null);
 
   const [isLoading, setIsLoading] = useState(false);
   const zones = loadPricingZones();
@@ -130,22 +129,16 @@ const NewDelivery: React.FC = () => {
     setPrice(String(Math.round(zone.basePrice * multiplier)));
   }, [selectedZoneId, requiredVehicle]);
 
-  // Min datetime for schedule (now + 5min)
-  const minDateTime = () => {
-    const d = new Date(Date.now() + 5 * 60 * 1000);
-    return d.toISOString().slice(0, 16);
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!dropAddress.trim()) { toast.error('נא להזין כתובת מסירה'); return; }
     if (!pickupAddress.trim()) { toast.error('נא להזין כתובת איסוף'); return; }
 
-    let scheduledAt: string | undefined;
+    let scheduledAtISO: string | undefined;
     if (isScheduled) {
-      if (!scheduledDate || !scheduledTime) { toast.error('נא לבחור תאריך ושעה למשלוח מתוזמן'); return; }
-      scheduledAt = new Date(`${scheduledDate}T${scheduledTime}`).toISOString();
-      if (new Date(scheduledAt) <= new Date()) { toast.error('זמן המשלוח חייב להיות בעתיד'); return; }
+      if (!scheduledAt) { toast.error('נא לבחור תאריך ושעה למשלוח מתוזמן'); return; }
+      if (scheduledAt <= new Date()) { toast.error('זמן המשלוח חייב להיות בעתיד'); return; }
+      scheduledAtISO = scheduledAt.toISOString();
     }
 
     setIsLoading(true);
@@ -166,7 +159,7 @@ const NewDelivery: React.FC = () => {
         description: description.trim() || undefined,
         price: priceNum,
         status: isScheduled ? 'scheduled' : 'pending',
-        scheduledAt,
+        scheduledAt: scheduledAtISO,
         requiredVehicle: requiredVehicle || undefined,
         paymentMethod,
         customerPaid,
@@ -187,7 +180,7 @@ const NewDelivery: React.FC = () => {
           customerPaid,
         });
       } else {
-        const dt = new Date(scheduledAt!);
+        const dt = new Date(scheduledAtISO!);
         const formatted = dt.toLocaleString('he-IL', { weekday: 'short', hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
         toast.success(`המשלוח תוזמן ל-${formatted} ✅`);
       }
@@ -430,20 +423,31 @@ const NewDelivery: React.FC = () => {
 
           {/* ── Scheduled delivery ── */}
           <div style={{ ...cardStyle }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: isScheduled ? 12 : 0 }}>
+            {/* Header row with toggle */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: isScheduled ? 16 : 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <CalendarDaysIcon style={{ width: 16, height: 16, color: BLUE }} />
                 <p style={{ fontSize: 13, fontWeight: 900, color: TEXT, margin: 0 }}>תזמון משלוח עתידי</p>
               </div>
-              {/* Toggle — uses left positioning instead of translateX */}
               <button
                 type="button"
-                onClick={() => setIsScheduled(!isScheduled)}
+                onClick={() => {
+                  const next = !isScheduled;
+                  setIsScheduled(next);
+                  // When enabling, default to now+1h
+                  if (next && !scheduledAt) {
+                    const d = new Date(Date.now() + 3_600_000);
+                    d.setSeconds(0); d.setMilliseconds(0);
+                    const m = Math.ceil(d.getMinutes() / 5) * 5;
+                    if (m >= 60) { d.setMinutes(0); d.setHours(d.getHours() + 1); } else d.setMinutes(m);
+                    setScheduledAt(d);
+                  }
+                }}
                 style={{
                   position: 'relative',
-                  width: 44,
-                  height: 24,
-                  borderRadius: 12,
+                  width: 48,
+                  height: 26,
+                  borderRadius: 13,
                   border: 'none',
                   background: isScheduled ? BLUE : BORDER,
                   cursor: 'pointer',
@@ -454,13 +458,13 @@ const NewDelivery: React.FC = () => {
                 <span
                   style={{
                     position: 'absolute',
-                    top: 2,
-                    left: isScheduled ? 22 : 2,
+                    top: 3,
+                    left: isScheduled ? 25 : 3,
                     width: 20,
                     height: 20,
                     borderRadius: '50%',
                     background: '#fff',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                    boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
                     transition: 'left 0.2s',
                   }}
                 />
@@ -468,51 +472,10 @@ const NewDelivery: React.FC = () => {
             </div>
 
             {isScheduled ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: 8,
-                    padding: 12,
-                    borderRadius: 12,
-                    background: '#EAF7FD',
-                    color: BLUE,
-                    fontSize: 12,
-                  }}
-                >
-                  <InformationCircleIcon style={{ width: 16, height: 16, flexShrink: 0, marginTop: 1 }} />
-                  <span>המשלוח יתוזמן ושליחים יקבלו התראה בזמן שנקבע</span>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <div>
-                    <label style={labelStyle}>תאריך</label>
-                    <input
-                      type="date"
-                      style={{ ...inputStyle, direction: 'ltr' }}
-                      min={new Date().toISOString().split('T')[0]}
-                      value={scheduledDate}
-                      onChange={e => setScheduledDate(e.target.value)}
-                      required={isScheduled}
-                    />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>שעה</label>
-                    <input
-                      type="time"
-                      style={{ ...inputStyle, direction: 'ltr' }}
-                      value={scheduledTime}
-                      onChange={e => setScheduledTime(e.target.value)}
-                      required={isScheduled}
-                    />
-                  </div>
-                </div>
-                {scheduledDate && scheduledTime && (
-                  <p style={{ fontSize: 12, fontWeight: 700, textAlign: 'center', color: SUCCESS, margin: 0 }}>
-                    ✅ תוזמן ל: {new Date(`${scheduledDate}T${scheduledTime}`).toLocaleString('he-IL', { weekday: 'long', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                  </p>
-                )}
-              </div>
+              <ScheduledDeliveryPicker
+                value={scheduledAt}
+                onChange={setScheduledAt}
+              />
             ) : (
               <p style={{ fontSize: 12, color: TEXT2, margin: 0 }}>
                 כבוי — המשלוח יישלח עכשיו מיד

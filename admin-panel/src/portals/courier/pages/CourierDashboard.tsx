@@ -7,12 +7,24 @@ import {
   getDeliveriesByCourier,
   getPendingNotifications,
   getDeliveries,
+  getActiveDeliveryForCourier,
+  getOrCreateConversation,
   type StoredDelivery,
 } from '../../../services/storage.service';
+import {
+  getCandidacyStatus,
+  withdrawFromQueue,
+  syncDeliveriesDown,
+} from '../../../services/sync.service';
+import { supabase } from '../../../lib/supabase';
+import toast from 'react-hot-toast';
 import { TruckIcon, BellIcon, ChevronLeftIcon, StarIcon, ClockIcon } from '@heroicons/react/24/outline';
 import { StarIcon as StarSolid } from '@heroicons/react/24/solid';
 
-const BLUE = '#009DE0';
+const CANDIDACY_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+
+const BLUE   = '#009DE0';
+const ORANGE = '#F58F1F';
 
 const STATUS_LABEL: Record<StoredDelivery['status'], string> = {
   scheduled: '📅 מתוזמן',
@@ -84,13 +96,61 @@ const CourierDashboard: React.FC = () => {
     }
   }, [courierId]);
 
-  // Poll pending_candidacy every 3s to show/hide the waiting card
+  // Poll pending_candidacy every 3s — also checks acceptance / rejection / timeout
   useEffect(() => {
-    const check = () => {
+    if (!courierId) return;
+
+    const check = async () => {
       const raw = localStorage.getItem('pending_candidacy');
       if (!raw) { setCandidacy(null); setQueueDelivery(null); return; }
       try {
         const parsed: PendingCandidacy = JSON.parse(raw);
+
+        // Fix 3 — Timeout: auto-withdraw after 10 minutes of no response
+        if (parsed.joinedAt) {
+          const age = Date.now() - new Date(parsed.joinedAt).getTime();
+          if (age > CANDIDACY_TIMEOUT_MS) {
+            await withdrawFromQueue(parsed.deliveryId, courierId).catch(() => {});
+            localStorage.removeItem('pending_candidacy');
+            setCandidacy(null); setQueueDelivery(null);
+            toast('⏰ פג תוקף — לא קיבלת אישור תוך 10 דקות', {
+              style: { background: '#202125', color: '#fff', fontWeight: 700, borderRadius: 14, direction: 'rtl' },
+              duration: 5000,
+            });
+            return;
+          }
+        }
+
+        // Fix 1+2 — Check real status from Supabase
+        const status = await getCandidacyStatus(parsed.deliveryId, courierId).catch(() => null);
+        if (status === 'accepted') {
+          const deliveryId = parsed.deliveryId; // save before removing
+          localStorage.removeItem('pending_candidacy');
+          setCandidacy(null); setQueueDelivery(null);
+          await syncDeliveriesDown().catch(() => {});
+          setDeliveries(getDeliveriesByCourier(courierId));
+          // Navigate to chat automatically
+          const delivery = getDeliveries().find(d => d.id === deliveryId);
+          if (delivery?.businessId) {
+            const conv = getOrCreateConversation(delivery.businessId, courierId);
+            toast.success('🎉 נבחרת! פותח את הצ׳אט...', { duration: 3000 });
+            navigate(`/courier/chat?convId=${conv.id}&deliveryId=${deliveryId}`);
+          } else {
+            toast.success('🎉 נבחרת! המשלוח שלך', { duration: 8000 });
+          }
+          return;
+        }
+        if (status === 'rejected') {
+          localStorage.removeItem('pending_candidacy');
+          setCandidacy(null); setQueueDelivery(null);
+          toast('😔 לא נבחרת הפעם — נסה משלוח אחר', {
+            style: { background: '#202125', color: '#fff', fontWeight: 700, borderRadius: 14, direction: 'rtl' },
+            duration: 5000,
+          });
+          return;
+        }
+
+        // Still waiting
         setCandidacy(parsed);
         const allDel = getDeliveries();
         setQueueDelivery(allDel.find(x => x.id === parsed.deliveryId) ?? null);
@@ -99,13 +159,60 @@ const CourierDashboard: React.FC = () => {
         }
       } catch { setCandidacy(null); }
     };
+
     check();
     const id = setInterval(check, 3_000);
     return () => clearInterval(id);
-  }, []);
+  }, [courierId]);
+
+  // Fix 1 — Supabase realtime for INSTANT notification (no polling delay)
+  useEffect(() => {
+    if (!courierId) return;
+    const channel = supabase
+      .channel(`courier_candidacy_${courierId}`)
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'delivery_candidates', filter: `courier_id=eq.${courierId}` },
+        async (payload) => {
+          const newStatus = (payload.new as { status?: string }).status;
+          if (newStatus === 'accepted') {
+            const raw = localStorage.getItem('pending_candidacy');
+            localStorage.removeItem('pending_candidacy');
+            setCandidacy(null); setQueueDelivery(null);
+            await syncDeliveriesDown().catch(() => {});
+            setDeliveries(getDeliveriesByCourier(courierId));
+            // Navigate to chat automatically
+            if (raw) {
+              try {
+                const { deliveryId } = JSON.parse(raw) as PendingCandidacy;
+                const delivery = getDeliveries().find(d => d.id === deliveryId);
+                if (delivery?.businessId) {
+                  const conv = getOrCreateConversation(delivery.businessId, courierId);
+                  toast.success('🎉 נבחרת! פותח את הצ׳אט...', { duration: 3000 });
+                  navigate(`/courier/chat?convId=${conv.id}&deliveryId=${deliveryId}`);
+                  return;
+                }
+              } catch { /* ignore */ }
+            }
+            toast.success('🎉 נבחרת! המשלוח שלך', { duration: 8000 });
+          } else if (newStatus === 'rejected') {
+            if (localStorage.getItem('pending_candidacy')) {
+              localStorage.removeItem('pending_candidacy');
+              setCandidacy(null); setQueueDelivery(null);
+              toast('😔 לא נבחרת הפעם — נסה משלוח אחר', {
+                style: { background: '#202125', color: '#fff', fontWeight: 700, borderRadius: 14, direction: 'rtl' },
+                duration: 5000,
+              });
+            }
+          }
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [courierId]);
 
   const displayName   = courierName || user?.name || 'שליח';
   const activeDelivery = deliveries.find(d => ['accepted','picked_up'].includes(d.status));
+  const activeBanner = getActiveDeliveryForCourier(courierId);
 
   return (
     <div className="max-w-lg mx-auto" dir="rtl">
@@ -119,6 +226,33 @@ const CourierDashboard: React.FC = () => {
           <span className="text-white/70 text-[12px] font-medium">{rating.toFixed(1)}</span>
         </div>
       </div>
+
+      {/* ── Active delivery banner ── */}
+      {activeBanner && !candidacy && (
+        <div className="px-4 -mt-3">
+          <div
+            className="w-full rounded-2xl p-4 cursor-pointer"
+            style={{ background: 'linear-gradient(135deg, #EAF7FD, #F0FBFF)', border: `1.5px solid ${BLUE}30`, boxShadow: `0 4px 16px ${BLUE}15` }}
+            onClick={() => {
+              if (activeBanner.businessId) {
+                const conv = getOrCreateConversation(activeBanner.businessId, courierId);
+                navigate(`/courier/chat?convId=${conv.id}&deliveryId=${activeBanner.id}`);
+              }
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-3 h-3 rounded-full animate-pulse flex-shrink-0" style={{ background: activeBanner.status === 'picked_up' ? ORANGE : BLUE }} />
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-black" style={{ color: activeBanner.status === 'picked_up' ? ORANGE : BLUE }}>
+                  {activeBanner.status === 'accepted' ? '🛵 בדרך לאיסוף' : '📦 בדרך ללקוח'}
+                </p>
+                <p className="text-[11px] truncate" style={{ color: '#757575' }}>{activeBanner.businessName} · ₪{activeBanner.price}</p>
+              </div>
+              <span className="text-[11px] font-bold" style={{ color: BLUE }}>נהל ›</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Waiting in queue card ── */}
       {candidacy && (

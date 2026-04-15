@@ -26,6 +26,8 @@ import { Modal } from '../components/ui/Modal';
 import * as storageService from '../services/storage.service';
 import type { StoredBusiness } from '../services/storage.service';
 import { decodePassword } from '../services/storage.service';
+import { syncDown } from '../services/sync.service';
+import { addBusinessAsync, updateBusinessAsync } from '../services/storage.service';
 import { formatCurrency } from '../utils/formatters';
 import { DEFAULT_PRICING_ZONES } from '../utils/constants';
 import { setUser, setPortalUser } from '../store/authSlice';
@@ -83,19 +85,19 @@ const BizForm: React.FC<BizFormProps> = ({ value, onChange, editMode, currentPas
   const currentPw = currentPasswordHash ? decodePassword(currentPasswordHash) : '';
   return (
     <div className="space-y-4" dir="rtl">
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Input label="שם העסק *" value={value.businessName} onChange={(e) => onChange({ ...value, businessName: e.target.value })} />
         <Input label="איש קשר *" value={value.contactPerson} onChange={(e) => onChange({ ...value, contactPerson: e.target.value })} />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Input label="אימייל *" type="email" dir="ltr" value={value.email} onChange={(e) => onChange({ ...value, email: e.target.value })} />
         <Input label="טלפון *" type="tel" dir="ltr" value={value.phone} onChange={(e) => onChange({ ...value, phone: e.target.value })} />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Input label="רחוב *" value={value.street} onChange={(e) => onChange({ ...value, street: e.target.value })} />
         <Input label="עיר" value={value.city} onChange={(e) => onChange({ ...value, city: e.target.value })} />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="block text-[12px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#3c4257' }}>אזור</label>
           <select value={value.zone} onChange={(e) => onChange({ ...value, zone: e.target.value })}
@@ -128,7 +130,7 @@ const BizForm: React.FC<BizFormProps> = ({ value, onChange, editMode, currentPas
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <Input
             label={editMode ? 'סיסמה חדשה (ריק = ללא שינוי)' : 'סיסמה *'}
@@ -177,7 +179,10 @@ const Businesses: React.FC = () => {
     setBusinesses(storageService.getBusinesses());
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    // Sync from Supabase first so admin sees all registrations (including from other devices)
+    syncDown().finally(load);
+  }, [load]);
 
   const filtered = businesses.filter((b) => {
     const matchSearch = !search ||
@@ -208,7 +213,7 @@ const Businesses: React.FC = () => {
     }
     setIsSaving(true);
     try {
-      storageService.addBusiness({
+      await addBusinessAsync({
         email: addForm.email,
         password: storageService.hashPassword(addForm.password),
         businessName: addForm.businessName,
@@ -222,7 +227,7 @@ const Businesses: React.FC = () => {
         totalDeliveries: 0,
         rating: 5,
       });
-      toast.success('עסק נוסף בהצלחה');
+      toast.success('עסק נוסף בהצלחה ✅');
       setAddModal(false);
       setAddForm(emptyBizForm());
       load();
@@ -268,7 +273,7 @@ const Businesses: React.FC = () => {
       if (editForm.password.trim()) {
         updateData.password = storageService.hashPassword(editForm.password.trim());
       }
-      storageService.updateBusiness(editModal.biz.id, updateData);
+      await updateBusinessAsync(editModal.biz.id, updateData);
       // Send approval email when admin activates a previously inactive account
       if (wasInactive && nowActive) {
         sendAccountApproved(editForm.email, editForm.businessName).catch(() => {});

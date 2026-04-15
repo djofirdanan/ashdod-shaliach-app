@@ -25,6 +25,8 @@ import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
 import * as storageService from '../services/storage.service';
 import type { StoredCourier } from '../services/storage.service';
+import { addCourierAsync, updateCourierAsync } from '../services/storage.service';
+import { syncDown } from '../services/sync.service';
 import { formatCurrency } from '../utils/formatters';
 import { VEHICLE_TYPE_LABELS } from '../utils/constants';
 import type { VehicleType } from '../types';
@@ -82,11 +84,11 @@ const CourForm: React.FC<CourFormProps> = ({ value, onChange, editMode, currentP
   return (
     <div className="space-y-4" dir="rtl">
       <Input label="שם מלא *" value={value.name} onChange={(e) => onChange({ ...value, name: e.target.value })} />
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Input label="אימייל *" type="email" dir="ltr" value={value.email} onChange={(e) => onChange({ ...value, email: e.target.value })} />
         <Input label="טלפון *" type="tel" dir="ltr" value={value.phone} onChange={(e) => onChange({ ...value, phone: e.target.value })} />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="block text-[12px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#3c4257' }}>סוג רכב</label>
           <select value={value.vehicle}
@@ -162,7 +164,10 @@ const Couriers: React.FC = () => {
     setCouriers(storageService.getCouriers());
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    // Sync from Supabase first so admin sees all registrations (including from other devices)
+    syncDown().finally(load);
+  }, [load]);
 
   const filtered = couriers.filter((c) => {
     const matchSearch = !search ||
@@ -190,7 +195,7 @@ const Couriers: React.FC = () => {
     }
     setIsSaving(true);
     try {
-      storageService.addCourier({
+      await addCourierAsync({
         email: addForm.email,
         password: storageService.hashPassword(addForm.password),
         name: addForm.name,
@@ -204,7 +209,7 @@ const Couriers: React.FC = () => {
         activeDeliveries: 0,
         earnings: { today: 0, thisWeek: 0, thisMonth: 0, total: 0 },
       });
-      toast.success('שליח נוסף בהצלחה');
+      toast.success('שליח נוסף בהצלחה ✅');
       setAddModal(false);
       setAddForm(emptyCourForm());
       load();
@@ -244,7 +249,7 @@ const Couriers: React.FC = () => {
       if (editForm.password.trim()) {
         updateData.password = storageService.hashPassword(editForm.password.trim());
       }
-      storageService.updateCourier(editModal.courier.id, updateData);
+      await updateCourierAsync(editModal.courier.id, updateData);
       // Send approval email when admin activates a previously inactive courier
       if (wasInactive && nowActive) {
         sendAccountApproved(editForm.email, editForm.name).catch(() => {});
@@ -548,7 +553,7 @@ const Couriers: React.FC = () => {
                 <p className="text-gray-500" dir="ltr">{detailModal.courier.phone}</p>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {[
                 { label: 'רכב', value: vehicleLabels[detailModal.courier.vehicle] },
                 { label: 'דירוג', value: <RatingStars rating={detailModal.courier.rating} /> },
@@ -563,7 +568,7 @@ const Couriers: React.FC = () => {
             </div>
             <div className="bg-gray-50 rounded-xl p-4">
               <p className="text-xs font-semibold text-gray-500 mb-3">רווחים</p>
-              <div className="grid grid-cols-4 gap-3 text-center">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
                 {[
                   { label: 'היום', value: detailModal.courier.earnings.today, color: 'text-green-600' },
                   { label: 'השבוע', value: detailModal.courier.earnings.thisWeek, color: 'text-blue-600' },

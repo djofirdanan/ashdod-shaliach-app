@@ -76,10 +76,11 @@ export interface StoredMessage {
   senderName: string;
   senderType: 'business' | 'courier' | 'admin';
   content: string;
-  messageType: 'text' | 'image';
+  messageType: 'text' | 'image' | 'delivery_card' | 'system' | 'proof';
   imageUrl?: string;
   readAt?: string;
   createdAt: string;
+  deliveryId?: string;
 }
 
 export interface StoredConversation {
@@ -118,6 +119,11 @@ export interface StoredDelivery {
   paymentMethod?: 'cash' | 'bit'; // how business pays courier
   customerPaid?: boolean;     // true = customer already paid; false = courier collects
   archived?: boolean;         // archived by courier/business (removed from main list)
+  proofPhotoUrl?: string;
+  proofNote?: string;
+  proofSubmittedAt?: string;
+  cancelledBy?: string;
+  cancelAction?: 'find_new' | 'delete';
 }
 
 // ─── Support ticket & messages ──────────────────────────────
@@ -299,6 +305,15 @@ export function addBusiness(data: Omit<StoredBusiness, 'id' | 'createdAt'>): Sto
   return record;
 }
 
+/** Async version — awaits Supabase write and throws if it fails. */
+export async function addBusinessAsync(data: Omit<StoredBusiness, 'id' | 'createdAt'>): Promise<StoredBusiness> {
+  const list = getBusinesses();
+  const record: StoredBusiness = { ...data, id: uid(), createdAt: new Date().toISOString() };
+  write(KEYS.businesses, [...list, record]);
+  await sync.upsertBusiness(record);
+  return record;
+}
+
 export function updateBusiness(id: string, data: Partial<StoredBusiness>): StoredBusiness {
   const list = getBusinesses();
   const idx = list.findIndex((b) => b.id === id);
@@ -306,6 +321,17 @@ export function updateBusiness(id: string, data: Partial<StoredBusiness>): Store
   list[idx] = { ...list[idx], ...data };
   write(KEYS.businesses, list);
   sync.upsertBusiness(list[idx]).catch(console.error);
+  return list[idx];
+}
+
+/** Async version — awaits Supabase write and throws if it fails. */
+export async function updateBusinessAsync(id: string, data: Partial<StoredBusiness>): Promise<StoredBusiness> {
+  const list = getBusinesses();
+  const idx = list.findIndex((b) => b.id === id);
+  if (idx === -1) throw new Error('Business not found');
+  list[idx] = { ...list[idx], ...data };
+  write(KEYS.businesses, list);
+  await sync.upsertBusiness(list[idx]);
   return list[idx];
 }
 
@@ -339,6 +365,15 @@ export function addCourier(data: Omit<StoredCourier, 'id' | 'createdAt'>): Store
   return record;
 }
 
+/** Async version — awaits Supabase write and throws if it fails. */
+export async function addCourierAsync(data: Omit<StoredCourier, 'id' | 'createdAt'>): Promise<StoredCourier> {
+  const list = getCouriers();
+  const record: StoredCourier = { ...data, id: uid(), createdAt: new Date().toISOString() };
+  write(KEYS.couriers, [...list, record]);
+  await sync.upsertCourier(record);
+  return record;
+}
+
 export function updateCourier(id: string, data: Partial<StoredCourier>): StoredCourier {
   const list = getCouriers();
   const idx = list.findIndex((c) => c.id === id);
@@ -346,6 +381,17 @@ export function updateCourier(id: string, data: Partial<StoredCourier>): StoredC
   list[idx] = { ...list[idx], ...data };
   write(KEYS.couriers, list);
   sync.upsertCourier(list[idx]).catch(console.error);
+  return list[idx];
+}
+
+/** Async version — awaits Supabase write and throws if it fails. */
+export async function updateCourierAsync(id: string, data: Partial<StoredCourier>): Promise<StoredCourier> {
+  const list = getCouriers();
+  const idx = list.findIndex((c) => c.id === id);
+  if (idx === -1) throw new Error('Courier not found');
+  list[idx] = { ...list[idx], ...data };
+  write(KEYS.couriers, list);
+  await sync.upsertCourier(list[idx]);
   return list[idx];
 }
 
@@ -357,6 +403,60 @@ export function deleteCourier(id: string): void {
 // ─── Conversations ───────────────────────────────────────────
 export function getConversations(): StoredConversation[] {
   return read<StoredConversation>(KEYS.conversations);
+}
+
+/** Delete a conversation and all its messages from localStorage (+ Supabase async). */
+export function deleteConversation(id: string): void {
+  // Remove conversation
+  write(KEYS.conversations, getConversations().filter((c) => c.id !== id));
+  // Remove all messages for this conversation
+  const msgs = read<StoredMessage>(KEYS.messages).filter((m) => m.conversationId !== id);
+  write(KEYS.messages, msgs);
+  // Fire-and-forget Supabase delete
+  sync.deleteConversation(id).catch(console.error);
+}
+
+/** Auto-cleanup: remove conversations older than `days` days for a specific user. */
+export function cleanupOldConversations(
+  userId: string,
+  userType: 'business' | 'courier',
+  olderThanDays: number,
+): void {
+  const cutoff = new Date(Date.now() - olderThanDays * 86_400_000).toISOString();
+  const allConvs = getConversations();
+  const toDelete = allConvs.filter((c) => {
+    const isUser = userType === 'business' ? c.businessId === userId : c.courierId === userId;
+    const lastActivity = c.lastMessageAt ?? c.createdAt;
+    return isUser && lastActivity < cutoff;
+  });
+  for (const c of toDelete) deleteConversation(c.id);
+}
+
+/** Auto-cleanup: remove conversations after all deliveries in them are complete. */
+export function cleanupCompletedDeliveryConvs(
+  userId: string,
+  userType: 'business' | 'courier',
+): void {
+  const allConvs = getConversations();
+  const allDeliveries = getDeliveries();
+
+  for (const c of allConvs) {
+    const isUser = userType === 'business' ? c.businessId === userId : c.courierId === userId;
+    if (!isUser) continue;
+
+    // Find deliveries in this conversation
+    const convDeliveries = allDeliveries.filter((d) =>
+      userType === 'business'
+        ? d.businessId === c.businessId && d.courierId === c.courierId
+        : d.courierId === c.courierId && d.businessId === c.businessId
+    );
+
+    if (convDeliveries.length === 0) continue;
+
+    // All deliveries in this conv must be completed
+    const allDone = convDeliveries.every((d) => d.status === 'delivered' || d.status === 'cancelled');
+    if (allDone) deleteConversation(c.id);
+  }
 }
 
 export function getOrCreateConversation(
@@ -751,4 +851,50 @@ export function applyResetToken(token: string, newPassword: string): boolean {
   writeResetTokens(readResetTokens().filter(t => t.token !== token));
   sync.deleteResetToken(token).catch(console.error);
   return true;
+}
+
+// ─── Active delivery helpers ──────────────────────────────────
+
+export function getActiveDeliveryForCourier(courierId: string): StoredDelivery | undefined {
+  return getDeliveries().find(d => d.courierId === courierId && ['accepted', 'picked_up'].includes(d.status));
+}
+
+export function getActiveDeliveryForBusiness(businessId: string): StoredDelivery | undefined {
+  return getDeliveries().find(d => d.businessId === businessId && ['accepted', 'picked_up'].includes(d.status));
+}
+
+export function addDeliveryCardMessage(
+  conversationId: string,
+  delivery: StoredDelivery,
+  senderId: string,
+  senderName: string,
+  senderType: StoredMessage['senderType']
+): StoredMessage {
+  const content = JSON.stringify({
+    pickupAddress: delivery.pickupAddress,
+    dropAddress: delivery.dropAddress,
+    price: delivery.price,
+    paymentMethod: delivery.paymentMethod,
+    customerPaid: delivery.customerPaid,
+    customerName: delivery.customerName,
+    customerPhone: delivery.customerPhone,
+    description: delivery.description,
+    requiredVehicle: delivery.requiredVehicle,
+  });
+  const msg: StoredMessage = {
+    id: Math.random().toString(36).slice(2),
+    conversationId,
+    senderId,
+    senderName,
+    senderType,
+    content,
+    messageType: 'delivery_card',
+    deliveryId: delivery.id,
+    createdAt: new Date().toISOString(),
+  };
+  const all = read<StoredMessage>('app_messages');
+  write('app_messages', [...all, msg]);
+  // sync to Supabase (dynamic import to avoid circular dependencies)
+  import('./sync.service').then(s => s.insertMessage(msg).catch(console.error));
+  return msg;
 }

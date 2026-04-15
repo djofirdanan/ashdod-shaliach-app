@@ -8,6 +8,7 @@ import {
   deleteDelivery,
   type StoredDelivery,
 } from '../../../services/storage.service';
+import { syncDeliveriesDown } from '../../../services/sync.service';
 import { supabase } from '../../../lib/supabase';
 import {
   TruckIcon,
@@ -518,14 +519,40 @@ const BusinessDeliveries: React.FC = () => {
   const [editTarget, setEditTarget] = useState<StoredDelivery | null>(null);
   const [delTarget,  setDelTarget]  = useState<StoredDelivery | null>(null);
 
-  const load = () => {
+  const load = async () => {
     if (!businessId) return;
+    // Always await so state is updated AFTER Supabase sync (fixes race condition
+    // where background sync completed after setDeliveries was called with stale data)
+    await syncDeliveriesDown().catch(() => {});
     setDeliveries(
       getDeliveriesByBusiness(businessId).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     );
   };
 
-  useEffect(load, [businessId]);
+  useEffect(() => {
+    load();
+    const id = setInterval(load, 4000);
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [businessId]);
+
+  // Realtime updates — fire immediately on any delivery change for this business
+  useEffect(() => {
+    if (!businessId) return;
+    const channel = supabase
+      .channel(`business_deliveries_${businessId}`)
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'deliveries' },
+        (payload) => {
+          // Filter in JS (avoid RLS/filter issues with Supabase realtime)
+          const row = payload.new as Record<string, unknown>;
+          if (row.business_id === businessId) load();
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [businessId]);
 
   interface PendingApprovalDelivery extends StoredDelivery { candidateCount: number; }
   const [pendingApproval, setPendingApproval] = useState<PendingApprovalDelivery[]>([]);

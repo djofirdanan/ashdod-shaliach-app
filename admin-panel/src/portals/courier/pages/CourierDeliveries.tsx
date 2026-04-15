@@ -8,7 +8,8 @@ import {
   getOrCreateConversation,
   type StoredDelivery,
 } from '../../../services/storage.service';
-import { withdrawFromQueue } from '../../../services/sync.service';
+import { withdrawFromQueue, syncDeliveriesDown } from '../../../services/sync.service';
+import { supabase } from '../../../lib/supabase';
 import {
   XMarkIcon,
   TruckIcon,
@@ -66,13 +67,27 @@ interface ActionSheetProps {
   onClose: () => void;
   onStatusUpdate: (d: StoredDelivery, s: 'picked_up' | 'delivered') => void;
   onOpenChat: (d: StoredDelivery) => void;
+  onCancel: (d: StoredDelivery) => void;
 }
 
 const STEPS = [
-  { key: 'accepted',  label: 'קיבלת את המשלוח', Icon: TruckIcon,      color: BLUE   },
-  { key: 'picked_up', label: 'אספת את החבילה',  Icon: ArchiveBoxIcon, color: ORANGE },
-  { key: 'delivered', label: 'נמסר ללקוח',       Icon: CheckIcon,      color: GREEN  },
+  { key: 'accepted',  label: 'קיבלת את המשלוח', sublabel: 'שליח קיבל הזמנה',   Icon: TruckIcon,      color: BLUE   },
+  { key: 'picked_up', label: 'אספת את החבילה',  sublabel: 'חבילה נאספה',        Icon: ArchiveBoxIcon, color: ORANGE },
+  { key: 'delivered', label: 'נמסר ללקוח',       sublabel: 'מסירה הושלמה',       Icon: CheckIcon,      color: GREEN  },
 ] as const;
+
+function fmtTime(iso?: string): string | null {
+  if (!iso) return null;
+  return new Date(iso).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+}
+function fmtDateTime(iso?: string): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  const today = new Date();
+  const isToday = d.toDateString() === today.toDateString();
+  if (isToday) return d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
 
 const STATUS_ORDER: StoredDelivery['status'][] = ['accepted', 'picked_up', 'delivered'];
 
@@ -92,6 +107,7 @@ const DeliveryActionSheet: React.FC<ActionSheetProps> = ({
   onClose,
   onStatusUpdate,
   onOpenChat,
+  onCancel,
 }) => {
   if (!delivery) return null;
 
@@ -155,10 +171,30 @@ const DeliveryActionSheet: React.FC<ActionSheetProps> = ({
             className="rounded-2xl p-4"
             style={{ background: '#F8F8F8', border: '1px solid #E8E8E8' }}
           >
+            {/* Created row */}
+            <div className="flex items-center gap-3 mb-1">
+              <div className="flex flex-col items-center">
+                <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+                  style={{ background: '#E8F8F0' }}>
+                  <BellIcon className="w-5 h-5" style={{ color: GREEN }} />
+                </div>
+                <div className="w-0.5 my-1" style={{ height: 20, background: GREEN }} />
+              </div>
+              <div className="flex-1 flex items-center justify-between">
+                <p className="text-[13px] font-semibold" style={{ color: TEXT }}>הזמנה התקבלה</p>
+                <p className="text-[11px] font-bold tabular-nums" style={{ color: GREEN }}>
+                  {fmtDateTime(d.createdAt)}
+                </p>
+              </div>
+            </div>
+
             {STEPS.map((step, idx) => {
               const done    = stepDone(d.status, step.key);
               const current = isCurrent(d.status, step.key);
               const { Icon, color, label } = step;
+              const ts = step.key === 'accepted' ? fmtTime(d.acceptedAt)
+                       : step.key === 'picked_up' ? fmtTime(d.pickedUpAt)
+                       : fmtTime(d.deliveredAt);
               return (
                 <div key={step.key} className="flex items-center gap-3">
                   {/* Circle */}
@@ -170,28 +206,30 @@ const DeliveryActionSheet: React.FC<ActionSheetProps> = ({
                         boxShadow: current ? `0 0 0 4px ${color}30` : undefined,
                       }}
                     >
-                      <Icon
-                        className="w-5 h-5"
-                        style={{ color: done ? '#FFFFFF' : '#AAAAAA' }}
-                      />
+                      <Icon className="w-5 h-5" style={{ color: done ? '#FFFFFF' : '#AAAAAA' }} />
                     </div>
                     {idx < STEPS.length - 1 && (
-                      <div
-                        className="w-0.5 my-1"
-                        style={{
-                          height: 20,
-                          background: done && !current ? color : '#E8E8E8',
-                        }}
-                      />
+                      <div className="w-0.5 my-1"
+                        style={{ height: 20, background: done && !current ? color : '#E8E8E8' }} />
                     )}
                   </div>
-                  {/* Label */}
-                  <p
-                    className="text-[13px] font-semibold"
-                    style={{ color: done ? TEXT : TEXT2 }}
-                  >
-                    {label}
-                  </p>
+                  {/* Label + timestamp */}
+                  <div className="flex-1 flex items-center justify-between">
+                    <p className="text-[13px] font-semibold" style={{ color: done ? TEXT : TEXT2 }}>
+                      {label}
+                    </p>
+                    {done && ts && (
+                      <p className="text-[11px] font-bold tabular-nums" style={{ color }}>
+                        {ts}
+                      </p>
+                    )}
+                    {current && !ts && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold animate-pulse"
+                        style={{ background: `${color}20`, color }}>
+                        עכשיו
+                      </span>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -304,6 +342,18 @@ const DeliveryActionSheet: React.FC<ActionSheetProps> = ({
               <ChatBubbleLeftRightIcon className="w-5 h-5" />
               צ׳אט עם העסק
             </button>
+
+            {/* Cancel — only for active (not yet picked up) deliveries */}
+            {d.status === 'accepted' && (
+              <button
+                onClick={() => onCancel(d)}
+                className="w-full py-3 rounded-2xl font-semibold text-[13px] flex items-center justify-center gap-2 transition-all active:scale-95"
+                style={{ background: '#FFF0F0', color: RED, border: `1px solid ${RED}30` }}
+              >
+                <XMarkIcon className="w-4 h-4" />
+                לא יכול לבצע — בטל
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -386,13 +436,42 @@ const CourierDeliveries: React.FC = () => {
   const [updating,   setUpdating]   = useState<string | null>(null);
   const [activeSheet, setActiveSheet] = useState<StoredDelivery | null>(null);
 
-  const load = () => {
+  const load = async (silent = false) => {
     if (!courierId) return;
+    if (!silent) await syncDeliveriesDown().catch(() => {});
+    else syncDeliveriesDown().catch(() => {}); // background refresh
     const d = getDeliveriesByCourier(courierId);
     setDeliveries(d.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+    // Keep activeSheet in sync if it's open
+    setActiveSheet(prev => {
+      if (!prev) return null;
+      const fresh = d.find(x => x.id === prev.id);
+      return fresh ?? prev;
+    });
   };
 
-  useEffect(() => { load(); }, [courierId]);
+  useEffect(() => {
+    load();
+    // Poll every 4s for status updates
+    const id = setInterval(() => load(true), 4000);
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courierId]);
+
+  // Supabase realtime — instant update when delivery status changes
+  useEffect(() => {
+    if (!courierId) return;
+    const channel = supabase
+      .channel(`courier_deliveries_${courierId}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'deliveries', filter: `courier_id=eq.${courierId}` },
+        () => { load(true); }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courierId]);
 
   interface CandidacyInfo {
     deliveryId: string;
@@ -464,6 +543,21 @@ const CourierDeliveries: React.FC = () => {
     const conv = getOrCreateConversation(d.businessId, courierId);
     setActiveSheet(null);
     navigate(`/courier/chat?convId=${conv.id}&deliveryId=${d.id}`);
+  };
+
+  const handleCourierCancel = (d: StoredDelivery) => {
+    const ok = window.confirm('לבטל את המשלוח? העסק יקבל הודעה ויצטרך לחפש שליח חדש.');
+    if (!ok) return;
+    updateDelivery(d.id, {
+      status: 'cancelled',
+      cancelledAt: new Date().toISOString(),
+    });
+    setActiveSheet(null);
+    toast('המשלוח בוטל — העסק קיבל הודעה', {
+      style: { background: '#202125', color: '#fff', fontWeight: 700, borderRadius: 14, direction: 'rtl' },
+      duration: 5000,
+    });
+    load();
   };
 
   const handleArchive = (id: string) => {
@@ -708,6 +802,7 @@ const CourierDeliveries: React.FC = () => {
         onClose={() => setActiveSheet(null)}
         onStatusUpdate={handleStatusUpdate}
         onOpenChat={handleOpenChat}
+        onCancel={handleCourierCancel}
       />
     </div>
   );

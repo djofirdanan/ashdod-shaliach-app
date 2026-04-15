@@ -8,9 +8,11 @@ import {
   getDeliveries,
   getOrCreateConversation,
   updateDelivery,
+  addDeliveryNotification,
   type StoredDelivery,
 } from '../../../services/storage.service';
-import { syncDeliveriesDown, getCandidates, rejectCandidate, acceptCandidate, type DeliveryCandidate } from '../../../services/sync.service';
+import { syncDeliveriesDown, getCandidates, rejectCandidate, acceptCandidate, getCandidateStats, type DeliveryCandidate } from '../../../services/sync.service';
+import { getActiveDeliveryForBusiness } from '../../../services/storage.service';
 import { supabase } from '../../../lib/supabase';
 import {
   TruckIcon, PlusIcon, ChevronLeftIcon, XMarkIcon,
@@ -20,8 +22,9 @@ import {
 } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 
-const BLUE  = '#009DE0';
-const GREEN = '#1BA672';
+const BLUE   = '#009DE0';
+const GREEN  = '#1BA672';
+const ORANGE = '#F58F1F';
 
 const STATUS_LABEL: Record<StoredDelivery['status'], string> = {
   scheduled: '📅 מתוזמן',
@@ -47,6 +50,18 @@ function formatTime(iso: string): string {
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' });
 }
+function fmtTime(iso?: string): string | null {
+  if (!iso) return null;
+  return new Date(iso).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+}
+function fmtDateTime(iso?: string): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  const today = new Date();
+  const isToday = d.toDateString() === today.toDateString();
+  if (isToday) return d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
 
 // ─── Candidate review sheet ───────────────────────────────────────────────────
 const VEHICLE_LABEL: Record<string, string> = {
@@ -65,6 +80,7 @@ const CandidateReviewSheet: React.FC<{
   const navigate = useNavigate();
   const [candidates, setCandidates] = useState<DeliveryCandidate[]>([]);
   const [loading,    setLoading]    = useState(false);
+  const [stats,      setStats]      = useState({ viewing: 0, approved: 0, rejectedByCourier: 0 });
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Delivery details for display
@@ -80,6 +96,8 @@ const CandidateReviewSheet: React.FC<{
       }
     }
     setCandidates(await getCandidates(deliveryId));
+    const s = await getCandidateStats(deliveryId);
+    setStats(s);
   };
 
   useEffect(() => {
@@ -148,6 +166,24 @@ const CandidateReviewSheet: React.FC<{
             <XMarkIcon className="w-4 h-4" style={{ color: '#757575' }} />
           </button>
         </div>
+
+        {/* Candidate stats bar */}
+        {(stats.viewing + stats.approved + stats.rejectedByCourier) > 0 && (
+          <div className="flex gap-2 mb-3">
+            <div className="flex-1 rounded-xl p-2 text-center" style={{ background: '#EAF7FD' }}>
+              <p className="text-[18px] font-black" style={{ color: BLUE }}>{stats.viewing}</p>
+              <p className="text-[10px] font-semibold" style={{ color: BLUE }}>צופים</p>
+            </div>
+            <div className="flex-1 rounded-xl p-2 text-center" style={{ background: '#E8F8F0' }}>
+              <p className="text-[18px] font-black" style={{ color: GREEN }}>{stats.approved}</p>
+              <p className="text-[10px] font-semibold" style={{ color: GREEN }}>אישרו</p>
+            </div>
+            <div className="flex-1 rounded-xl p-2 text-center" style={{ background: '#FFF0F0' }}>
+              <p className="text-[18px] font-black" style={{ color: '#E23437' }}>{stats.rejectedByCourier}</p>
+              <p className="text-[10px] font-semibold" style={{ color: '#E23437' }}>דחו</p>
+            </div>
+          </div>
+        )}
 
         {/* Delivery details card — always visible */}
         {delivery && (
@@ -277,13 +313,24 @@ const CandidateReviewSheet: React.FC<{
 };
 
 // ─── Live tracking status sheet ──────────────────────────────────────────────
-const STEPS: Array<{ status: StoredDelivery['status']; label: string }> = [
-  { status: 'pending',   label: 'מחפש שליח...'       },
-  { status: 'accepted',  label: 'שליח בדרך לאיסוף'  },
-  { status: 'picked_up', label: 'בדרך אליך'          },
-  { status: 'delivered', label: 'נמסר בהצלחה'        },
+const STEPS: Array<{
+  status: StoredDelivery['status'];
+  label: string;
+  tsField?: 'acceptedAt' | 'pickedUpAt' | 'deliveredAt';
+}> = [
+  { status: 'pending',   label: 'מחפש שליח...',      tsField: undefined     },
+  { status: 'accepted',  label: 'שליח בדרך לאיסוף', tsField: 'acceptedAt'  },
+  { status: 'picked_up', label: 'בדרך אליך',          tsField: 'pickedUpAt'  },
+  { status: 'delivered', label: 'נמסר בהצלחה',        tsField: 'deliveredAt' },
 ];
 const STEP_ORDER: StoredDelivery['status'][] = ['pending', 'accepted', 'picked_up', 'delivered'];
+
+const NOTIFY_MSGS: Partial<Record<StoredDelivery['status'], string>> = {
+  accepted:  '🛵 שליח קיבל את ההזמנה — בדרך לאיסוף',
+  picked_up: '📦 החבילה נאספה — השליח בדרך אליך!',
+  delivered: '✅ המשלוח נמסר בהצלחה!',
+  cancelled: '❌ המשלוח בוטל',
+};
 
 const TrackingSheet: React.FC<{
   deliveryId: string;
@@ -292,11 +339,22 @@ const TrackingSheet: React.FC<{
 }> = ({ deliveryId, businessId, onClose }) => {
   const navigate  = useNavigate();
   const [delivery, setDelivery] = useState<StoredDelivery | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const intervalRef   = useRef<ReturnType<typeof setInterval> | null>(null);
+  const prevStatusRef = useRef<StoredDelivery['status'] | null>(null);
 
   const fetchDelivery = async () => {
     await syncDeliveriesDown().catch(() => {});
     const d = getDeliveries().find(x => x.id === deliveryId) ?? null;
+
+    // Fire notification when status advances
+    if (d && prevStatusRef.current !== null && prevStatusRef.current !== d.status) {
+      const msg = NOTIFY_MSGS[d.status];
+      if (msg) toast(msg, { duration: 6000, icon: undefined,
+        style: { background: '#202125', color: '#FFFFFF', fontWeight: 700, borderRadius: 16, direction: 'rtl' } });
+    }
+    if (d) prevStatusRef.current = d.status;
+
     setDelivery(d);
     if (d?.status === 'delivered' || d?.status === 'cancelled') {
       if (intervalRef.current) clearInterval(intervalRef.current);
@@ -306,7 +364,21 @@ const TrackingSheet: React.FC<{
   useEffect(() => {
     fetchDelivery();
     intervalRef.current = setInterval(fetchDelivery, 3000);
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+
+    // Supabase realtime — instant notification without waiting for next poll
+    const channel = supabase
+      .channel(`delivery_track_${deliveryId}`)
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'deliveries', filter: `id=eq.${deliveryId}` },
+        () => { fetchDelivery(); }
+      )
+      .subscribe();
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      supabase.removeChannel(channel);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deliveryId]);
 
   if (!delivery) return null;
@@ -321,6 +393,9 @@ const TrackingSheet: React.FC<{
     navigate(`/business/chat?convId=${conv.id}&deliveryId=${deliveryId}`);
     onClose();
   };
+
+  // Business cancel — show modal with options
+  const handleCancelDelivery = () => setShowCancelModal(true);
 
   return (
     <div
@@ -366,53 +441,84 @@ const TrackingSheet: React.FC<{
           </div>
         </div>
 
-        {/* Steps */}
+        {/* Steps timeline */}
         {!isCancelled && (
-          <div className="space-y-3 mb-5">
+          <div
+            className="rounded-2xl p-4 mb-5 space-y-0"
+            style={{ background: '#F8F9FA', border: '1px solid #E8E8E8' }}
+          >
+            {/* "Order created" row */}
+            <div className="flex items-center gap-3 mb-1">
+              <div className="flex flex-col items-center">
+                <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+                  style={{ background: '#E8F8F0' }}>
+                  <CheckIcon className="w-4 h-4" style={{ color: GREEN }} />
+                </div>
+                <div className="w-0.5 my-1" style={{ height: 16, background: GREEN }} />
+              </div>
+              <div className="flex-1 flex items-center justify-between">
+                <p className="text-[13px] font-semibold" style={{ color: '#202125' }}>הזמנה נשלחה</p>
+                <p className="text-[11px] font-bold tabular-nums" style={{ color: GREEN }}>
+                  {fmtDateTime(delivery.createdAt)}
+                </p>
+              </div>
+            </div>
+
             {STEPS.map((step, idx) => {
               const done    = currentIdx >= idx;
               const active  = currentIdx === idx;
+              const ts      = step.tsField ? fmtTime(delivery[step.tsField] as string | undefined) : null;
               return (
-                <div key={step.status} className="flex items-center gap-3">
-                  {/* Circle */}
-                  <div
-                    className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-all"
-                    style={{
-                      background: done ? BLUE : '#E8E8E8',
-                      boxShadow: active ? `0 0 0 4px ${BLUE}30` : undefined,
-                    }}
-                  >
-                    {done && !active
-                      ? <CheckIcon className="w-4 h-4 text-white" />
-                      : idx === 0 ? <MagnifyingGlassIcon className="w-4 h-4" style={{ color: done ? '#fff' : '#AAAAAA' }} />
-                      : idx === 1 ? <TruckIcon className="w-4 h-4" style={{ color: done ? '#fff' : '#AAAAAA' }} />
-                      : idx === 2 ? <MapPinIcon className="w-4 h-4" style={{ color: done ? '#fff' : '#AAAAAA' }} />
-                      : <CheckIcon className="w-4 h-4" style={{ color: done ? '#fff' : '#AAAAAA' }} />
-                    }
+                <div key={step.status}>
+                  <div className="flex items-center gap-3">
+                    {/* Circle + connector */}
+                    <div className="flex flex-col items-center">
+                      <div
+                        className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-all"
+                        style={{
+                          background: done ? BLUE : '#E8E8E8',
+                          boxShadow: active ? `0 0 0 4px ${BLUE}30` : undefined,
+                        }}
+                      >
+                        {done && !active
+                          ? <CheckIcon className="w-4 h-4 text-white" />
+                          : idx === 0 ? <MagnifyingGlassIcon className="w-4 h-4" style={{ color: done ? '#fff' : '#AAAAAA' }} />
+                          : idx === 1 ? <TruckIcon className="w-4 h-4" style={{ color: done ? '#fff' : '#AAAAAA' }} />
+                          : idx === 2 ? <MapPinIcon className="w-4 h-4" style={{ color: done ? '#fff' : '#AAAAAA' }} />
+                          : <CheckIcon className="w-4 h-4" style={{ color: done ? '#fff' : '#AAAAAA' }} />
+                        }
+                      </div>
+                      {idx < STEPS.length - 1 && (
+                        <div className="w-0.5 my-1" style={{ height: 16, background: done && !active ? BLUE : '#E8E8E8' }} />
+                      )}
+                    </div>
+
+                    {/* Label + timestamp */}
+                    <div className="flex-1 flex items-center justify-between">
+                      <div>
+                        <p className="text-[13px] font-bold" style={{ color: done ? '#202125' : '#AAAAAA' }}>
+                          {step.label}
+                        </p>
+                        {active && step.status === 'pending' && (
+                          <p className="text-[11px]" style={{ color: '#757575' }}>מחפש שליח זמין...</p>
+                        )}
+                        {active && step.status === 'accepted' && delivery.courierName && (
+                          <p className="text-[11px]" style={{ color: '#757575' }}>{delivery.courierName} מגיע לאיסוף</p>
+                        )}
+                      </div>
+                      {done && ts && (
+                        <p className="text-[11px] font-bold tabular-nums" style={{ color: BLUE }}>{ts}</p>
+                      )}
+                      {active && !ts && step.status !== 'pending' && (
+                        <span
+                          className="text-[10px] px-2 py-0.5 rounded-full font-bold animate-pulse"
+                          style={{ background: `${BLUE}20`, color: BLUE }}
+                        >
+                          עכשיו
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  {/* Label */}
-                  <div className="flex-1">
-                    <p
-                      className="text-[14px] font-bold"
-                      style={{ color: done ? '#202125' : '#AAAAAA' }}
-                    >
-                      {step.label}
-                    </p>
-                    {active && step.status === 'pending' && (
-                      <p className="text-[11px] mt-0.5" style={{ color: '#757575' }}>
-                        מחפש שליח זמין בסביבה...
-                      </p>
-                    )}
-                    {active && step.status === 'accepted' && delivery.courierName && (
-                      <p className="text-[11px] mt-0.5" style={{ color: '#757575' }}>
-                        {delivery.courierName} מגיע לאיסוף
-                      </p>
-                    )}
-                  </div>
-                  {/* Connection line */}
-                  {idx < STEPS.length - 1 && (
-                    <div className="absolute" style={{ display: 'none' }} />
-                  )}
                 </div>
               );
             })}
@@ -431,6 +537,17 @@ const TrackingSheet: React.FC<{
               פתח צ׳אט עם השליח
             </button>
           )}
+          {/* Cancel button for active deliveries */}
+          {!isDone && (delivery.status === 'pending' || delivery.status === 'accepted') && (
+            <button
+              onClick={handleCancelDelivery}
+              className="w-full py-3 rounded-2xl font-semibold text-[13px] flex items-center justify-center gap-2 transition-all active:scale-95"
+              style={{ background: '#FFF0F0', color: '#E23437', border: '1px solid #F5C6C640' }}
+            >
+              <XMarkIcon className="w-4 h-4" />
+              בטל משלוח
+            </button>
+          )}
           <button
             onClick={() => { onClose(); navigate('/business/deliveries'); }}
             className="w-full py-3 rounded-2xl font-semibold text-[13px] transition-all active:scale-95"
@@ -440,6 +557,46 @@ const TrackingSheet: React.FC<{
           </button>
         </div>
       </div>
+
+      {/* Cancel modal */}
+      {showCancelModal && (
+        <div className="fixed inset-0 z-[200] flex items-end justify-center" style={{ background: 'rgba(0,0,0,0.6)' }}>
+          <div className="w-full max-w-lg rounded-t-3xl p-6 pb-8" style={{ background: '#fff' }} dir="rtl">
+            <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#E8E8E8' }} />
+            <h3 className="text-[17px] font-black mb-2" style={{ color: '#202125' }}>ביטול משלוח</h3>
+            <p className="text-[13px] mb-5" style={{ color: '#757575' }}>מה ברצונך לעשות לאחר הביטול?</p>
+            <div className="space-y-3">
+              <button
+                onClick={() => {
+                  updateDelivery(deliveryId, { status: 'pending', courierId: undefined, courierName: undefined, acceptedAt: undefined, cancelAction: 'find_new' });
+                  setShowCancelModal(false);
+                  onClose();
+                  toast.success('המשלוח חזר לחיפוש שליח');
+                }}
+                className="w-full py-3.5 rounded-2xl font-bold text-[14px] flex items-center justify-center gap-2"
+                style={{ background: '#EAF7FD', color: BLUE, border: `1.5px solid ${BLUE}30` }}
+              >
+                🔍 חפש שליח אחר
+              </button>
+              <button
+                onClick={() => {
+                  updateDelivery(deliveryId, { status: 'cancelled', cancelledAt: new Date().toISOString(), cancelledBy: 'business', cancelAction: 'delete' });
+                  setShowCancelModal(false);
+                  onClose();
+                  toast('המשלוח בוטל ונמחק', { style: { background: '#202125', color: '#fff', direction: 'rtl' } });
+                }}
+                className="w-full py-3.5 rounded-2xl font-bold text-[14px] flex items-center justify-center gap-2"
+                style={{ background: '#FFF0F0', color: '#E23437', border: '1.5px solid #E2343730' }}
+              >
+                🗑️ בטל ומחק את המשלוח
+              </button>
+              <button onClick={() => setShowCancelModal(false)} className="w-full py-3 rounded-2xl text-[13px] font-semibold" style={{ background: '#F4F4F4', color: '#757575' }}>
+                חזור
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -491,10 +648,29 @@ const BusinessDashboard: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [businessId]);
 
+  // ── Refresh deliveries list every 5s so tracking panel stays current ────────
+  useEffect(() => {
+    if (!businessId) return;
+    const id = setInterval(async () => {
+      await syncDeliveriesDown().catch(() => {});
+      setDeliveries(getDeliveriesByBusiness(businessId));
+    }, 5000);
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [businessId]);
+
   // ── Realtime: when a courier joins queue for ANY of our pending deliveries,
   //    auto-open the CandidateReviewSheet for that delivery ──────────────────
   useEffect(() => {
     if (!businessId) return;
+    const handleNewCandidate = (deliveryId: string) => {
+      const allDel = getDeliveries();
+      const myDel = allDel.find(d => d.id === deliveryId && d.businessId === businessId);
+      if (!myDel || !['pending', 'scheduled'].includes(myDel.status)) return;
+      setSearchParams({ tracking: deliveryId });
+      setDeliveries(getDeliveriesByBusiness(businessId));
+    };
+
     const channel = supabase
       .channel(`business_candidates_${businessId}`)
       .on(
@@ -503,23 +679,66 @@ const BusinessDashboard: React.FC = () => {
         (payload) => {
           const deliveryId = (payload.new as { delivery_id?: string }).delivery_id;
           if (!deliveryId) return;
-          // Only care about our own deliveries
-          const allDel = getDeliveries();
-          const myDel = allDel.find(d => d.id === deliveryId && d.businessId === businessId);
-          if (!myDel || !['pending', 'scheduled'].includes(myDel.status)) return;
-          // Auto-open the candidate review sheet
-          setSearchParams({ tracking: deliveryId });
-          setDeliveries(getDeliveriesByBusiness(businessId));
-          toast.success('שליח הצטרף לתור!');
+          handleNewCandidate(deliveryId);
+          toast.success('שליח הצטרף לתור! 🛵');
+        }
+      )
+      .on(
+        'postgres_changes',
+        // Also catch UPDATE — courier may have already inserted a "viewing" row and then approved
+        { event: 'UPDATE', schema: 'public', table: 'delivery_candidates' },
+        (payload) => {
+          const deliveryId = (payload.new as { delivery_id?: string }).delivery_id;
+          const courierStatus = (payload.new as { courier_status?: string }).courier_status;
+          if (!deliveryId || courierStatus !== 'approved') return;
+          // Only open sheet if not already tracking this delivery
+          const currentTracking = new URLSearchParams(window.location.search).get('tracking');
+          if (currentTracking === deliveryId) return; // already showing
+          handleNewCandidate(deliveryId);
+          toast.success('שליח אישר את המשלוח! 🛵');
         }
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [businessId, setSearchParams]);
 
+  // Fix 5 — Scheduled delivery auto-release: every 60s check if any scheduled delivery is due
+  useEffect(() => {
+    if (!businessId) return;
+    const releaseScheduled = () => {
+      const all = getDeliveries();
+      const nowISO = new Date().toISOString();
+      const ready = all.filter(
+        d => d.status === 'scheduled' && d.scheduledAt && d.scheduledAt <= nowISO && d.businessId === businessId
+      );
+      for (const d of ready) {
+        updateDelivery(d.id, { status: 'pending' });
+        addDeliveryNotification({
+          deliveryId: d.id,
+          businessId,
+          businessName: d.businessName,
+          pickupAddress: d.pickupAddress,
+          dropAddress: d.dropAddress,
+          description: d.description,
+          price: d.price,
+          requiredVehicle: d.requiredVehicle,
+          paymentMethod: d.paymentMethod,
+          customerPaid: d.customerPaid,
+        });
+        toast.success(`📅 משלוח מתוזמן שוחרר — מחפש שליח`, { duration: 5000 });
+      }
+      if (ready.length > 0) setDeliveries(getDeliveriesByBusiness(businessId));
+    };
+    releaseScheduled();
+    const id = setInterval(releaseScheduled, 60_000);
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [businessId]);
+
   const activeCount = deliveries.filter(d => ['pending','accepted','picked_up'].includes(d.status)).length;
   const doneCount   = deliveries.filter(d => d.status === 'delivered').length;
   const recent      = [...deliveries].sort((a,b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 6);
+  const activeDeliveryBanner = getActiveDeliveryForBusiness(businessId);
 
   const displayName = bizName || user?.name || 'עסק';
 
@@ -572,6 +791,31 @@ const BusinessDashboard: React.FC = () => {
           ))}
         </div>
       </div>
+
+      {/* ── Active delivery banner ── */}
+      {activeDeliveryBanner && (
+        <div className="px-4 mt-3">
+          <div
+            className="rounded-2xl p-3 flex items-center gap-3 cursor-pointer"
+            style={{ background: `${BLUE}10`, border: `1.5px solid ${BLUE}30` }}
+            onClick={() => {
+              if (activeDeliveryBanner.courierId) {
+                const conv = getOrCreateConversation(businessId, activeDeliveryBanner.courierId);
+                navigate(`/business/chat?convId=${conv.id}&deliveryId=${activeDeliveryBanner.id}`);
+              }
+            }}
+          >
+            <div className="w-3 h-3 rounded-full animate-pulse flex-shrink-0" style={{ background: activeDeliveryBanner.status === 'picked_up' ? ORANGE : BLUE }} />
+            <div className="flex-1 min-w-0">
+              <p className="text-[12px] font-black" style={{ color: BLUE }}>
+                {activeDeliveryBanner.status === 'accepted' ? '🛵 שליח בדרך לאיסוף' : '📦 החבילה בדרך אליך'}
+              </p>
+              <p className="text-[11px] truncate" style={{ color: '#757575' }}>{activeDeliveryBanner.courierName} · {activeDeliveryBanner.dropAddress}</p>
+            </div>
+            <span className="text-[11px] font-bold" style={{ color: BLUE }}>פתח צ׳אט ›</span>
+          </div>
+        </div>
+      )}
 
       {/* ── Balance chip ── */}
       {balance !== 0 && (
