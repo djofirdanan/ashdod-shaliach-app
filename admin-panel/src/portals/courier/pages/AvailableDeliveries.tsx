@@ -10,6 +10,7 @@ import {
   getCourier,
   type DeliveryNotification,
 } from '../../../services/storage.service';
+import { syncNotificationsDown, syncDeliveriesDown } from '../../../services/sync.service';
 import { BellIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 
 const AvailableDeliveries: React.FC = () => {
@@ -20,14 +21,16 @@ const AvailableDeliveries: React.FC = () => {
   const [notifications, setNotifications] = useState<DeliveryNotification[]>([]);
   const [accepting, setAccepting] = useState<string | null>(null);
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback(async () => {
     if (!courierId) return;
+    // Sync from Supabase first so we catch notifications from other devices
+    await Promise.all([syncNotificationsDown(), syncDeliveriesDown()]);
     setNotifications(getPendingNotifications(courierId));
   }, [courierId]);
 
   useEffect(() => {
     refresh();
-    const id = setInterval(refresh, 5000);
+    const id = setInterval(refresh, 6000); // every 6s (includes network call)
     return () => clearInterval(id);
   }, [refresh]);
 

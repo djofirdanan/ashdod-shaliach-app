@@ -189,6 +189,48 @@ function dbToDelivery(row: Record<string, unknown>): StoredDelivery {
   };
 }
 
+// ─── Lightweight polls (called on every refresh cycle) ───────────
+
+/** Fetch only recent delivery_notifications from Supabase → localStorage.
+ *  Called every few seconds from the courier overlay and available-deliveries page. */
+export async function syncNotificationsDown(): Promise<void> {
+  try {
+    const { data } = await supabase
+      .from('delivery_notifications')
+      .select('*')
+      .gte('created_at', new Date(Date.now() - 30 * 60 * 1000).toISOString())
+      .order('created_at', { ascending: false });
+
+    if (data) {
+      localStorage.setItem(LS_KEYS.notifications, JSON.stringify(data.map(dbToNotification)));
+      // Trigger any cross-tab listeners
+      localStorage.setItem('app_notif_ping', Date.now().toString());
+    }
+  } catch (err) {
+    console.warn('[sync] syncNotificationsDown failed:', err);
+  }
+}
+
+/** Fetch only recent deliveries from Supabase → localStorage.
+ *  Called from courier available-deliveries polling. */
+export async function syncDeliveriesDown(): Promise<void> {
+  try {
+    const { data } = await supabase
+      .from('deliveries')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (data) {
+      localStorage.setItem(LS_KEYS.deliveries, JSON.stringify(
+        data.map(d => dbToDelivery(d as Record<string, unknown>))
+      ));
+    }
+  } catch (err) {
+    console.warn('[sync] syncDeliveriesDown failed:', err);
+  }
+}
+
 // ─── Pull from Supabase → localStorage ───────────────────────────
 
 export async function syncDown(): Promise<void> {

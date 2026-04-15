@@ -10,6 +10,7 @@ import {
 import type { RootState } from '../store';
 import * as storageService from '../services/storage.service';
 import type { DeliveryNotification } from '../services/storage.service';
+import { syncNotificationsDown } from '../services/sync.service';
 import { Modal } from './ui/Modal';
 
 // ─── Single notification card ─────────────────────────────────
@@ -244,8 +245,10 @@ export const DeliveryNotificationOverlay: React.FC = () => {
   const [notifications, setNotifications] = useState<DeliveryNotification[]>([]);
   const [detailNotif, setDetailNotif] = useState<DeliveryNotification | null>(null);
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback(async () => {
     if (!courierId) return;
+    // Pull latest notifications from Supabase first (cross-device support)
+    await syncNotificationsDown();
     const pending = storageService.getPendingNotifications(courierId);
     setNotifications(pending.slice(0, 3)); // show max 3
   }, [courierId]);
@@ -253,7 +256,7 @@ export const DeliveryNotificationOverlay: React.FC = () => {
   useEffect(() => {
     if (!courierId) return;
     refresh();
-    const interval = setInterval(refresh, 4000);
+    const interval = setInterval(refresh, 6000); // every 6s (includes network call)
     // Cross-tab notifications via storage event
     const onStorage = (e: StorageEvent) => {
       if (e.key === 'app_notif_ping' || e.key === NOTIF_KEY_WATCH) refresh();
