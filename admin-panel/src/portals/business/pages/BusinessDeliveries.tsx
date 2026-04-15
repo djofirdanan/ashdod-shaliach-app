@@ -17,6 +17,11 @@ import {
   TrashIcon,
   XMarkIcon,
   CheckIcon,
+  CalendarDaysIcon,
+  ClockIcon,
+  BoltIcon,
+  MapPinIcon,
+  BanknotesIcon,
 } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 
@@ -24,7 +29,7 @@ const BLUE  = '#009DE0';
 const GREEN = '#1BA672';
 const RED   = '#E23437';
 
-type Tab = 'active' | 'completed' | 'archived' | 'all';
+type Tab = 'active' | 'scheduled' | 'completed' | 'archived' | 'all';
 
 const statusLabel: Record<StoredDelivery['status'], string> = {
   scheduled: '📅 מתוזמן',
@@ -355,6 +360,151 @@ const DeleteConfirmSheet: React.FC<{
   );
 };
 
+// ─── Countdown helper ────────────────────────────────────────────────────────
+function useCountdown(targetIso: string | undefined): string {
+  const [label, setLabel] = React.useState('');
+  React.useEffect(() => {
+    if (!targetIso) { setLabel(''); return; }
+    const calc = () => {
+      const diff = new Date(targetIso).getTime() - Date.now();
+      if (diff <= 0) { setLabel('עכשיו'); return; }
+      const h = Math.floor(diff / 3_600_000);
+      const m = Math.floor((diff % 3_600_000) / 60_000);
+      if (h >= 24) {
+        const d = Math.floor(h / 24);
+        setLabel(`בעוד ${d} ${d === 1 ? 'יום' : 'ימים'}`);
+      } else if (h > 0) {
+        setLabel(`בעוד ${h} שע׳ ${m} דק׳`);
+      } else {
+        setLabel(`בעוד ${m} דק׳`);
+      }
+    };
+    calc();
+    const id = setInterval(calc, 30_000);
+    return () => clearInterval(id);
+  }, [targetIso]);
+  return label;
+}
+
+// ─── Scheduled delivery card ─────────────────────────────────────────────────
+const ScheduledCard: React.FC<{
+  delivery: StoredDelivery;
+  onEdit:    (d: StoredDelivery) => void;
+  onDelete:  (d: StoredDelivery) => void;
+  onSendNow: (d: StoredDelivery) => void;
+}> = ({ delivery: d, onEdit, onDelete, onSendNow }) => {
+  const countdown = useCountdown(d.scheduledAt);
+  const isPast    = d.scheduledAt ? new Date(d.scheduledAt) < new Date() : false;
+
+  const schedDate = d.scheduledAt
+    ? new Date(d.scheduledAt).toLocaleString('he-IL', {
+        weekday: 'long', day: '2-digit', month: '2-digit',
+        hour: '2-digit', minute: '2-digit',
+      })
+    : '—';
+
+  return (
+    <div
+      className="rounded-2xl overflow-hidden"
+      style={{ background: '#FFFFFF', border: `1.5px solid ${isPast ? '#E23437' : BLUE}20`, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}
+    >
+      {/* Colored top strip */}
+      <div
+        className="flex items-center gap-3 px-4 py-3"
+        style={{ background: isPast ? '#FFF0F0' : '#EAF7FD', borderBottom: `1px solid ${isPast ? '#E23437' : BLUE}20` }}
+      >
+        <div
+          className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+          style={{ background: isPast ? '#E23437' : BLUE }}
+        >
+          <CalendarDaysIcon className="w-5 h-5 text-white" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[13px] font-black leading-tight" style={{ color: '#202125' }}>
+            {schedDate}
+          </p>
+          <p
+            className="text-[11px] font-bold mt-0.5"
+            style={{ color: isPast ? '#E23437' : BLUE }}
+          >
+            {isPast ? 'פג תוקף — שלח עכשיו' : countdown}
+          </p>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div className="px-4 py-3 space-y-2">
+        {/* Route */}
+        <div className="flex items-start gap-2">
+          <MapPinIcon className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: GREEN }} />
+          <div className="min-w-0">
+            <p className="text-[10px]" style={{ color: '#AAAAAA' }}>איסוף</p>
+            <p className="text-[13px] font-semibold truncate" style={{ color: '#202125' }}>{d.pickupAddress}</p>
+          </div>
+        </div>
+        <div className="flex items-start gap-2">
+          <MapPinIcon className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: RED }} />
+          <div className="min-w-0">
+            <p className="text-[10px]" style={{ color: '#AAAAAA' }}>מסירה</p>
+            <p className="text-[13px] font-semibold truncate" style={{ color: '#202125' }}>{d.dropAddress}</p>
+          </div>
+        </div>
+        {d.description && (
+          <p className="text-[11px] pr-6" style={{ color: '#757575' }}>{d.description}</p>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div
+        className="flex items-center justify-between px-4 py-3"
+        style={{ borderTop: '1px solid #F4F4F4' }}
+      >
+        <div className="flex items-center gap-1.5">
+          <BanknotesIcon className="w-4 h-4" style={{ color: BLUE }} />
+          <span className="text-[15px] font-black" style={{ color: BLUE }}>₪{d.price}</span>
+          {d.paymentMethod && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold mr-1" style={{ background: '#F4F4F4', color: '#757575' }}>
+              {d.paymentMethod === 'cash' ? 'מזומן' : 'ביט'}
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* Edit */}
+          <button
+            onClick={() => onEdit(d)}
+            className="p-2 rounded-xl transition-all active:scale-95"
+            style={{ background: '#FFF8E6', color: '#F58F1F' }}
+            title="ערוך"
+          >
+            <PencilSquareIcon className="w-4 h-4" />
+          </button>
+
+          {/* Delete */}
+          <button
+            onClick={() => onDelete(d)}
+            className="p-2 rounded-xl transition-all active:scale-95"
+            style={{ background: '#FFF0F0', color: RED }}
+            title="מחק"
+          >
+            <TrashIcon className="w-4 h-4" />
+          </button>
+
+          {/* Send now */}
+          <button
+            onClick={() => onSendNow(d)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-black text-white transition-all active:scale-95"
+            style={{ background: isPast ? RED : GREEN, boxShadow: `0 3px 10px ${isPast ? RED : GREEN}40` }}
+          >
+            <BoltIcon className="w-3.5 h-3.5" />
+            שלח עכשיו
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 const BusinessDeliveries: React.FC = () => {
   const navigate  = useNavigate();
@@ -397,6 +547,25 @@ const BusinessDeliveries: React.FC = () => {
   const handleArchive   = (id: string) => { updateDelivery(id, { archived: true });  toast.success('הועבר לארכיון');     load(); };
   const handleUnarchive = (id: string) => { updateDelivery(id, { archived: false }); toast.success('הוחזר מהארכיון');   load(); };
 
+  const handleSendNow = (d: StoredDelivery) => {
+    const biz = getBusiness(businessId);
+    updateDelivery(d.id, { status: 'pending', scheduledAt: undefined });
+    addDeliveryNotification({
+      deliveryId:    d.id,
+      businessId,
+      businessName:  biz?.businessName ?? 'עסק',
+      pickupAddress: d.pickupAddress,
+      dropAddress:   d.dropAddress,
+      description:   d.description,
+      price:         d.price,
+      requiredVehicle: d.requiredVehicle,
+      paymentMethod: d.paymentMethod,
+      customerPaid:  d.customerPaid,
+    });
+    toast.success('המשלוח נשלח לשליחים עכשיו!');
+    load();
+  };
+
   const handleSaveEdit = (id: string, data: Partial<StoredDelivery>) => {
     try {
       // Update scheduledAt → change status accordingly
@@ -423,20 +592,23 @@ const BusinessDeliveries: React.FC = () => {
   };
 
   const filtered = deliveries.filter(d => {
-    if (tab === 'active')    return ['scheduled', 'pending', 'accepted', 'picked_up'].includes(d.status) && !d.archived;
+    if (tab === 'scheduled') return d.status === 'scheduled' && !d.archived;
+    if (tab === 'active')    return ['pending', 'accepted', 'picked_up'].includes(d.status) && !d.archived;
     if (tab === 'completed') return ['delivered', 'cancelled'].includes(d.status) && !d.archived;
     if (tab === 'archived')  return d.archived === true;
     if (tab === 'all')       return !d.archived;
     return false;
   });
 
-  const archivedCount = deliveries.filter(d => d.archived).length;
+  const scheduledCount = deliveries.filter(d => d.status === 'scheduled' && !d.archived).length;
+  const archivedCount  = deliveries.filter(d => d.archived).length;
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: 'active',    label: 'פעילים'  },
-    { id: 'completed', label: 'הושלמו'  },
-    { id: 'archived',  label: 'ארכיון'  },
-    { id: 'all',       label: 'הכל'     },
+    { id: 'scheduled', label: 'מתוזמנים' },
+    { id: 'active',    label: 'פעילים'   },
+    { id: 'completed', label: 'הושלמו'   },
+    { id: 'archived',  label: 'ארכיון'   },
+    { id: 'all',       label: 'הכל'      },
   ];
 
   const canEdit   = (d: StoredDelivery) => ['pending', 'scheduled'].includes(d.status) && !d.archived;
@@ -464,33 +636,43 @@ const BusinessDeliveries: React.FC = () => {
         className="flex mb-4"
         style={{ background: '#FFFFFF', borderRadius: 12, border: '1px solid #E8E8E8', overflow: 'hidden' }}
       >
-        {tabs.map((t, i) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className="flex-1 py-2.5 text-[12px] font-bold transition-all flex items-center justify-center gap-1.5"
-            style={{
-              background:  tab === t.id ? BLUE : '#FFFFFF',
-              color:       tab === t.id ? '#FFFFFF' : '#757575',
-              borderRight: i < tabs.length - 1 ? '1px solid #E8E8E8' : 'none',
-            }}
-          >
-            {t.label}
-            {t.id === 'archived' && archivedCount > 0 && (
-              <span
-                className="text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center"
-                style={{
-                  background: tab === t.id ? 'rgba(255,255,255,0.3)' : RED,
-                  color: '#FFFFFF',
-                }}
-              >
-                {archivedCount}
-              </span>
-            )}
-          </button>
-        ))}
+        {tabs.map((t, i) => {
+          const badge =
+            t.id === 'scheduled' && scheduledCount > 0 ? scheduledCount :
+            t.id === 'archived'  && archivedCount  > 0 ? archivedCount  : null;
+          return (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className="flex-1 py-2.5 text-[11px] font-bold transition-all flex items-center justify-center gap-1"
+              style={{
+                background:  tab === t.id ? BLUE : '#FFFFFF',
+                color:       tab === t.id ? '#FFFFFF' : '#757575',
+                borderRight: i < tabs.length - 1 ? '1px solid #E8E8E8' : 'none',
+              }}
+            >
+              {t.label}
+              {badge !== null && (
+                <span
+                  className="text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[16px] text-center"
+                  style={{
+                    background: tab === t.id ? 'rgba(255,255,255,0.3)' : (t.id === 'scheduled' ? BLUE : RED),
+                    color: '#FFFFFF',
+                  }}
+                >
+                  {badge}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
+      {tab === 'scheduled' && scheduledCount > 0 && (
+        <p className="text-[11px] mb-3 text-center" style={{ color: '#757575' }}>
+          לחץ "שלח עכשיו" כדי לשגר משלוח מיידית לכל השליחים
+        </p>
+      )}
       {tab === 'completed' && (
         <p className="text-[11px] mb-3 text-center" style={{ color: '#757575' }}>
           החלק ימינה כדי להעביר לארכיון
@@ -510,11 +692,34 @@ const BusinessDeliveries: React.FC = () => {
             }
           </div>
           <p className="text-[14px] font-bold" style={{ color: '#202125' }}>
-            {tab === 'active'    ? 'אין משלוחים פעילים'
+            {tab === 'scheduled' ? 'אין משלוחים מתוזמנים'
+             : tab === 'active'    ? 'אין משלוחים פעילים'
              : tab === 'completed' ? 'אין משלוחים שהושלמו'
              : tab === 'archived'  ? 'הארכיון ריק'
              : 'אין משלוחים עדיין'}
           </p>
+          {tab === 'scheduled' && (
+            <button
+              onClick={() => navigate('/business/new-delivery')}
+              className="px-5 py-2.5 rounded-xl text-white font-bold text-[13px] transition-all active:scale-95 mt-1"
+              style={{ background: BLUE }}
+            >
+              תזמן משלוח חדש
+            </button>
+          )}
+        </div>
+      ) : tab === 'scheduled' ? (
+        /* ── Scheduled deliveries — special card layout ── */
+        <div className="space-y-4">
+          {filtered.map(d => (
+            <ScheduledCard
+              key={d.id}
+              delivery={d}
+              onEdit={setEditTarget}
+              onDelete={setDelTarget}
+              onSendNow={handleSendNow}
+            />
+          ))}
         </div>
       ) : (
         <div className="space-y-3">
