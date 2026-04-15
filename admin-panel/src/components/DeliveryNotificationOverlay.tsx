@@ -309,13 +309,14 @@ export const DeliveryNotificationOverlay: React.FC = () => {
   const handleAccept = async (notif: DeliveryNotification) => {
     if (!courierId) return;
 
-    // 1. Find matching pending delivery
+    // 1. Find matching pending delivery — prefer deliveryId link, fall back to address
     const allDeliveries = storageService.getDeliveries();
-    const matching = allDeliveries.find(
-      (d) =>
-        d.businessId === notif.businessId &&
-        d.pickupAddress === notif.pickupAddress &&
-        d.status === 'pending'
+    const matching = allDeliveries.find(d =>
+      notif.deliveryId ? d.id === notif.deliveryId
+        : d.businessId === notif.businessId &&
+          d.pickupAddress === notif.pickupAddress &&
+          d.dropAddress === notif.dropAddress &&
+          d.status === 'pending'
     );
 
     const courierData = storageService.getCourier(courierId);

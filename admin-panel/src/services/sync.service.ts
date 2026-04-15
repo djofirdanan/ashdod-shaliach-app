@@ -170,6 +170,7 @@ function dbToMessage(row: Record<string, unknown>): StoredMessage {
 function dbToNotification(row: Record<string, unknown>): DeliveryNotification {
   return {
     id: row.id as string,
+    deliveryId: (row.delivery_id as string | undefined) || undefined,
     businessId: row.business_id as string,
     businessName: row.business_name as string,
     pickupAddress: row.pickup_address as string,
@@ -421,6 +422,7 @@ export async function syncConversationsDown(userId: string, role: 'business' | '
 export async function upsertDeliveryNotification(n: DeliveryNotification): Promise<void> {
   const { error } = await supabase.from('delivery_notifications').upsert({
     id: n.id,
+    delivery_id: n.deliveryId ?? null,
     business_id: n.businessId,
     business_name: n.businessName,
     pickup_address: n.pickupAddress,

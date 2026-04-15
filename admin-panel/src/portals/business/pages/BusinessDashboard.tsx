@@ -11,6 +11,7 @@ import {
   type StoredDelivery,
 } from '../../../services/storage.service';
 import { syncDeliveriesDown, getCandidates, rejectCandidate, acceptCandidate, type DeliveryCandidate } from '../../../services/sync.service';
+import { supabase } from '../../../lib/supabase';
 import { TruckIcon, PlusIcon, ChevronLeftIcon, XMarkIcon, ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 
@@ -374,6 +375,33 @@ const BusinessDashboard: React.FC = () => {
     setBalance(biz?.balance ?? 0);
     if (biz?.businessName) setBizName(biz.businessName);
   }, [businessId]);
+
+  // ── Realtime: when a courier joins queue for ANY of our pending deliveries,
+  //    auto-open the CandidateReviewSheet for that delivery ──────────────────
+  useEffect(() => {
+    if (!businessId) return;
+    const channel = supabase
+      .channel(`business_candidates_${businessId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'delivery_candidates' },
+        (payload) => {
+          const deliveryId = (payload.new as { delivery_id?: string }).delivery_id;
+          if (!deliveryId) return;
+          // Only care about our own deliveries
+          const allDel = getDeliveries();
+          const myDel = allDel.find(d => d.id === deliveryId && d.businessId === businessId);
+          if (!myDel || !['pending', 'scheduled'].includes(myDel.status)) return;
+          // If not already tracking this delivery, auto-open the sheet
+          setSearchParams({ tracking: deliveryId });
+          // Refresh deliveries list
+          setDeliveries(getDeliveriesByBusiness(businessId));
+          toast('🏍️ שליח הצטרף לתור!', { icon: '🔔' });
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [businessId, setSearchParams]);
 
   const activeCount = deliveries.filter(d => ['pending','accepted','picked_up'].includes(d.status)).length;
   const doneCount   = deliveries.filter(d => d.status === 'delivered').length;

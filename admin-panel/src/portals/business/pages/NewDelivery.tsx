@@ -175,6 +175,7 @@ const NewDelivery: React.FC = () => {
       // Send notification immediately only for non-scheduled deliveries
       if (isNow) {
         addDeliveryNotification({
+          deliveryId: newDelivery.id,   // ← link notification to delivery ID
           businessId,
           businessName,
           pickupAddress: pickupAddress.trim(),

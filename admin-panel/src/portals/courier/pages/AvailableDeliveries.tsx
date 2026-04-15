@@ -211,11 +211,13 @@ const AvailableDeliveries: React.FC = () => {
       // Sync deliveries from Supabase to find the matching delivery
       await syncDeliveriesDown();
       const allDeliveries = getDeliveries();
-      const matching = allDeliveries.find(
-        (d) =>
-          d.businessId === notif.businessId &&
-          d.pickupAddress === notif.pickupAddress &&
-          d.status === 'pending'
+      // Prefer matching by deliveryId (new notifications); fall back to address match for old ones
+      const matching = allDeliveries.find(d =>
+        notif.deliveryId ? d.id === notif.deliveryId
+          : d.businessId === notif.businessId &&
+            d.pickupAddress === notif.pickupAddress &&
+            d.dropAddress === notif.dropAddress &&
+            d.status === 'pending'
       );
 
       // Get courier data from localStorage

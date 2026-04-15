@@ -202,6 +202,7 @@ export function verifyPassword(pw: string, hash: string): boolean {
 // ─── Delivery Notifications ───────────────────────────────────
 export interface DeliveryNotification {
   id: string;
+  deliveryId?: string;   // ID of the matching StoredDelivery — added to fix candidate queue matching
   businessId: string;
   businessName: string;
   pickupAddress: string;
