@@ -715,6 +715,15 @@ export async function acceptCandidate(deliveryId: string, courierId: string): Pr
     .neq('courier_id', courierId);
 }
 
+/** Courier withdraws from the candidates queue (changed mind / not available) */
+export async function withdrawFromQueue(deliveryId: string, courierId: string): Promise<void> {
+  await supabase
+    .from('delivery_candidates')
+    .update({ status: 'rejected' })
+    .eq('delivery_id', deliveryId)
+    .eq('courier_id', courierId);
+}
+
 /** Get a single courier's candidacy status for a delivery */
 export async function getCandidacyStatus(
   deliveryId: string,

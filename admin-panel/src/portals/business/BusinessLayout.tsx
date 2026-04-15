@@ -3,7 +3,8 @@ import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import type { RootState, AppDispatch } from '../../store';
 import { logoutUser } from '../../store/authSlice';
-import { getUnreadCount, getBusiness } from '../../services/storage.service';
+import { getUnreadCount, getBusiness, getDeliveriesByBusiness } from '../../services/storage.service';
+import { supabase } from '../../lib/supabase';
 import {
   HomeIcon,
   PlusCircleIcon,
@@ -38,8 +39,9 @@ const BusinessLayout: React.FC = () => {
   const token = localStorage.getItem('admin_token') ?? '';
   const businessId = token.startsWith('business-') ? token.replace('business-', '') : '';
 
-  const [unread, setUnread]   = useState(0);
-  const [bizName, setBizName] = useState('');
+  const [unread,            setUnread]            = useState(0);
+  const [bizName,           setBizName]           = useState('');
+  const [waitingDelivery,   setWaitingDelivery]   = useState<{ id: string; dropAddress: string; candidateCount: number } | null>(null);
 
   useEffect(() => {
     const refresh = () => {
@@ -51,6 +53,30 @@ const BusinessLayout: React.FC = () => {
     };
     refresh();
     const id = setInterval(refresh, 5000);
+    return () => clearInterval(id);
+  }, [businessId]);
+
+  // ── Poll every 6s: check if any pending delivery has a courier waiting ──
+  useEffect(() => {
+    if (!businessId) return;
+    const check = async () => {
+      const deliveries = getDeliveriesByBusiness(businessId);
+      const pending = deliveries.filter(d => d.status === 'pending' || d.status === 'scheduled');
+      for (const d of pending) {
+        const { data } = await supabase
+          .from('delivery_candidates')
+          .select('id')
+          .eq('delivery_id', d.id)
+          .eq('status', 'waiting');
+        if (data && data.length > 0) {
+          setWaitingDelivery({ id: d.id, dropAddress: d.dropAddress, candidateCount: data.length });
+          return;
+        }
+      }
+      setWaitingDelivery(null);
+    };
+    check();
+    const id = setInterval(check, 6_000);
     return () => clearInterval(id);
   }, [businessId]);
 
@@ -97,6 +123,40 @@ const BusinessLayout: React.FC = () => {
           יציאה
         </button>
       </header>
+
+      {/* ── Persistent courier-waiting banner ── */}
+      {waitingDelivery && (
+        <div
+          className="sticky top-[56px] z-30 flex items-center gap-3 px-4 py-2.5"
+          style={{
+            background: 'linear-gradient(90deg, #EAF7FD, #F0FAFF)',
+            borderBottom: '1.5px solid #009DE030',
+            boxShadow: '0 2px 8px rgba(0,157,224,0.10)',
+          }}
+        >
+          {/* Pulsing dot */}
+          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 animate-pulse" style={{ background: BLUE }} />
+
+          {/* Text */}
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-black leading-tight" style={{ color: '#202125' }}>
+              🏍️ {waitingDelivery.candidateCount === 1 ? 'שליח ממתין לאישורך!' : `${waitingDelivery.candidateCount} שליחים ממתינים!`}
+            </p>
+            <p className="text-[11px] truncate" style={{ color: '#757575' }}>
+              📍 {waitingDelivery.dropAddress}
+            </p>
+          </div>
+
+          {/* Action button */}
+          <button
+            onClick={() => navigate(`/business/dashboard?tracking=${waitingDelivery.id}`)}
+            className="flex-shrink-0 px-3 py-1.5 rounded-xl text-[12px] font-bold text-white transition-all active:scale-95"
+            style={{ background: BLUE }}
+          >
+            אשר עכשיו
+          </button>
+        </div>
+      )}
 
       {/* ── Page content ── */}
       <main className="flex-1 overflow-y-auto pb-20">

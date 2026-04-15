@@ -4,7 +4,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import type { RootState, AppDispatch } from '../../store';
 import { logoutUser } from '../../store/authSlice';
 import { getPendingNotifications, getCourier, updateCourier, updateCourierLocation, getDeliveriesByCourier, getDeliveries, getOrCreateConversation, updateDelivery } from '../../services/storage.service';
-import { pingCandidateHeartbeat, getCandidacyStatus } from '../../services/sync.service';
+import { pingCandidateHeartbeat, getCandidacyStatus, withdrawFromQueue } from '../../services/sync.service';
 import { DeliveryNotificationOverlay } from '../../components/DeliveryNotificationOverlay';
 import {
   HomeIcon,
@@ -37,6 +37,11 @@ const CourierLayout: React.FC = () => {
   const [isAvailable,       setIsAvailable]       = useState(true);
   const [showAvailConfirm,  setShowAvailConfirm]  = useState(false);
   const [courierName,       setCourierName]       = useState('');
+
+  // ── Pending candidacy banner ────────────────────────────────────
+  interface CandidacyBanner { deliveryId: string; notifId: string; dropAddress: string; price: number; joinedAt: string; }
+  const [candidacyBanner, setCandidacyBanner] = useState<CandidacyBanner | null>(null);
+  const [withdrawing,     setWithdrawing]     = useState(false);
 
   const refreshAvailability = useCallback(() => {
     if (!courierId) return;
@@ -72,6 +77,38 @@ const CourierLayout: React.FC = () => {
     const locId = setInterval(shareLocation, 30_000);
     return () => clearInterval(locId);
   }, [courierId]);
+
+  // ── Poll pending_candidacy every 3s → drive the top banner ──────────────
+  useEffect(() => {
+    const check = () => {
+      const raw = localStorage.getItem('pending_candidacy');
+      if (!raw) { setCandidacyBanner(null); return; }
+      try {
+        const p: { deliveryId: string; notifId: string; joinedAt?: string } = JSON.parse(raw);
+        const delivery = getDeliveries().find(d => d.id === p.deliveryId);
+        setCandidacyBanner({
+          deliveryId: p.deliveryId,
+          notifId:    p.notifId,
+          dropAddress: delivery?.dropAddress ?? '...',
+          price:       delivery?.price ?? 0,
+          joinedAt:    p.joinedAt ?? new Date().toISOString(),
+        });
+      } catch { setCandidacyBanner(null); }
+    };
+    check();
+    const id = setInterval(check, 3_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const handleWithdraw = async () => {
+    if (!candidacyBanner || !courierId) return;
+    setWithdrawing(true);
+    await withdrawFromQueue(candidacyBanner.deliveryId, courierId);
+    localStorage.removeItem('pending_candidacy');
+    setCandidacyBanner(null);
+    setWithdrawing(false);
+    toast.success('יצאת מהתור');
+  };
 
   // ─── Heartbeat: ping every 20s while waiting for business acceptance ──────
   useEffect(() => {
@@ -188,6 +225,44 @@ const CourierLayout: React.FC = () => {
           </button>
         </div>
       </header>
+
+      {/* ── Persistent candidacy banner ── */}
+      {candidacyBanner && (
+        <div
+          className="sticky top-[56px] z-30 flex items-center gap-3 px-4 py-2.5"
+          style={{
+            background: 'linear-gradient(90deg, #FFF8E6, #FFFCF0)',
+            borderBottom: '1.5px solid #F58F1F30',
+            boxShadow: '0 2px 8px rgba(245,143,31,0.10)',
+          }}
+        >
+          {/* Pulsing dot */}
+          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 animate-pulse" style={{ background: '#F58F1F' }} />
+
+          {/* Text */}
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-black leading-tight truncate" style={{ color: '#202125' }}>
+              ⏳ ממתין לאישור העסק
+            </p>
+            <p className="text-[11px] truncate" style={{ color: '#F58F1F' }}>
+              📍 {candidacyBanner.dropAddress}
+              {candidacyBanner.price > 0 && ` · ₪${candidacyBanner.price}`}
+              {' · '}
+              {Math.round((Date.now() - new Date(candidacyBanner.joinedAt).getTime()) / 60000)} דק׳ בתור
+            </p>
+          </div>
+
+          {/* Cancel button */}
+          <button
+            onClick={handleWithdraw}
+            disabled={withdrawing}
+            className="flex-shrink-0 px-3 py-1.5 rounded-xl text-[12px] font-bold transition-all active:scale-95 disabled:opacity-50"
+            style={{ background: '#FFF0F0', color: '#E23437', border: '1px solid #E2343730' }}
+          >
+            {withdrawing ? '...' : 'ביטול'}
+          </button>
+        </div>
+      )}
 
       {/* ── Page content ── */}
       <main className="flex-1 overflow-y-auto pb-20">
