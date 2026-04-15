@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
 import {
   HomeIcon,
   TruckIcon,
@@ -18,6 +19,8 @@ import {
 import clsx from 'clsx';
 import { useAuth } from '../../hooks/useAuth';
 import * as storageService from '../../services/storage.service';
+import { setUser, setPortalUser } from '../../store/authSlice';
+import type { RootState } from '../../store';
 
 interface NavItem {
   path: string;
@@ -32,6 +35,21 @@ function useChatUnread() {
     const calc = () => {
       const convs = storageService.getConversations();
       setCount(convs.reduce((s, c) => s + c.unreadBusiness + c.unreadCourier, 0));
+    };
+    calc();
+    const interval = setInterval(calc, 5000);
+    return () => clearInterval(interval);
+  }, []);
+  return count;
+}
+
+function usePendingApproval() {
+  const [count, setCount] = React.useState(0);
+  useEffect(() => {
+    const calc = () => {
+      const pendingBiz = storageService.getBusinesses().filter((b) => !b.isActive && !b.isBlocked).length;
+      const pendingCour = storageService.getCouriers().filter((c) => !c.isActive && !c.isBlocked).length;
+      setCount(pendingBiz + pendingCour);
     };
     calc();
     const interval = setInterval(calc, 5000);
@@ -63,12 +81,34 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, mobileOpen = false, onMobileClose }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const chatUnread = useChatUnread();
+  const pendingApproval = usePendingApproval();
+  const currentPortalUser = useSelector((state: RootState) => state.auth.currentPortalUser);
   const overlayRef = useRef<HTMLDivElement>(null);
 
   const handleLogout = async () => {
     await logout();
     navigate('/login');
+  };
+
+  const handleReturnToAdmin = () => {
+    const backupToken = localStorage.getItem('admin_token_backup');
+    const backupUserStr = localStorage.getItem('admin_user_backup');
+
+    if (backupToken) localStorage.setItem('admin_token', backupToken);
+    localStorage.removeItem('admin_token_backup');
+
+    if (backupUserStr) {
+      try {
+        const adminUser = JSON.parse(backupUserStr);
+        dispatch(setUser(adminUser));
+      } catch { /* ignore */ }
+      localStorage.removeItem('admin_user_backup');
+    }
+
+    dispatch(setPortalUser(null));
+    navigate('/businesses');
   };
 
   const firstLetter = user?.name?.charAt(0)?.toUpperCase() || 'A';
@@ -80,7 +120,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, mobileOpe
 
   const items: NavItem[] = navItems.map((item) => ({
     ...item,
-    badge: item.path === '/chat' && chatUnread > 0 ? chatUnread : undefined,
+    badge:
+      item.path === '/chat' && chatUnread > 0 ? chatUnread :
+      (item.path === '/businesses' || item.path === '/couriers') && pendingApproval > 0 ? pendingApproval :
+      undefined,
   }));
 
   return (
@@ -147,6 +190,30 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, mobileOpe
             </div>
           )}
         </div>
+
+        {/* Impersonation banner */}
+        {currentPortalUser && (
+          <div
+            className="mx-2 mt-2 mb-1 rounded-lg overflow-hidden"
+            style={{ background: 'rgba(234,34,97,0.15)', border: '1px solid rgba(234,34,97,0.35)' }}
+          >
+            {!collapsed && (
+              <div className="px-3 pt-2.5 pb-1">
+                <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: 'rgba(255,150,180,0.8)' }}>
+                  {currentPortalUser.type === 'business' ? '🏪 עסק' : '🛵 שליח'}
+                </p>
+                <p className="text-[12px] font-bold text-white truncate mt-0.5">{currentPortalUser.name}</p>
+              </div>
+            )}
+            <button
+              onClick={handleReturnToAdmin}
+              className="w-full px-3 py-2 text-[11px] font-bold flex items-center justify-center gap-1 transition-all hover:opacity-80"
+              style={{ background: 'rgba(234,34,97,0.4)', color: 'white' }}
+            >
+              {collapsed ? '←' : '← חזור למנהל'}
+            </button>
+          </div>
+        )}
 
         {/* Nav */}
         <nav className="flex-1 py-4 overflow-y-auto overflow-x-hidden">

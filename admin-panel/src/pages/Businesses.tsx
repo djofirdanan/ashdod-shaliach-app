@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
 import {
   BuildingStorefrontIcon,
   TruckIcon,
@@ -22,6 +24,9 @@ import * as storageService from '../services/storage.service';
 import type { StoredBusiness } from '../services/storage.service';
 import { formatCurrency } from '../utils/formatters';
 import { DEFAULT_PRICING_ZONES } from '../utils/constants';
+import { setUser, setPortalUser } from '../store/authSlice';
+import { sendAccountApproved } from '../services/email.service';
+import type { RootState } from '../store';
 
 const CATEGORIES = ['מסעדה', 'בית קפה', 'מכולת', 'פרמצ׳יה', 'אחר'];
 const zones = DEFAULT_PRICING_ZONES.map((z) => z.name);
@@ -131,6 +136,10 @@ const Businesses: React.FC = () => {
 
   const [isSaving, setIsSaving] = useState(false);
 
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const currentAdminUser = useSelector((state: RootState) => state.auth.user);
+
   const load = useCallback(() => {
     setBusinesses(storageService.getBusinesses());
   }, []);
@@ -210,6 +219,8 @@ const Businesses: React.FC = () => {
     e.preventDefault();
     if (!editModal.biz) return;
     setIsSaving(true);
+    const wasInactive = !editModal.biz.isActive;
+    const nowActive = editForm.isActive;
     try {
       storageService.updateBusiness(editModal.biz.id, {
         businessName: editForm.businessName,
@@ -221,7 +232,13 @@ const Businesses: React.FC = () => {
         isActive: editForm.isActive,
         balance: editForm.balance,
       });
-      toast.success('עסק עודכן בהצלחה');
+      // Send approval email when admin activates a previously inactive account
+      if (wasInactive && nowActive) {
+        sendAccountApproved(editForm.email, editForm.businessName).catch(() => {});
+        toast.success('✅ העסק אושר ומייל אישור נשלח!');
+      } else {
+        toast.success('עסק עודכן בהצלחה');
+      }
       setEditModal({ open: false, biz: null });
       load();
     } catch { toast.error('שגיאה בעדכון עסק'); }
@@ -256,12 +273,28 @@ const Businesses: React.FC = () => {
     load();
   };
 
-  // ── Quick Login ──
+  // ── Quick Login (Impersonation) ──
   const handleQuickLogin = (biz: StoredBusiness) => {
-    const portalUser = { id: biz.id, type: 'business' as const, name: biz.businessName };
-    localStorage.setItem('portal_user', JSON.stringify(portalUser));
-    toast.success(`כניסה כ-${biz.businessName} — פתח את פורטל העסקים בלשונית חדשה`);
-    window.open('/portal/business', '_blank');
+    // Backup current admin session
+    const currentToken = localStorage.getItem('admin_token');
+    if (currentToken) localStorage.setItem('admin_token_backup', currentToken);
+    if (currentAdminUser) localStorage.setItem('admin_user_backup', JSON.stringify(currentAdminUser));
+
+    // Set business token
+    localStorage.setItem('admin_token', `business-${biz.id}`);
+
+    // Update Redux state to impersonate the business
+    dispatch(setUser({
+      id: biz.id,
+      name: biz.businessName,
+      email: biz.email,
+      role: 'admin',
+      createdAt: biz.createdAt,
+    }));
+    dispatch(setPortalUser({ id: biz.id, type: 'business', name: biz.businessName }));
+
+    navigate('/');
+    toast.success(`👤 כניסה בשם: ${biz.businessName}`);
   };
 
   return (

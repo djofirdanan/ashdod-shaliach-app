@@ -49,6 +49,9 @@ export const loginUser = createAsyncThunk(
         if (business.isBlocked) {
           return rejectWithValue('החשבון חסום. פנה למנהל המערכת');
         }
+        if (!business.isActive) {
+          return rejectWithValue('החשבון ממתין לאישור המנהל. תקבל מייל כשיאושר ✉️');
+        }
         localStorage.setItem('admin_token', `business-${business.id}`);
         const user: AdminUser = {
           id: business.id,
@@ -68,6 +71,9 @@ export const loginUser = createAsyncThunk(
         }
         if (courier.isBlocked) {
           return rejectWithValue('החשבון חסום. פנה למנהל המערכת');
+        }
+        if (!courier.isActive) {
+          return rejectWithValue('החשבון ממתין לאישור המנהל. תקבל מייל כשיאושר ✉️');
         }
         localStorage.setItem('admin_token', `courier-${courier.id}`);
         const user: AdminUser = {

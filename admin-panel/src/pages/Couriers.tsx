@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
 import {
   UserGroupIcon,
   StarIcon,
@@ -23,6 +25,9 @@ import type { StoredCourier } from '../services/storage.service';
 import { formatCurrency } from '../utils/formatters';
 import { VEHICLE_TYPE_LABELS } from '../utils/constants';
 import type { VehicleType } from '../types';
+import { setUser, setPortalUser } from '../store/authSlice';
+import { sendAccountApproved } from '../services/email.service';
+import type { RootState } from '../store';
 
 const vehicleLabels: Record<VehicleType, string> = {
   motorcycle: VEHICLE_TYPE_LABELS.motorcycle,
@@ -114,6 +119,10 @@ const Couriers: React.FC = () => {
 
   const [isSaving, setIsSaving] = useState(false);
 
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const currentAdminUser = useSelector((state: RootState) => state.auth.user);
+
   const load = useCallback(() => {
     setCouriers(storageService.getCouriers());
   }, []);
@@ -186,6 +195,8 @@ const Couriers: React.FC = () => {
     e.preventDefault();
     if (!editModal.courier) return;
     setIsSaving(true);
+    const wasInactive = !editModal.courier.isActive;
+    const nowActive = editForm.isActive;
     try {
       storageService.updateCourier(editModal.courier.id, {
         name: editForm.name,
@@ -195,7 +206,13 @@ const Couriers: React.FC = () => {
         vehiclePlate: editForm.vehicle !== 'bicycle' ? editForm.vehiclePlate || undefined : undefined,
         isActive: editForm.isActive,
       });
-      toast.success('שליח עודכן בהצלחה');
+      // Send approval email when admin activates a previously inactive courier
+      if (wasInactive && nowActive) {
+        sendAccountApproved(editForm.email, editForm.name).catch(() => {});
+        toast.success('✅ השליח אושר ומייל אישור נשלח!');
+      } else {
+        toast.success('שליח עודכן בהצלחה');
+      }
       setEditModal({ open: false, courier: null });
       load();
     } catch { toast.error('שגיאה בעדכון שליח'); }
@@ -230,12 +247,28 @@ const Couriers: React.FC = () => {
     load();
   };
 
-  // ── Quick Login ──
+  // ── Quick Login (Impersonation) ──
   const handleQuickLogin = (courier: StoredCourier) => {
-    const portalUser = { id: courier.id, type: 'courier' as const, name: courier.name };
-    localStorage.setItem('portal_user', JSON.stringify(portalUser));
-    toast.success(`כניסה כ-${courier.name} — פתח את פורטל השליחים בלשונית חדשה`);
-    window.open('/portal/courier', '_blank');
+    // Backup current admin session
+    const currentToken = localStorage.getItem('admin_token');
+    if (currentToken) localStorage.setItem('admin_token_backup', currentToken);
+    if (currentAdminUser) localStorage.setItem('admin_user_backup', JSON.stringify(currentAdminUser));
+
+    // Set courier token
+    localStorage.setItem('admin_token', `courier-${courier.id}`);
+
+    // Update Redux state to impersonate the courier
+    dispatch(setUser({
+      id: courier.id,
+      name: courier.name,
+      email: courier.email,
+      role: 'admin',
+      createdAt: courier.createdAt,
+    }));
+    dispatch(setPortalUser({ id: courier.id, type: 'courier', name: courier.name }));
+
+    navigate('/');
+    toast.success(`👤 כניסה בשם: ${courier.name}`);
   };
 
   return (
