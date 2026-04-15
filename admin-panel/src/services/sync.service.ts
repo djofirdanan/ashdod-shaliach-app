@@ -102,6 +102,8 @@ function dbToCourier(row: Record<string, unknown>): StoredCourier {
     isAvailable: row.is_available != null ? Boolean(row.is_available) : true,
     favoriteBusinesses: (row.favorite_businesses as string[]) || [],
     emailOnNewDelivery: row.email_on_new_delivery != null ? Boolean(row.email_on_new_delivery) : false,
+    navPreference: (row.nav_preference as 'waze' | 'google' | 'apple' | undefined) || undefined,
+    bitPhone: (row.bit_phone as string | undefined) || undefined,
   };
 }
 
@@ -130,6 +132,8 @@ function courierToDb(c: StoredCourier): Record<string, unknown> {
     is_available: c.isAvailable ?? true,
     favorite_businesses: c.favoriteBusinesses ?? [],
     email_on_new_delivery: c.emailOnNewDelivery ?? false,
+    nav_preference: c.navPreference ?? null,
+    bit_phone: c.bitPhone ?? null,
   };
 }
 
@@ -216,6 +220,7 @@ function dbToDelivery(row: Record<string, unknown>): StoredDelivery {
     requiredVehicle: (row.required_vehicle as string | undefined) || undefined,
     paymentMethod: (row.payment_method as 'cash' | 'bit' | undefined) || 'cash',
     customerPaid: row.customer_paid != null ? Boolean(row.customer_paid) : false,
+    archived: row.archived != null ? Boolean(row.archived) : false,
   };
 }
 
@@ -372,22 +377,40 @@ export async function syncMessagesDown(conversationId: string): Promise<void> {
   }
 }
 
-/** Pull all conversations for a given user (business or courier) from Supabase → localStorage. */
-export async function syncConversationsDown(userId: string, role: 'business' | 'courier'): Promise<void> {
+/** Pull all conversations for a given user (business, courier, or admin) from Supabase → localStorage. */
+export async function syncConversationsDown(userId: string, role: 'business' | 'courier' | 'admin'): Promise<void> {
   try {
-    const col = role === 'business' ? 'business_id' : 'courier_id';
-    const { data } = await supabase
-      .from('conversations')
-      .select('*')
-      .eq(col, userId)
-      .order('last_message_at', { ascending: false });
+    let query = supabase.from('conversations').select('*').order('last_message_at', { ascending: false });
+    // Admin pulls all conversations; business/courier filter by their ID
+    if (role === 'business') {
+      query = query.eq('business_id', userId) as typeof query;
+    } else if (role === 'courier') {
+      query = query.eq('courier_id', userId) as typeof query;
+    }
+    // For 'admin', no filter — pull everything
+    const { data } = await query;
 
     if (data) {
       const raw = localStorage.getItem(LS_KEYS.conversations);
       const all: StoredConversation[] = raw ? JSON.parse(raw) : [];
       const freshIds = new Set(data.map((r) => r.id as string));
       const others = all.filter((c) => !freshIds.has(c.id));
-      const fresh = data.map(dbToConversation);
+      // Enrich with businessName/courierName from local cache
+      const bizRaw = localStorage.getItem(LS_KEYS.businesses);
+      const courRaw = localStorage.getItem(LS_KEYS.couriers);
+      const bizMap: Record<string, string> = {};
+      const courMap: Record<string, string> = {};
+      if (bizRaw) {
+        (JSON.parse(bizRaw) as Array<{ id: string; businessName: string }>).forEach(b => { bizMap[b.id] = b.businessName; });
+      }
+      if (courRaw) {
+        (JSON.parse(courRaw) as Array<{ id: string; name: string }>).forEach(c => { courMap[c.id] = c.name; });
+      }
+      const fresh = data.map(row => ({
+        ...dbToConversation(row as Record<string, unknown>),
+        businessName: row.business_id === 'admin' ? 'מנהל האתר' : (bizMap[row.business_id as string] ?? ''),
+        courierName: row.courier_id === 'admin' ? 'מנהל האתר' : (courMap[row.courier_id as string] ?? ''),
+      }));
       localStorage.setItem(LS_KEYS.conversations, JSON.stringify([...others, ...fresh]));
     }
   } catch (err) {
@@ -438,8 +461,14 @@ export async function upsertDelivery(d: StoredDelivery): Promise<void> {
     required_vehicle: d.requiredVehicle ?? null,
     payment_method: d.paymentMethod ?? 'cash',
     customer_paid: d.customerPaid ?? false,
+    archived: d.archived ?? false,
   }, { onConflict: 'id' });
   if (error) console.error('[sync] upsertDelivery error:', error.message);
+}
+
+export async function deleteDelivery(id: string): Promise<void> {
+  const { error } = await supabase.from('deliveries').delete().eq('id', id);
+  if (error) console.error('[sync] deleteDelivery error:', error.message);
 }
 
 export async function upsertReview(r: StoredReview): Promise<void> {

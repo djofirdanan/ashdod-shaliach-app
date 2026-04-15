@@ -4,6 +4,7 @@
 // Supabase (async, fire-and-forget) for cross-device persistence.
 // ============================================================
 import * as sync from './sync.service';
+import { sendReviewEmail } from './email.service';
 
 export interface StoredBusiness {
   id: string;
@@ -52,6 +53,8 @@ export interface StoredCourier {
   isAvailable?: boolean;     // availability toggle
   favoriteBusinesses?: string[]; // business IDs
   emailOnNewDelivery?: boolean; // email notification pref
+  navPreference?: 'waze' | 'google' | 'apple'; // preferred navigation app
+  bitPhone?: string; // phone number for Bit payment
 }
 
 export interface StoredReview {
@@ -114,6 +117,7 @@ export interface StoredDelivery {
   requiredVehicle?: string;   // 'motorcycle' | 'bicycle' | 'car' | 'scooter' | undefined=any
   paymentMethod?: 'cash' | 'bit'; // how business pays courier
   customerPaid?: boolean;     // true = customer already paid; false = courier collects
+  archived?: boolean;         // archived by courier/business (removed from main list)
 }
 
 // ─── Support ticket & messages ──────────────────────────────
@@ -363,15 +367,15 @@ export function getOrCreateConversation(
   const existing = list.find((c) => c.id === id);
   if (existing) return existing;
 
-  const business = getBusiness(businessId);
-  const courier = getCourier(courierId);
+  const business = businessId === 'admin' ? null : getBusiness(businessId);
+  const courier = courierId === 'admin' ? null : getCourier(courierId);
 
   const conv: StoredConversation = {
     id,
     businessId,
-    businessName: business?.businessName ?? businessId,
+    businessName: businessId === 'admin' ? 'מנהל האתר' : (business?.businessName ?? businessId),
     courierId,
-    courierName: courier?.name ?? courierId,
+    courierName: courierId === 'admin' ? 'מנהל האתר' : (courier?.name ?? courierId),
     unreadBusiness: 0,
     unreadCourier: 0,
     createdAt: new Date().toISOString(),
@@ -508,6 +512,12 @@ export function updateDelivery(id: string, data: Partial<StoredDelivery>): Store
   return list[idx];
 }
 
+export function deleteDelivery(id: string): void {
+  const list = getDeliveries();
+  write(KEYS.deliveries, list.filter((d) => d.id !== id));
+  sync.deleteDelivery(id).catch(console.error);
+}
+
 // ─── Reviews ─────────────────────────────────────────────────
 export function getReviews(): StoredReview[] {
   return read<StoredReview>(KEYS.reviews);
@@ -536,6 +546,25 @@ export function addReview(
   };
   write(KEYS.reviews, [...filtered, record]);
   sync.upsertReview(record).catch(console.error);
+
+  // Send email notification to the reviewed party
+  try {
+    const reviewerName = data.reviewerType === 'business'
+      ? (getBusiness(data.reviewerId)?.businessName ?? data.reviewerId)
+      : (getCourier(data.reviewerId)?.name ?? data.reviewerId);
+    if (data.targetType === 'courier') {
+      const target = getCourier(data.targetId);
+      if (target?.email) {
+        sendReviewEmail(target.email, target.name, 'courier', reviewerName, data.reviewerType, data.rating, data.comment).catch(console.error);
+      }
+    } else {
+      const target = getBusiness(data.targetId);
+      if (target?.email) {
+        sendReviewEmail(target.email, target.businessName, 'business', reviewerName, data.reviewerType, data.rating, data.comment).catch(console.error);
+      }
+    }
+  } catch { /* ignore */ }
+
   return record;
 }
 
