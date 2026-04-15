@@ -1,6 +1,9 @@
 // ============================================================
 // Storage Service — localStorage-based CRUD for אשדוד-שליח
+// Supabase sync: every write goes to localStorage (instant) +
+// Supabase (async, fire-and-forget) for cross-device persistence.
 // ============================================================
+import * as sync from './sync.service';
 
 export interface StoredBusiness {
   id: string;
@@ -136,6 +139,7 @@ export function addDeliveryNotification(
     dismissedBy: [],
   };
   write(NOTIF_KEY, [...list, record]);
+  sync.upsertDeliveryNotification(record).catch(console.error);
   // Trigger cross-tab storage event
   localStorage.setItem('app_notif_ping', record.createdAt);
   return record;
@@ -155,6 +159,7 @@ export function dismissNotification(notifId: string, courierId: string): void {
   if (idx !== -1) {
     list[idx] = { ...list[idx], dismissedBy: [...list[idx].dismissedBy, courierId] };
     write(NOTIF_KEY, list);
+    sync.upsertDeliveryNotification(list[idx]).catch(console.error);
   }
 }
 
@@ -164,6 +169,7 @@ export function acceptNotification(notifId: string, courierId: string): void {
   if (idx !== -1) {
     list[idx] = { ...list[idx], takenBy: courierId };
     write(NOTIF_KEY, list);
+    sync.upsertDeliveryNotification(list[idx]).catch(console.error);
   }
 }
 
@@ -188,6 +194,7 @@ export function addBusiness(data: Omit<StoredBusiness, 'id' | 'createdAt'>): Sto
     createdAt: new Date().toISOString(),
   };
   write(KEYS.businesses, [...list, record]);
+  sync.upsertBusiness(record).catch(console.error);
   return record;
 }
 
@@ -197,11 +204,13 @@ export function updateBusiness(id: string, data: Partial<StoredBusiness>): Store
   if (idx === -1) throw new Error('Business not found');
   list[idx] = { ...list[idx], ...data };
   write(KEYS.businesses, list);
+  sync.upsertBusiness(list[idx]).catch(console.error);
   return list[idx];
 }
 
 export function deleteBusiness(id: string): void {
   write(KEYS.businesses, getBusinesses().filter((b) => b.id !== id));
+  sync.deleteBusiness(id).catch(console.error);
 }
 
 // ─── Couriers ────────────────────────────────────────────────
@@ -225,6 +234,7 @@ export function addCourier(data: Omit<StoredCourier, 'id' | 'createdAt'>): Store
     createdAt: new Date().toISOString(),
   };
   write(KEYS.couriers, [...list, record]);
+  sync.upsertCourier(record).catch(console.error);
   return record;
 }
 
@@ -234,11 +244,13 @@ export function updateCourier(id: string, data: Partial<StoredCourier>): StoredC
   if (idx === -1) throw new Error('Courier not found');
   list[idx] = { ...list[idx], ...data };
   write(KEYS.couriers, list);
+  sync.upsertCourier(list[idx]).catch(console.error);
   return list[idx];
 }
 
 export function deleteCourier(id: string): void {
   write(KEYS.couriers, getCouriers().filter((c) => c.id !== id));
+  sync.deleteCourier(id).catch(console.error);
 }
 
 // ─── Conversations ───────────────────────────────────────────
@@ -269,6 +281,7 @@ export function getOrCreateConversation(
     createdAt: new Date().toISOString(),
   };
   write(KEYS.conversations, [...list, conv]);
+  sync.upsertConversation(conv).catch(console.error);
   return conv;
 }
 
@@ -291,6 +304,7 @@ export function addMessage(
     createdAt: new Date().toISOString(),
   };
   write(KEYS.messages, [...allMessages, record]);
+  sync.insertMessage(record).catch(console.error);
 
   // Update conversation last message
   const convList = getConversations();
@@ -310,6 +324,7 @@ export function addMessage(
           : convList[convIdx].unreadCourier,
     };
     write(KEYS.conversations, convList);
+    sync.upsertConversation(convList[convIdx]).catch(console.error);
   }
 
   return record;
@@ -401,9 +416,11 @@ export function createResetToken(email: string): { token: string; userType: 'bus
   const token = Array.from(array).map(b => b.toString(16).padStart(2, '0')).join('');
 
   // Remove old tokens for this email, add new one
+  const expiresAt = Date.now() + 60 * 60 * 1000;
   const tokens = readResetTokens().filter(t => t.email.toLowerCase() !== normalizedEmail);
-  tokens.push({ token, email: normalizedEmail, userType, expiresAt: Date.now() + 60 * 60 * 1000 });
+  tokens.push({ token, email: normalizedEmail, userType, expiresAt });
   writeResetTokens(tokens);
+  sync.upsertResetToken(token, normalizedEmail, userType, expiresAt).catch(console.error);
 
   return { token, userType };
 }
@@ -440,5 +457,6 @@ export function applyResetToken(token: string, newPassword: string): boolean {
 
   // Invalidate token
   writeResetTokens(readResetTokens().filter(t => t.token !== token));
+  sync.deleteResetToken(token).catch(console.error);
   return true;
 }

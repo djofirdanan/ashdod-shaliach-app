@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { syncDown } from './services/sync.service';
 import { Provider } from 'react-redux';
 import { Toaster } from 'react-hot-toast';
 import { store } from './store';
@@ -29,6 +30,9 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 };
 
 const App: React.FC = () => {
+  // On every app start: pull latest data from Supabase into localStorage
+  useEffect(() => { syncDown(); }, []);
+
   return (
     <Provider store={store}>
       <div dir="rtl">
