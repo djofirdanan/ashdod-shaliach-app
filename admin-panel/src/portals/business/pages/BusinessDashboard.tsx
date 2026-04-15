@@ -369,11 +369,34 @@ const BusinessDashboard: React.FC = () => {
 
   useEffect(() => {
     if (!businessId) return;
-    const d   = getDeliveriesByBusiness(businessId);
-    const biz = getBusiness(businessId);
-    setDeliveries(d);
-    setBalance(biz?.balance ?? 0);
-    if (biz?.businessName) setBizName(biz.businessName);
+    const load = async () => {
+      await syncDeliveriesDown().catch(() => {});
+      const d   = getDeliveriesByBusiness(businessId);
+      const biz = getBusiness(businessId);
+      setDeliveries(d);
+      setBalance(biz?.balance ?? 0);
+      if (biz?.businessName) setBizName(biz.businessName);
+
+      // ── On mount: check if any pending delivery already has waiting candidates
+      //    (handles the case where the courier joined before the page loaded) ──
+      if (!searchParams.get('tracking')) {
+        const pending = d.filter(x => x.status === 'pending' || x.status === 'scheduled');
+        for (const pd of pending) {
+          const { data } = await supabase
+            .from('delivery_candidates')
+            .select('id')
+            .eq('delivery_id', pd.id)
+            .eq('status', 'waiting')
+            .limit(1);
+          if (data && data.length > 0) {
+            setSearchParams({ tracking: pd.id });
+            break;
+          }
+        }
+      }
+    };
+    load();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [businessId]);
 
   // ── Realtime: when a courier joins queue for ANY of our pending deliveries,
@@ -392,9 +415,8 @@ const BusinessDashboard: React.FC = () => {
           const allDel = getDeliveries();
           const myDel = allDel.find(d => d.id === deliveryId && d.businessId === businessId);
           if (!myDel || !['pending', 'scheduled'].includes(myDel.status)) return;
-          // If not already tracking this delivery, auto-open the sheet
+          // Auto-open the candidate review sheet
           setSearchParams({ tracking: deliveryId });
-          // Refresh deliveries list
           setDeliveries(getDeliveriesByBusiness(businessId));
           toast('🏍️ שליח הצטרף לתור!', { icon: '🔔' });
         }
@@ -521,11 +543,18 @@ const BusinessDashboard: React.FC = () => {
           <div className="space-y-3">
             {recent.map(d => {
               const sc = STATUS_COLOR[d.status];
+              const isTrackable = ['pending', 'accepted', 'picked_up'].includes(d.status);
               return (
                 <div
                   key={d.id}
-                  className="rounded-2xl p-4"
-                  style={{ background: '#FFFFFF', border: '1px solid #E8E8E8', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}
+                  onClick={() => isTrackable && setSearchParams({ tracking: d.id })}
+                  className="rounded-2xl p-4 transition-all active:scale-[0.99]"
+                  style={{
+                    background: '#FFFFFF',
+                    border: isTrackable ? `1.5px solid ${BLUE}30` : '1px solid #E8E8E8',
+                    boxShadow: isTrackable ? `0 2px 12px ${BLUE}10` : '0 1px 4px rgba(0,0,0,0.04)',
+                    cursor: isTrackable ? 'pointer' : 'default',
+                  }}
                 >
                   {/* Row 1: status + time */}
                   <div className="flex items-center justify-between mb-2.5">
@@ -535,9 +564,16 @@ const BusinessDashboard: React.FC = () => {
                     >
                       {STATUS_LABEL[d.status]}
                     </span>
-                    <span className="text-[11px]" style={{ color: '#AAAAAA' }}>
-                      {formatDate(d.createdAt)} • {formatTime(d.createdAt)}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {isTrackable && (
+                        <span className="text-[11px] font-semibold" style={{ color: BLUE }}>
+                          📡 עקוב
+                        </span>
+                      )}
+                      <span className="text-[11px]" style={{ color: '#AAAAAA' }}>
+                        {formatDate(d.createdAt)} • {formatTime(d.createdAt)}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Row 2: address */}
