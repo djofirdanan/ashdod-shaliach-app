@@ -8,6 +8,7 @@ import {
   deleteDelivery,
   type StoredDelivery,
 } from '../../../services/storage.service';
+import { supabase } from '../../../lib/supabase';
 import {
   TruckIcon,
   PlusCircleIcon,
@@ -29,7 +30,7 @@ const BLUE  = '#009DE0';
 const GREEN = '#1BA672';
 const RED   = '#E23437';
 
-type Tab = 'active' | 'scheduled' | 'completed' | 'archived' | 'all';
+type Tab = 'pending_approval' | 'active' | 'scheduled' | 'completed' | 'archived' | 'all';
 
 const statusLabel: Record<StoredDelivery['status'], string> = {
   scheduled: '📅 מתוזמן',
@@ -526,6 +527,29 @@ const BusinessDeliveries: React.FC = () => {
 
   useEffect(load, [businessId]);
 
+  interface PendingApprovalDelivery extends StoredDelivery { candidateCount: number; }
+  const [pendingApproval, setPendingApproval] = useState<PendingApprovalDelivery[]>([]);
+
+  useEffect(() => {
+    if (!businessId) return;
+    const check = async () => {
+      const pending = getDeliveriesByBusiness(businessId).filter(d => d.status === 'pending' && !d.archived);
+      const results: PendingApprovalDelivery[] = [];
+      for (const d of pending) {
+        const { data } = await supabase
+          .from('delivery_candidates')
+          .select('id')
+          .eq('delivery_id', d.id)
+          .eq('status', 'waiting');
+        if (data && data.length > 0) results.push({ ...d, candidateCount: data.length });
+      }
+      setPendingApproval(results);
+    };
+    check();
+    const id = setInterval(check, 5_000);
+    return () => clearInterval(id);
+  }, [businessId]);
+
   const handleResend = (d: StoredDelivery) => {
     setResending(d.id);
     const biz = getBusiness(businessId);
@@ -592,6 +616,7 @@ const BusinessDeliveries: React.FC = () => {
   };
 
   const filtered = deliveries.filter(d => {
+    if (tab === 'pending_approval') return false; // handled separately
     if (tab === 'scheduled') return d.status === 'scheduled' && !d.archived;
     if (tab === 'active')    return ['pending', 'accepted', 'picked_up'].includes(d.status) && !d.archived;
     if (tab === 'completed') return ['delivered', 'cancelled'].includes(d.status) && !d.archived;
@@ -604,6 +629,7 @@ const BusinessDeliveries: React.FC = () => {
   const archivedCount  = deliveries.filter(d => d.archived).length;
 
   const tabs: { id: Tab; label: string }[] = [
+    { id: 'pending_approval', label: 'לאישורי'   },
     { id: 'scheduled', label: 'מתוזמנים' },
     { id: 'active',    label: 'פעילים'   },
     { id: 'completed', label: 'הושלמו'   },
@@ -638,6 +664,7 @@ const BusinessDeliveries: React.FC = () => {
       >
         {tabs.map((t, i) => {
           const badge =
+            t.id === 'pending_approval' && pendingApproval.length > 0 ? pendingApproval.length :
             t.id === 'scheduled' && scheduledCount > 0 ? scheduledCount :
             t.id === 'archived'  && archivedCount  > 0 ? archivedCount  : null;
           return (
@@ -657,6 +684,7 @@ const BusinessDeliveries: React.FC = () => {
                   className="text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[16px] text-center"
                   style={{
                     background: tab === t.id ? 'rgba(255,255,255,0.3)' : (t.id === 'scheduled' ? BLUE : RED),
+                    // pending_approval badge is RED (falls through to RED in ternary above)
                     color: '#FFFFFF',
                   }}
                 >
@@ -680,7 +708,68 @@ const BusinessDeliveries: React.FC = () => {
       )}
 
       {/* List */}
-      {filtered.length === 0 ? (
+      {tab === 'pending_approval' ? (
+        pendingApproval.length === 0 ? (
+          <div className="rounded-2xl p-8 flex flex-col items-center gap-3 text-center" style={{ background: '#FFFFFF', border: '1px solid #E8E8E8' }}>
+            <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: '#E6F6FC' }}>
+              <TruckIcon className="w-7 h-7" style={{ color: BLUE }} />
+            </div>
+            <p className="text-[14px] font-bold" style={{ color: '#202125' }}>אין שליחים שממתינים לאישורך</p>
+            <p className="text-[12px]" style={{ color: '#757575' }}>כששליח יצטרף לתור משלוח שלך, הוא יופיע כאן</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {pendingApproval.map(d => (
+              <div key={d.id} className="rounded-2xl overflow-hidden" style={{ background: '#FFFFFF', border: `2px solid ${BLUE}25`, boxShadow: `0 4px 16px ${BLUE}10` }}>
+                {/* Blue header strip */}
+                <div className="flex items-center gap-3 px-4 py-3" style={{ background: '#EAF7FD', borderBottom: `1px solid ${BLUE}20` }}>
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: BLUE }}>
+                    <TruckIcon className="w-5 h-5 text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-[13px] font-black" style={{ color: '#202125' }}>
+                      {d.candidateCount === 1 ? 'שליח אחד ממתין לאישורך' : `${d.candidateCount} שליחים ממתינים לאישורך`}
+                    </p>
+                    <p className="text-[11px] font-semibold animate-pulse" style={{ color: BLUE }}>לחץ לצפייה ובחירה</p>
+                  </div>
+                  {/* candidate count badge */}
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center font-black text-[16px] text-white" style={{ background: RED }}>
+                    {d.candidateCount}
+                  </div>
+                </div>
+
+                {/* Body */}
+                <div className="px-4 py-3 space-y-2">
+                  <div className="flex items-start gap-2">
+                    <MapPinIcon className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: GREEN }} />
+                    <p className="text-[13px] font-semibold truncate" style={{ color: '#202125' }}>{d.pickupAddress}</p>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <MapPinIcon className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: RED }} />
+                    <p className="text-[13px] font-semibold truncate" style={{ color: '#202125' }}>{d.dropAddress}</p>
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="flex items-center justify-between px-4 pb-4">
+                  <div className="flex items-center gap-1.5">
+                    <BanknotesIcon className="w-4 h-4" style={{ color: BLUE }} />
+                    <span className="text-[15px] font-black" style={{ color: BLUE }}>₪{d.price}</span>
+                  </div>
+                  <button
+                    onClick={() => navigate(`/business/dashboard?tracking=${d.id}`)}
+                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-black text-[13px] text-white transition-all active:scale-95"
+                    style={{ background: BLUE, boxShadow: `0 4px 14px ${BLUE}40` }}
+                  >
+                    <CheckIcon className="w-4 h-4" />
+                    אשר שליח עכשיו
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      ) : filtered.length === 0 ? (
         <div
           className="rounded-2xl p-8 flex flex-col items-center gap-3 text-center"
           style={{ background: '#FFFFFF', border: '1px solid #E8E8E8' }}

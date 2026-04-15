@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   getDeliveriesByCourier,
+  getDeliveries,
   updateDelivery,
   getOrCreateConversation,
   type StoredDelivery,
 } from '../../../services/storage.service';
+import { withdrawFromQueue } from '../../../services/sync.service';
 import {
   XMarkIcon,
   TruckIcon,
@@ -20,6 +22,7 @@ import {
   ClockIcon,
   ChatBubbleLeftRightIcon,
   BanknotesIcon,
+  BellIcon,
 } from '@heroicons/react/24/outline';
 
 // ─── Design tokens ──────────────────────────────────────────────
@@ -30,7 +33,7 @@ const RED    = '#E23437';
 const TEXT   = '#202125';
 const TEXT2  = '#757575';
 
-type Tab = 'active' | 'completed' | 'archived';
+type Tab = 'pending_approval' | 'active' | 'completed' | 'archived';
 
 const statusLabel: Record<StoredDelivery['status'], string> = {
   scheduled: 'מתוזמן',
@@ -391,7 +394,48 @@ const CourierDeliveries: React.FC = () => {
 
   useEffect(() => { load(); }, [courierId]);
 
+  interface CandidacyInfo {
+    deliveryId: string;
+    notifId: string;
+    joinedAt: string;
+    delivery: StoredDelivery | null;
+  }
+  const [candidacyInfo, setCandidacyInfo] = useState<CandidacyInfo | null>(null);
+  const [withdrawing, setWithdrawing] = useState(false);
+
+  useEffect(() => {
+    const check = () => {
+      const raw = localStorage.getItem('pending_candidacy');
+      if (!raw) { setCandidacyInfo(null); return; }
+      try {
+        const p: { deliveryId: string; notifId: string; joinedAt?: string } = JSON.parse(raw);
+        const allDel = getDeliveries();
+        const delivery = allDel.find(d => d.id === p.deliveryId) ?? null;
+        setCandidacyInfo({
+          deliveryId: p.deliveryId,
+          notifId: p.notifId,
+          joinedAt: p.joinedAt ?? new Date().toISOString(),
+          delivery,
+        });
+      } catch { setCandidacyInfo(null); }
+    };
+    check();
+    const id = setInterval(check, 3_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const handleWithdraw = async () => {
+    if (!candidacyInfo || !courierId) return;
+    setWithdrawing(true);
+    await withdrawFromQueue(candidacyInfo.deliveryId, courierId);
+    localStorage.removeItem('pending_candidacy');
+    setCandidacyInfo(null);
+    setWithdrawing(false);
+    toast.success('יצאת מהתור');
+  };
+
   const filtered = deliveries.filter((d) => {
+    if (tab === 'pending_approval') return false; // handled separately
     if (tab === 'active')    return ['accepted', 'picked_up'].includes(d.status) && !d.archived;
     if (tab === 'completed') return ['delivered', 'cancelled'].includes(d.status) && !d.archived;
     if (tab === 'archived')  return d.archived === true;
@@ -446,6 +490,7 @@ const CourierDeliveries: React.FC = () => {
         style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E8E8E8', overflow: 'hidden' }}
       >
         {([
+          { id: 'pending_approval' as Tab, label: 'לאישורי', badge: candidacyInfo ? 1 : null },
           { id: 'active'    as Tab, label: 'פעילים',  badge: null },
           { id: 'completed' as Tab, label: 'הושלמו',  badge: null },
           { id: 'archived'  as Tab, label: 'ארכיון',  badge: archivedCount > 0 ? archivedCount : null },
@@ -484,7 +529,78 @@ const CourierDeliveries: React.FC = () => {
         </p>
       )}
 
-      {filtered.length === 0 ? (
+      {tab === 'pending_approval' ? (
+        candidacyInfo === null ? (
+          <div className="rounded-2xl p-8 flex flex-col items-center gap-3 text-center" style={{ background: '#FFFFFF', border: '1px solid #E8E8E8' }}>
+            <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: '#E6F6FC' }}>
+              <ClockIcon className="w-7 h-7" style={{ color: BLUE }} />
+            </div>
+            <p className="text-[14px] font-bold" style={{ color: TEXT }}>אין משלוחים ממתינים לאישורך</p>
+            <p className="text-[12px]" style={{ color: TEXT2 }}>כשתצטרף לתור של משלוח, הוא יופיע כאן</p>
+          </div>
+        ) : (
+          <div className="rounded-2xl overflow-hidden" style={{ background: '#FFFFFF', border: '2px solid #F58F1F25', boxShadow: '0 4px 16px rgba(245,143,31,0.10)' }}>
+            {/* Amber header */}
+            <div className="flex items-center gap-3 px-4 py-3" style={{ background: 'linear-gradient(90deg,#FFF8E6,#FFFCF0)', borderBottom: '1px solid #F58F1F20' }}>
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: ORANGE }}>
+                <ClockIcon className="w-5 h-5 text-white" />
+              </div>
+              <div className="flex-1">
+                <p className="text-[13px] font-black" style={{ color: TEXT }}>ממתין לאישור העסק</p>
+                <p className="text-[11px] font-semibold" style={{ color: ORANGE }}>
+                  {Math.round((Date.now() - new Date(candidacyInfo.joinedAt).getTime()) / 60000)} דקות בתור
+                </p>
+              </div>
+              {/* Pulsing indicator */}
+              <div className="w-3 h-3 rounded-full animate-pulse" style={{ background: ORANGE }} />
+            </div>
+
+            {/* Delivery info */}
+            {candidacyInfo.delivery && (
+              <div className="px-4 py-3 space-y-2">
+                <div className="flex items-start gap-2">
+                  <MapPinIcon className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: GREEN }} />
+                  <div>
+                    <p className="text-[10px]" style={{ color: '#AAAAAA' }}>איסוף</p>
+                    <p className="text-[13px] font-semibold" style={{ color: TEXT }}>{candidacyInfo.delivery.pickupAddress}</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2">
+                  <MapPinIcon className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: RED }} />
+                  <div>
+                    <p className="text-[10px]" style={{ color: '#AAAAAA' }}>מסירה</p>
+                    <p className="text-[13px] font-semibold" style={{ color: TEXT }}>{candidacyInfo.delivery.dropAddress}</p>
+                  </div>
+                </div>
+                {candidacyInfo.delivery.description && (
+                  <p className="text-[11px] pr-6" style={{ color: TEXT2 }}>{candidacyInfo.delivery.description}</p>
+                )}
+                <div className="flex items-center gap-1.5 pt-1">
+                  <BanknotesIcon className="w-4 h-4" style={{ color: BLUE }} />
+                  <span className="text-[15px] font-black" style={{ color: BLUE }}>₪{candidacyInfo.delivery.price}</span>
+                  {candidacyInfo.delivery.businessName && (
+                    <span className="text-[11px] mr-1" style={{ color: TEXT2 }}>· {candidacyInfo.delivery.businessName}</span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Footer */}
+            <div className="px-4 pb-4">
+              <p className="text-[11px] text-center mb-3" style={{ color: '#AAAAAA' }}>אל תסגור את האפליקציה — תקבל התראה כשתאושר</p>
+              <button
+                onClick={handleWithdraw}
+                disabled={withdrawing}
+                className="w-full py-3 rounded-xl font-bold text-[13px] flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+                style={{ background: '#FFF0F0', color: RED, border: `1.5px solid ${RED}30` }}
+              >
+                <XMarkIcon className="w-4 h-4" />
+                {withdrawing ? '...' : 'יציאה מהתור'}
+              </button>
+            </div>
+          </div>
+        )
+      ) : filtered.length === 0 ? (
         <div
           className="rounded-2xl p-8 flex flex-col items-center gap-3 text-center"
           style={{ background: '#FFFFFF', border: '1px solid #E8E8E8', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}
