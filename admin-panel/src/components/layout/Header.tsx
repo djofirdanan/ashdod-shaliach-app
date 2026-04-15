@@ -173,7 +173,7 @@ export const Header: React.FC<HeaderProps> = ({
             <>
               <div className="fixed inset-0 z-40" onClick={() => setNotifOpen(false)} />
               <div
-                className="absolute left-0 top-full mt-2 w-[320px] bg-white rounded-[8px] z-50 overflow-hidden"
+                className="absolute left-0 top-full mt-2 w-[calc(100vw-24px)] max-w-[320px] bg-white rounded-[8px] z-50 overflow-hidden"
                 style={{
                   boxShadow: '0 13px 27px -5px rgba(50,50,93,0.15), 0 8px 16px -8px rgba(0,0,0,0.10)',
                   border: '1px solid #e8ecf0',

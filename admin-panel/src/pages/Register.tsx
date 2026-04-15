@@ -200,7 +200,7 @@ const Register: React.FC = () => {
   const inputClass = "w-full";
 
   return (
-    <div dir="rtl" className="min-h-screen flex" style={{ background: '#f6f9fc' }}>
+    <div dir="rtl" className="min-h-screen flex flex-col lg:flex-row" style={{ background: '#f6f9fc' }}>
 
       {/* ── LEFT PANEL ──────────────────────────────────────────── */}
       <div
@@ -258,8 +258,8 @@ const Register: React.FC = () => {
       </div>
 
       {/* ── RIGHT FORM ──────────────────────────────────────────── */}
-      <div className="w-full lg:w-[58%] flex items-start justify-center p-6 overflow-y-auto" style={{ background: '#fff' }}>
-        <div className="w-full max-w-[480px] py-8">
+      <div className="w-full lg:w-[58%] overflow-y-auto flex-1" style={{ background: '#fff' }}>
+        <div className="w-full max-w-[480px] mx-auto px-5 py-8">
 
           {/* Mobile logo */}
           <div className="flex items-center gap-3 mb-6 lg:hidden">

@@ -57,27 +57,31 @@ const AppDownloadBanner: React.FC = () => {
 
   return (
     <div
-      className="w-full rounded-[14px] px-5 py-4 flex items-center gap-4 mb-6"
+      className="w-full rounded-[14px] px-4 py-3 mb-5"
       style={{
         background: 'linear-gradient(135deg, #061b31 0%, #1c1e54 100%)',
         boxShadow: '0 4px 20px rgba(6,27,49,0.20)',
       }}
     >
-      <div
-        className="w-11 h-11 rounded-[10px] flex items-center justify-center flex-shrink-0"
-        style={{ background: 'linear-gradient(135deg, #533afd, #ea2261)' }}
-      >
-        <DevicePhoneMobileIcon className="w-6 h-6 text-white" />
+      {/* Top row: icon + text */}
+      <div className="flex items-center gap-3 mb-3">
+        <div
+          className="w-9 h-9 rounded-[8px] flex items-center justify-center flex-shrink-0"
+          style={{ background: 'linear-gradient(135deg, #533afd, #ea2261)' }}
+        >
+          <DevicePhoneMobileIcon className="w-5 h-5 text-white" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-white text-[13px] font-bold leading-tight">
+            הורד את אפליקציית אשדוד-שליח
+          </p>
+          <p className="text-white/55 text-[11px] mt-0.5">
+            גש לכל הפיצ׳רים ישירות מהנייד שלך
+          </p>
+        </div>
       </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-white text-[13px] font-bold leading-tight">
-          הורד את אפליקציית אשדוד-שליח
-        </p>
-        <p className="text-white/55 text-[11px] mt-0.5">
-          גש לכל הפיצ׳רים ישירות מהנייד שלך
-        </p>
-      </div>
-      <div className="flex flex-col gap-2 flex-shrink-0">
+      {/* Bottom row: badges */}
+      <div className="flex gap-2">
         {(device === 'ios' || device === 'desktop') && <AppStoreBadge size="sm" />}
         {(device === 'android' || device === 'desktop') && <GooglePlayBadge size="sm" />}
       </div>
@@ -132,12 +136,12 @@ const RoleCard: React.FC<RoleCardProps> = ({ role, selected, onSelect }) => {
       </div>
       <div className="text-center">
         <p
-          className="text-[14px] font-bold"
+          className="text-[13px] sm:text-[14px] font-bold"
           style={{ color: selected ? cfg.color : '#061b31' }}
         >
           {cfg.label}
         </p>
-        <p className="text-[10px] mt-0.5 leading-tight" style={{ color: '#8898aa' }}>
+        <p className="text-[9px] sm:text-[10px] mt-0.5 leading-tight" style={{ color: '#8898aa' }}>
           {cfg.sub}
         </p>
       </div>
@@ -195,7 +199,7 @@ const Login: React.FC = () => {
   const cfg = roleConfig[selectedRole];
 
   return (
-    <div dir="rtl" className="min-h-screen flex" style={{ background: '#f6f9fc' }}>
+    <div dir="rtl" className="min-h-screen flex flex-col lg:flex-row" style={{ background: '#f6f9fc' }}>
 
       {/* ── LEFT — Brand panel ─────────────────────────────────────────────── */}
       <div
@@ -273,8 +277,8 @@ const Login: React.FC = () => {
       </div>
 
       {/* ── RIGHT — Login form ──────────────────────────────────────────────── */}
-      <div className="w-full lg:w-[55%] flex items-center justify-center p-6 overflow-y-auto" style={{ background: '#ffffff' }}>
-        <div className="w-full max-w-[420px] py-8">
+      <div className="w-full lg:w-[55%] overflow-y-auto flex-1" style={{ background: '#ffffff' }}>
+        <div className="w-full max-w-[420px] mx-auto px-5 py-8 sm:py-10">
 
           {/* Mobile logo */}
           <div className="flex items-center gap-3 mb-6 lg:hidden">
