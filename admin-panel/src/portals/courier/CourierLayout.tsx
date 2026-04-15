@@ -309,31 +309,26 @@ const CourierLayout: React.FC = () => {
   ];
 
   return (
-    <div dir="rtl" className="min-h-screen flex flex-col" style={{ background: '#F4F4F4' }}>
+    <div dir="rtl" className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(180deg, #EFF6FF 0%, #F0F4FF 100%)' }}>
 
       {/* ── Top header ── */}
       <header
-        className="flex items-center justify-between px-4 sticky top-0 z-40"
-        style={{
-          background: '#FFFFFF',
-          borderBottom: '1px solid #E8E8E8',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-          height: 56,
-        }}
+        className="portal-header flex items-center justify-between px-4 sticky top-0 z-40"
+        style={{ height: 60 }}
       >
         {/* Right: logo + name */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-3">
           <div
-            className="w-8 h-8 rounded-xl flex items-center justify-center"
-            style={{ background: BLUE }}
+            className="w-9 h-9 rounded-2xl flex items-center justify-center"
+            style={{ background: 'rgba(255,255,255,0.2)', border: '1.5px solid rgba(255,255,255,0.3)' }}
           >
-            <TruckIcon className="w-4 h-4 text-white" />
+            <TruckIcon className="w-5 h-5 text-white" />
           </div>
           <div>
-            <p className="font-black text-[15px] leading-tight" style={{ color: '#202125' }}>
+            <p className="font-black text-[15px] leading-tight text-white">
               {courierName || user?.name || 'אשדוד-שליח'}
             </p>
-            <p className="text-[11px]" style={{ color: '#757575' }}>פורטל שליחים</p>
+            <p className="text-[11px]" style={{ color: 'rgba(255,255,255,0.72)' }}>פורטל שליחים</p>
           </div>
         </div>
 
@@ -343,21 +338,21 @@ const CourierLayout: React.FC = () => {
             onClick={() => setShowAvailConfirm(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-bold transition-all active:scale-95"
             style={{
-              background: isAvailable ? '#E8F8F0' : '#FFF0F0',
-              border:     `1.5px solid ${isAvailable ? '#1BA672' : '#E23437'}`,
-              color:      isAvailable ? '#1BA672' : '#E23437',
+              background: isAvailable ? 'rgba(27,166,114,0.2)' : 'rgba(226,52,55,0.2)',
+              border:     `1.5px solid ${isAvailable ? 'rgba(255,255,255,0.5)' : 'rgba(255,150,150,0.5)'}`,
+              color:      'white',
             }}
           >
             <span
-              className="w-2 h-2 rounded-full"
-              style={{ background: isAvailable ? '#1BA672' : '#E23437' }}
+              className={isAvailable ? 'status-live' : 'w-2 h-2 rounded-full'}
+              style={isAvailable ? {} : { background: '#FCA5A5' }}
             />
             {isAvailable ? 'זמין' : 'לא זמין'}
           </button>
           <button
             onClick={handleLogout}
-            className="text-[13px] font-semibold px-3 py-1.5 rounded-xl transition-all active:scale-95"
-            style={{ color: BLUE, background: '#EAF7FD', border: `1px solid ${BLUE}30` }}
+            className="text-[13px] font-bold px-3 py-1.5 rounded-2xl transition-all active:scale-95"
+            style={{ color: 'rgba(255,255,255,0.9)', background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)' }}
           >
             יציאה
           </button>
@@ -368,26 +363,24 @@ const CourierLayout: React.FC = () => {
       {msgToasts.length > 0 && (
         <div
           dir="rtl"
-          className="fixed top-14 left-0 right-0 z-[500] flex flex-col gap-2 px-3 pt-2 pointer-events-none"
+          className="fixed top-[64px] left-0 right-0 z-[500] flex flex-col gap-2 px-3 pt-2 pointer-events-none"
         >
           {msgToasts.map((t) => (
             <div
               key={t.id}
-              className="pointer-events-auto flex items-center gap-3 px-3 py-2.5 rounded-2xl shadow-lg"
+              className="msg-toast pointer-events-auto flex items-center gap-3 px-3 py-2.5"
               style={{
-                background: '#fff',
-                border: '1px solid #E8E8E8',
-                boxShadow: '0 4px 20px rgba(0,0,0,0.13)',
-                animation: 'slideDownToast 0.3s ease',
-                maxWidth: 400,
+                animation: 'slideDownToast 0.35s cubic-bezier(.34,1.56,.64,1)',
+                maxWidth: 420,
                 marginLeft: 'auto',
                 marginRight: 'auto',
+                width: '100%',
               }}
             >
               {/* Avatar */}
               <div
-                className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[13px] font-black flex-shrink-0"
-                style={{ background: 'linear-gradient(135deg, #009DE0, #1BA672)' }}
+                className="w-9 h-9 rounded-2xl flex items-center justify-center text-white text-[14px] font-black flex-shrink-0"
+                style={{ background: 'linear-gradient(135deg, #2563EB, #009DE0)' }}
               >
                 {t.name[0]}
               </div>
@@ -396,13 +389,13 @@ const CourierLayout: React.FC = () => {
                 className="flex-1 min-w-0 text-right"
                 onClick={() => { navigate(t.path); setMsgToasts(p => p.filter(x => x.id !== t.id)); }}
               >
-                <p className="text-[12px] font-black truncate" style={{ color: '#202125' }}>{t.name}</p>
-                <p className="text-[11px] truncate" style={{ color: '#757575' }}>{t.preview}</p>
+                <p className="text-[12px] font-black truncate" style={{ color: '#1E3A8A' }}>{t.name}</p>
+                <p className="text-[11px] truncate" style={{ color: '#6B7280' }}>{t.preview}</p>
               </button>
               {/* Close */}
               <button
-                className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
-                style={{ background: '#F4F4F4', color: '#AAAAAA' }}
+                className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold"
+                style={{ background: '#EFF6FF', color: '#93C5FD' }}
                 onClick={() => setMsgToasts(p => p.filter(x => x.id !== t.id))}
               >
                 ✕
@@ -414,7 +407,7 @@ const CourierLayout: React.FC = () => {
 
       <style>{`
         @keyframes slideDownToast {
-          from { transform: translateY(-16px); opacity: 0; }
+          from { transform: translateY(-20px); opacity: 0; }
           to   { transform: translateY(0);    opacity: 1; }
         }
       `}</style>
@@ -458,19 +451,14 @@ const CourierLayout: React.FC = () => {
       )}
 
       {/* ── Page content ── */}
-      <main className="flex-1 overflow-y-auto pb-20">
+      <main className="flex-1 overflow-y-auto pb-[72px]">
         <Outlet />
       </main>
 
       {/* ── Bottom navigation ── */}
       <nav
-        className="fixed bottom-0 right-0 left-0 z-40 flex items-center justify-around"
-        style={{
-          background: '#FFFFFF',
-          borderTop: '1px solid #E8E8E8',
-          boxShadow: '0 -2px 12px rgba(0,0,0,0.06)',
-          height: 60,
-        }}
+        className="nav-glass fixed bottom-0 right-0 left-0 z-40 flex items-center justify-around px-2"
+        style={{ height: 68 }}
       >
         {navItems.map(({ label, path, icon: Icon, iconSolid: IconSolid, badge }) => {
           const active = location.pathname === path ||
@@ -479,28 +467,40 @@ const CourierLayout: React.FC = () => {
             <Link
               key={path}
               to={path}
-              className="flex flex-col items-center gap-0.5 relative min-w-[52px] py-1.5"
+              className="flex flex-col items-center justify-center relative flex-1 py-1"
+              style={{ minWidth: 48, maxWidth: 80 }}
             >
-              <div className="relative">
-                {active
-                  ? <IconSolid className="w-6 h-6" style={{ color: BLUE }} />
-                  : <Icon      className="w-6 h-6" style={{ color: '#AAAAAA' }} />
-                }
-                {badge > 0 && (
-                  <span
-                    className="absolute -top-1 -right-1 min-w-[16px] h-4 px-0.5 rounded-full flex items-center justify-center text-[9px] text-white font-bold"
-                    style={{ background: '#E23437' }}
-                  >
-                    {badge > 9 ? '9+' : badge}
-                  </span>
-                )}
-              </div>
-              <span
-                className="text-[10px] font-medium"
-                style={{ color: active ? BLUE : '#AAAAAA' }}
-              >
-                {label}
-              </span>
+              {active ? (
+                <div className="nav-pill-active">
+                  <div className="relative">
+                    <IconSolid className="w-5 h-5 text-white" />
+                    {badge > 0 && (
+                      <span
+                        className="absolute -top-1.5 -right-1.5 min-w-[15px] h-[15px] px-0.5 rounded-full flex items-center justify-center text-[8px] text-white font-bold"
+                        style={{ background: '#F97316' }}
+                      >
+                        {badge > 9 ? '9+' : badge}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[9px] font-bold text-white leading-none">{label}</span>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-0.5">
+                  <div className="relative">
+                    <Icon className="w-6 h-6" style={{ color: '#9CA3AF' }} />
+                    {badge > 0 && (
+                      <span
+                        className="absolute -top-1 -right-1 min-w-[16px] h-4 px-0.5 rounded-full flex items-center justify-center text-[9px] text-white font-bold"
+                        style={{ background: '#E23437' }}
+                      >
+                        {badge > 9 ? '9+' : badge}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[9px] font-medium" style={{ color: '#9CA3AF' }}>{label}</span>
+                </div>
+              )}
             </Link>
           );
         })}

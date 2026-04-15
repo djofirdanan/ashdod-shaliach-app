@@ -277,6 +277,139 @@
   border-radius: 6px;
 }
 
+/* ─── Logistics / Delivery Design System ────────────────────────── */
+
+/* Portal page background */
+.portal-bg {
+  background: linear-gradient(180deg, #EFF6FF 0%, #F0F4FF 100%);
+  min-height: 100vh;
+}
+
+/* Glassmorphism bottom navigation */
+.nav-glass {
+  background: rgba(255, 255, 255, 0.93);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-top: 1px solid rgba(37, 99, 235, 0.08);
+  box-shadow: 0 -4px 24px rgba(37, 99, 235, 0.08), 0 -1px 0 rgba(0,0,0,0.04);
+}
+
+/* Active pill in bottom nav */
+.nav-pill-active {
+  background: #009DE0;
+  border-radius: 14px;
+  padding: 5px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  transition: all 0.2s cubic-bezier(.34,1.56,.64,1);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 157, 224, 0.35);
+}
+
+/* Portal header gradient */
+.portal-header {
+  background: linear-gradient(135deg, #1E3A8A 0%, #2563EB 60%, #009DE0 100%);
+  box-shadow: 0 2px 16px rgba(37, 99, 235, 0.22);
+}
+
+/* Delivery status card */
+.delivery-card {
+  background: #ffffff;
+  border: 1px solid #EFF6FF;
+  border-radius: 16px;
+  box-shadow: 0 2px 12px rgba(37, 99, 235, 0.06), 0 1px 3px rgba(0,0,0,0.04);
+  transition: box-shadow 0.2s ease, transform 0.15s ease;
+}
+.delivery-card:active {
+  transform: scale(0.99);
+  box-shadow: 0 1px 6px rgba(37, 99, 235, 0.08);
+}
+
+/* Orange CTA button */
+.btn-cta-orange {
+  background: linear-gradient(135deg, #F97316, #EA580C);
+  color: white;
+  border-radius: 14px;
+  font-weight: 700;
+  box-shadow: 0 4px 14px rgba(249, 115, 22, 0.35);
+  transition: all 0.15s ease;
+}
+.btn-cta-orange:active {
+  transform: translateY(1px);
+  box-shadow: 0 2px 8px rgba(249, 115, 22, 0.25);
+}
+
+/* Blue CTA button */
+.btn-cta-blue {
+  background: linear-gradient(135deg, #009DE0, #0077B6);
+  color: white;
+  border-radius: 14px;
+  font-weight: 700;
+  box-shadow: 0 4px 14px rgba(0, 157, 224, 0.35);
+  transition: all 0.15s ease;
+}
+.btn-cta-blue:active {
+  transform: translateY(1px);
+  box-shadow: 0 2px 8px rgba(0, 157, 224, 0.25);
+}
+
+/* Earnings stat card */
+.stat-card-logistics {
+  border-radius: 18px;
+  padding: 16px;
+  position: relative;
+  overflow: hidden;
+}
+.stat-card-logistics::after {
+  content: '';
+  position: absolute;
+  bottom: -20px;
+  left: -20px;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.10);
+}
+
+/* New message toast - improved */
+.msg-toast {
+  background: rgba(255, 255, 255, 0.97);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(0, 157, 224, 0.15);
+  border-radius: 18px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(37,99,235,0.08);
+}
+
+/* Status dot animated */
+.status-live {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #1BA672;
+  box-shadow: 0 0 0 0 rgba(27, 166, 114, 0.4);
+  animation: statusPulse 2s infinite;
+}
+
+@keyframes statusPulse {
+  0%   { box-shadow: 0 0 0 0 rgba(27, 166, 114, 0.5); }
+  70%  { box-shadow: 0 0 0 8px rgba(27, 166, 114, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(27, 166, 114, 0); }
+}
+
+/* Section heading in portals */
+.portal-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #6B7280;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0 16px;
+  margin-bottom: 8px;
+}
+
 /* ─── Scrollbar ──────────────────────────────────────────────────── */
 ::-webkit-scrollbar         { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track   { background: transparent; }

@@ -747,23 +747,26 @@ const BusinessDashboard: React.FC = () => {
 
       {/* ── Hero greeting banner ── */}
       <div
-        className="px-5 pt-6 pb-7"
-        style={{ background: BLUE }}
+        className="px-5 pt-6 pb-10 relative overflow-hidden"
+        style={{ background: 'linear-gradient(135deg, #1E3A8A 0%, #2563EB 55%, #009DE0 100%)' }}
       >
-        <p className="text-white/80 text-[13px] font-medium mb-1">שלום,</p>
-        <h1 className="text-white text-[24px] font-black mb-5">{displayName} 👋</h1>
+        {/* decorative circles */}
+        <div className="absolute -left-8 -top-8 w-44 h-44 rounded-full" style={{ background: 'rgba(255,255,255,0.05)' }} />
+        <div className="absolute left-16 -bottom-12 w-32 h-32 rounded-full" style={{ background: 'rgba(255,255,255,0.04)' }} />
+        <p className="text-white/75 text-[13px] font-medium mb-1 relative z-10">שלום,</p>
+        <h1 className="text-white text-[24px] font-black mb-5 relative z-10">{displayName} 👋</h1>
 
         {/* Quick-action card */}
         <button
           onClick={() => navigate('/business/new-delivery')}
-          className="w-full flex items-center gap-4 p-4 rounded-2xl transition-all active:scale-[0.98]"
-          style={{ background: 'rgba(255,255,255,0.18)', border: '1.5px solid rgba(255,255,255,0.35)' }}
+          className="w-full flex items-center gap-4 p-4 rounded-2xl transition-all active:scale-[0.98] relative z-10"
+          style={{ background: 'rgba(255,255,255,0.18)', border: '1.5px solid rgba(255,255,255,0.30)', backdropFilter: 'blur(8px)' }}
         >
           <div
             className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
-            style={{ background: '#FFFFFF' }}
+            style={{ background: 'linear-gradient(135deg,#F97316,#EA580C)', boxShadow: '0 4px 12px rgba(249,115,22,0.4)' }}
           >
-            <PlusIcon className="w-6 h-6" style={{ color: BLUE }} />
+            <PlusIcon className="w-6 h-6 text-white" />
           </div>
           <div className="flex-1 text-right">
             <p className="text-white font-black text-[16px]">בקש משלוח חדש</p>
@@ -774,19 +777,23 @@ const BusinessDashboard: React.FC = () => {
       </div>
 
       {/* ── Stats row ── */}
-      <div className="px-4 -mt-3">
+      <div className="px-4 -mt-5">
         <div
-          className="grid grid-cols-3 gap-3 rounded-2xl p-4"
-          style={{ background: '#FFFFFF', boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }}
+          className="grid grid-cols-3 gap-2 rounded-2xl p-4"
+          style={{
+            background: '#FFFFFF',
+            boxShadow: '0 4px 24px rgba(37,99,235,0.12)',
+            border: '1px solid rgba(37,99,235,0.07)',
+          }}
         >
           {[
-            { label: 'סה"כ',    value: deliveries.length, color: '#202125' },
-            { label: 'פעילים',  value: activeCount,        color: BLUE      },
-            { label: 'הושלמו',  value: doneCount,          color: '#1BA672' },
+            { label: 'סה"כ',   value: deliveries.length, bg: '#EFF6FF', color: '#1E40AF' },
+            { label: 'פעילים', value: activeCount,        bg: '#FFF7ED', color: '#F97316' },
+            { label: 'הושלמו', value: doneCount,          bg: '#ECFDF5', color: '#059669' },
           ].map(s => (
-            <div key={s.label} className="text-center">
-              <p className="text-[22px] font-black" style={{ color: s.color }}>{s.value}</p>
-              <p className="text-[11px] mt-0.5" style={{ color: '#AAAAAA' }}>{s.label}</p>
+            <div key={s.label} className="text-center rounded-xl py-2.5" style={{ background: s.bg }}>
+              <p className="text-[22px] font-black leading-tight" style={{ color: s.color }}>{s.value}</p>
+              <p className="text-[10px] font-semibold mt-0.5" style={{ color: s.color + 'BB' }}>{s.label}</p>
             </div>
           ))}
         </div>
@@ -797,7 +804,11 @@ const BusinessDashboard: React.FC = () => {
         <div className="px-4 mt-3">
           <div
             className="rounded-2xl p-3 flex items-center gap-3 cursor-pointer"
-            style={{ background: `${BLUE}10`, border: `1.5px solid ${BLUE}30` }}
+            style={{
+              background: 'linear-gradient(135deg,#EFF6FF,#DBEAFE)',
+              border: '1.5px solid rgba(37,99,235,0.18)',
+              boxShadow: '0 2px 12px rgba(37,99,235,0.10)',
+            }}
             onClick={() => {
               if (activeDeliveryBanner.courierId) {
                 const conv = getOrCreateConversation(businessId, activeDeliveryBanner.courierId);
@@ -805,14 +816,14 @@ const BusinessDashboard: React.FC = () => {
               }
             }}
           >
-            <div className="w-3 h-3 rounded-full animate-pulse flex-shrink-0" style={{ background: activeDeliveryBanner.status === 'picked_up' ? ORANGE : BLUE }} />
+            <div className="status-live flex-shrink-0" style={{ background: activeDeliveryBanner.status === 'picked_up' ? '#F97316' : undefined }} />
             <div className="flex-1 min-w-0">
-              <p className="text-[12px] font-black" style={{ color: BLUE }}>
+              <p className="text-[12px] font-black" style={{ color: '#1E40AF' }}>
                 {activeDeliveryBanner.status === 'accepted' ? '🛵 שליח בדרך לאיסוף' : '📦 החבילה בדרך אליך'}
               </p>
-              <p className="text-[11px] truncate" style={{ color: '#757575' }}>{activeDeliveryBanner.courierName} · {activeDeliveryBanner.dropAddress}</p>
+              <p className="text-[11px] truncate" style={{ color: '#6B7280' }}>{activeDeliveryBanner.courierName} · {activeDeliveryBanner.dropAddress}</p>
             </div>
-            <span className="text-[11px] font-bold" style={{ color: BLUE }}>פתח צ׳אט ›</span>
+            <span className="text-[11px] font-bold" style={{ color: '#2563EB' }}>פתח צ׳אט ›</span>
           </div>
         </div>
       )}
@@ -836,17 +847,17 @@ const BusinessDashboard: React.FC = () => {
       )}
 
       {/* ── Recent deliveries ── */}
-      <div className="px-4 mt-5 pb-6">
+      <div className="px-4 mt-4 pb-6">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-[17px] font-black" style={{ color: '#202125' }}>משלוחים אחרונים</h2>
+          <h2 className="text-[16px] font-black" style={{ color: '#1E3A8A' }}>משלוחים אחרונים</h2>
           {deliveries.length > 0 && (
             <button
               onClick={() => navigate('/business/deliveries')}
-              className="text-[13px] font-semibold flex items-center gap-0.5"
-              style={{ color: BLUE }}
+              className="text-[12px] font-bold px-3 py-1 rounded-full flex items-center gap-0.5"
+              style={{ color: '#2563EB', background: '#EFF6FF' }}
             >
               הכל
-              <ChevronLeftIcon className="w-4 h-4" />
+              <ChevronLeftIcon className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
@@ -855,22 +866,24 @@ const BusinessDashboard: React.FC = () => {
           /* Empty state */
           <div
             className="rounded-2xl p-8 flex flex-col items-center gap-4 text-center"
-            style={{ background: '#FFFFFF', border: '1px solid #E8E8E8' }}
+            style={{
+              background: 'linear-gradient(135deg,#EFF6FF,#DBEAFE)',
+              border: '1px solid rgba(37,99,235,0.12)',
+            }}
           >
             <div
-              className="w-16 h-16 rounded-full flex items-center justify-center"
-              style={{ background: '#EAF7FD' }}
+              className="w-16 h-16 rounded-2xl flex items-center justify-center"
+              style={{ background: 'linear-gradient(135deg,#2563EB,#009DE0)', boxShadow: '0 4px 16px rgba(37,99,235,0.3)' }}
             >
-              <TruckIcon className="w-8 h-8" style={{ color: BLUE }} />
+              <TruckIcon className="w-8 h-8 text-white" />
             </div>
             <div>
-              <p className="font-black text-[16px]" style={{ color: '#202125' }}>אין משלוחים עדיין</p>
-              <p className="text-[13px] mt-1" style={{ color: '#757575' }}>הזמן את המשלוח הראשון שלך</p>
+              <p className="font-black text-[16px]" style={{ color: '#1E3A8A' }}>אין משלוחים עדיין</p>
+              <p className="text-[13px] mt-1" style={{ color: '#6B7280' }}>הזמן את המשלוח הראשון שלך</p>
             </div>
             <button
               onClick={() => navigate('/business/new-delivery')}
-              className="px-6 py-3 rounded-2xl text-white font-bold text-[14px] transition-all active:scale-95"
-              style={{ background: BLUE }}
+              className="btn-cta-orange px-6 py-3 font-bold text-[14px] transition-all active:scale-95"
             >
               בקש משלוח ראשון
             </button>
@@ -884,12 +897,10 @@ const BusinessDashboard: React.FC = () => {
                 <div
                   key={d.id}
                   onClick={() => isTrackable && setSearchParams({ tracking: d.id })}
-                  className="rounded-2xl p-4 transition-all active:scale-[0.99]"
+                  className="delivery-card rounded-2xl p-4 transition-all active:scale-[0.99]"
                   style={{
-                    background: '#FFFFFF',
-                    border: isTrackable ? `1.5px solid ${BLUE}30` : '1px solid #E8E8E8',
-                    boxShadow: isTrackable ? `0 2px 12px ${BLUE}10` : '0 1px 4px rgba(0,0,0,0.04)',
                     cursor: isTrackable ? 'pointer' : 'default',
+                    borderRight: isTrackable ? '3px solid #2563EB' : undefined,
                   }}
                 >
                   {/* Row 1: status + time */}
@@ -902,25 +913,25 @@ const BusinessDashboard: React.FC = () => {
                     </span>
                     <div className="flex items-center gap-2">
                       {isTrackable && (
-                        <span className="text-[11px] font-semibold" style={{ color: BLUE }}>עקוב</span>
+                        <span className="text-[11px] font-semibold" style={{ color: '#2563EB' }}>עקוב ›</span>
                       )}
-                      <span className="text-[11px]" style={{ color: '#AAAAAA' }}>
+                      <span className="text-[11px]" style={{ color: '#9CA3AF' }}>
                         {formatDate(d.createdAt)} • {formatTime(d.createdAt)}
                       </span>
                     </div>
                   </div>
 
                   {/* Row 2: address */}
-                  <p className="text-[14px] font-semibold" style={{ color: '#202125' }}>
+                  <p className="text-[14px] font-semibold" style={{ color: '#1E3A8A' }}>
                     {d.dropAddress}
                   </p>
 
                   {/* Row 3: courier + price */}
                   <div className="flex items-center justify-between mt-2">
-                    <p className="text-[12px]" style={{ color: '#757575' }}>
+                    <p className="text-[12px]" style={{ color: '#6B7280' }}>
                       {d.courierName ? `שליח: ${d.courierName}` : 'ממתין לשליח'}
                     </p>
-                    <p className="text-[15px] font-black" style={{ color: BLUE }}>
+                    <p className="text-[15px] font-black" style={{ color: '#F97316' }}>
                       ₪{d.price}
                     </p>
                   </div>

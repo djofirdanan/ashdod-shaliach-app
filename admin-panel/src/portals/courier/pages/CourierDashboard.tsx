@@ -218,12 +218,20 @@ const CourierDashboard: React.FC = () => {
     <div className="max-w-lg mx-auto" dir="rtl">
 
       {/* ── Hero greeting ── */}
-      <div className="px-5 pt-6 pb-7" style={{ background: BLUE }}>
-        <p className="text-white/80 text-[13px] font-medium mb-1">שלום,</p>
-        <h1 className="text-white text-[24px] font-black mb-1">{displayName} 👋</h1>
-        <div className="flex items-center gap-2">
+      <div
+        className="px-5 pt-6 pb-10 relative overflow-hidden"
+        style={{ background: 'linear-gradient(135deg, #1E3A8A 0%, #2563EB 55%, #009DE0 100%)' }}
+      >
+        {/* decorative circle */}
+        <div className="absolute -left-8 -top-8 w-40 h-40 rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }} />
+        <div className="absolute -left-4 bottom-2 w-24 h-24 rounded-full" style={{ background: 'rgba(255,255,255,0.04)' }} />
+        <p className="text-white/75 text-[13px] font-medium mb-1 relative z-10">שלום,</p>
+        <h1 className="text-white text-[24px] font-black mb-2 relative z-10">{displayName} 👋</h1>
+        <div className="flex items-center gap-2 relative z-10">
           <StarRating rating={rating} />
-          <span className="text-white/70 text-[12px] font-medium">{rating.toFixed(1)}</span>
+          <span className="text-white/80 text-[12px] font-semibold">{rating.toFixed(1)}</span>
+          <span className="text-white/50 text-[11px]">·</span>
+          <span className="text-white/75 text-[12px]">{totalDone} משלוחים</span>
         </div>
       </div>
 
@@ -356,66 +364,61 @@ const CourierDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* ── Stats card ── */}
-      <div className="px-4 mt-3">
+      {/* ── Earnings cards (pulled up over hero) ── */}
+      <div className="px-4 -mt-5">
         <div
-          className="rounded-2xl p-4"
-          style={{ background: '#FFFFFF', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', border: '1px solid #E8E8E8' }}
+          className="rounded-2xl p-4 mb-3"
+          style={{
+            background: '#ffffff',
+            boxShadow: '0 4px 24px rgba(37,99,235,0.12)',
+            border: '1px solid rgba(37,99,235,0.08)',
+          }}
         >
-          <p className="text-[13px] font-bold mb-3" style={{ color: '#757575' }}>סטטיסטיקות</p>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-xl p-3 text-center" style={{ background: '#F4F4F4' }}>
-              <p className="text-[26px] font-black" style={{ color: BLUE }}>{totalDone}</p>
-              <p className="text-[11px] mt-0.5" style={{ color: '#AAAAAA' }}>משלוחים הושלמו</p>
-            </div>
-            <div className="rounded-xl p-3 text-center" style={{ background: '#F4F4F4' }}>
-              <p className="text-[26px] font-black" style={{ color: '#F58F1F' }}>{rating.toFixed(1)}</p>
-              <p className="text-[11px] mt-0.5" style={{ color: '#AAAAAA' }}>דירוג ממוצע</p>
-            </div>
+          <p className="portal-section-title px-0 mb-3">הכנסות</p>
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { label: 'היום',  value: earnings.today,    grad: 'linear-gradient(135deg,#EFF6FF,#DBEAFE)', text: '#1E40AF', val: '#2563EB' },
+              { label: 'השבוע', value: earnings.thisWeek, grad: 'linear-gradient(135deg,#FFF7ED,#FED7AA)', text: '#92400E', val: '#F97316' },
+              { label: 'החודש', value: earnings.thisMonth,grad: 'linear-gradient(135deg,#ECFDF5,#A7F3D0)', text: '#065F46', val: '#059669' },
+            ].map(e => (
+              <div
+                key={e.label}
+                className="rounded-xl p-3 text-center"
+                style={{ background: e.grad }}
+              >
+                <p className="text-[20px] font-black leading-tight" style={{ color: e.val }}>₪{e.value}</p>
+                <p className="text-[10px] font-semibold mt-0.5" style={{ color: e.text }}>{e.label}</p>
+              </div>
+            ))}
           </div>
-        </div>
-      </div>
-
-      {/* ── Earnings ── */}
-      <div className="px-4 mt-3">
-        <p className="text-[17px] font-black mb-2" style={{ color: '#202125' }}>הכנסות</p>
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            { label: 'היום',   value: earnings.today     },
-            { label: 'השבוע',  value: earnings.thisWeek  },
-            { label: 'החודש',  value: earnings.thisMonth },
-          ].map(e => (
-            <div
-              key={e.label}
-              className="rounded-2xl p-3 text-center"
-              style={{ background: '#FFFFFF', border: '1px solid #E8E8E8', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}
-            >
-              <p className="text-[19px] font-black" style={{ color: '#202125' }}>₪{e.value}</p>
-              <p className="text-[10px] mt-0.5" style={{ color: '#AAAAAA' }}>{e.label}</p>
-            </div>
-          ))}
         </div>
       </div>
 
       {/* ── Active delivery ── */}
       {activeDelivery && (
-        <div className="px-4 mt-4">
-          <p className="text-[17px] font-black mb-2" style={{ color: '#202125' }}>משלוח פעיל 🔥</p>
+        <div className="px-4 mt-1">
           <div
             className="rounded-2xl p-4"
-            style={{ background: '#FFFFFF', border: `2px solid ${BLUE}30`, boxShadow: '0 2px 12px rgba(0,157,224,0.10)' }}
+            style={{
+              background: 'linear-gradient(135deg, #EFF6FF, #DBEAFE)',
+              border: '1.5px solid rgba(37,99,235,0.18)',
+              boxShadow: '0 4px 16px rgba(37,99,235,0.10)',
+            }}
           >
             <div className="flex items-center justify-between mb-3">
-              <span
-                className="text-[12px] font-bold px-3 py-1 rounded-full"
-                style={{
-                  background: STATUS_COLOR[activeDelivery.status].bg,
-                  color:      STATUS_COLOR[activeDelivery.status].text,
-                }}
-              >
-                {STATUS_LABEL[activeDelivery.status]}
-              </span>
-              <span className="text-[16px] font-black" style={{ color: BLUE }}>₪{activeDelivery.price}</span>
+              <div className="flex items-center gap-2">
+                <div className="status-live" />
+                <span
+                  className="text-[12px] font-bold px-3 py-1 rounded-full"
+                  style={{
+                    background: STATUS_COLOR[activeDelivery.status].bg,
+                    color:      STATUS_COLOR[activeDelivery.status].text,
+                  }}
+                >
+                  {STATUS_LABEL[activeDelivery.status]}
+                </span>
+              </div>
+              <span className="text-[17px] font-black" style={{ color: '#F97316' }}>₪{activeDelivery.price}</span>
             </div>
 
             <div className="space-y-2 mb-3">
@@ -425,8 +428,8 @@ const CourierDashboard: React.FC = () => {
                   style={{ background: '#1BA672' }}
                 >א</span>
                 <div>
-                  <p className="text-[10px] font-semibold" style={{ color: '#AAAAAA' }}>איסוף</p>
-                  <p className="text-[13px] font-semibold" style={{ color: '#202125' }}>{activeDelivery.pickupAddress}</p>
+                  <p className="text-[10px] font-semibold" style={{ color: '#6B7280' }}>איסוף</p>
+                  <p className="text-[13px] font-semibold" style={{ color: '#1E3A8A' }}>{activeDelivery.pickupAddress}</p>
                 </div>
               </div>
               <div className="flex items-start gap-2">
@@ -435,16 +438,15 @@ const CourierDashboard: React.FC = () => {
                   style={{ background: '#E23437' }}
                 >ב</span>
                 <div>
-                  <p className="text-[10px] font-semibold" style={{ color: '#AAAAAA' }}>מסירה</p>
-                  <p className="text-[13px] font-semibold" style={{ color: '#202125' }}>{activeDelivery.dropAddress}</p>
+                  <p className="text-[10px] font-semibold" style={{ color: '#6B7280' }}>מסירה</p>
+                  <p className="text-[13px] font-semibold" style={{ color: '#1E3A8A' }}>{activeDelivery.dropAddress}</p>
                 </div>
               </div>
             </div>
 
             <button
               onClick={() => navigate('/courier/deliveries')}
-              className="w-full py-3 rounded-xl font-bold text-[13px] text-white transition-all active:scale-95"
-              style={{ background: BLUE }}
+              className="btn-cta-blue w-full py-3 rounded-2xl font-bold text-[13px] text-white transition-all active:scale-95"
             >
               נהל משלוח
             </button>
@@ -454,11 +456,10 @@ const CourierDashboard: React.FC = () => {
 
       {/* ── CTA ── */}
       {!activeDelivery && (
-        <div className="px-4 mt-4 pb-6">
+        <div className="px-4 mt-2 pb-6">
           <button
             onClick={() => navigate('/courier/available')}
-            className="w-full py-4 rounded-2xl font-black text-[15px] text-white flex items-center justify-center gap-2 transition-all active:scale-95"
-            style={{ background: BLUE, boxShadow: `0 6px 20px ${BLUE}40` }}
+            className="btn-cta-orange w-full py-4 rounded-2xl font-black text-[15px] text-white flex items-center justify-center gap-2 transition-all active:scale-95"
           >
             <TruckIcon className="w-5 h-5" />
             {pendingCount > 0 ? `ראה ${pendingCount} משלוחים פנויים` : 'חפש משלוחים פנויים'}
