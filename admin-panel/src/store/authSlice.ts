@@ -86,41 +86,16 @@ export const loginUser = createAsyncThunk(
         return { user, role: 'courier' as const };
       }
 
-      // 4. Try Firebase
-      const { signInWithEmailAndPassword } = await import('firebase/auth');
-      const { auth } = await import('../firebase');
-      const credential = await signInWithEmailAndPassword(auth, email, password);
-      const token = await credential.user.getIdToken();
-      localStorage.setItem('admin_token', token);
-      const user: AdminUser = {
-        id: credential.user.uid,
-        name: credential.user.displayName || email.split('@')[0],
-        email: credential.user.email!,
-        role: 'admin',
-        createdAt: credential.user.metadata.creationTime || new Date().toISOString(),
-      };
-      return { user, role: 'admin' as const };
+      // No match found
+      return rejectWithValue('אימייל או סיסמה שגויים');
     } catch (err: unknown) {
-      const error = err as { message?: string; code?: string };
-      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
-        return rejectWithValue('אימייל או סיסמה שגויים');
-      }
-      if (error.code === 'auth/too-many-requests') {
-        return rejectWithValue('יותר מדי ניסיונות. נסה שוב מאוחר יותר');
-      }
+      const error = err as { message?: string };
       return rejectWithValue(error.message || 'שגיאה בהתחברות');
     }
   }
 );
 
 export const logoutUser = createAsyncThunk('auth/logout', async () => {
-  try {
-    const { signOut } = await import('firebase/auth');
-    const { auth } = await import('../firebase');
-    await signOut(auth);
-  } catch {
-    // ignore firebase errors on logout
-  }
   localStorage.removeItem('admin_token');
 });
 
