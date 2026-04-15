@@ -14,6 +14,7 @@ import {
   type StoredCourier,
 } from '../../../services/storage.service';
 import { syncMessagesDown, syncConversationsDown, syncDeliveriesDown, getCourierLocationFromDB } from '../../../services/sync.service';
+import { sendAdminSupportNotification } from '../../../services/email.service';
 import { playNewMessage, playStatusUpdate, getMuted, setMuted } from '../../../utils/sounds';
 import {
   ChatBubbleLeftRightIcon,
@@ -97,6 +98,20 @@ const CourierProfileModal: React.FC<{ courier: StoredCourier; onClose: () => voi
           <span className="text-[12px] font-semibold w-20" style={{ color: '#8898aa' }}>משלוחים</span>
           <span className="text-[13px] font-bold" style={{ color: '#061b31' }}>{courier.totalDeliveries}</span>
         </div>
+        {courier.bitPhone && (
+          <div className="flex items-center gap-2">
+            <span className="text-[12px] font-semibold w-20" style={{ color: '#8898aa' }}>Bit 💙</span>
+            <a
+              href={`https://bit.ly/pay/${courier.bitPhone}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[13px] font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-xl"
+              style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe' }}
+            >
+              💙 שלם בביט ל-{courier.bitPhone}
+            </a>
+          </div>
+        )}
       </div>
       <div className="px-4 pb-4">
         <button
@@ -185,6 +200,12 @@ const BusinessChat: React.FC = () => {
   };
 
   const loadDelivery = async (courierId?: string) => {
+    // No deliveries for admin conversations
+    if (!courierId || courierId === 'admin') {
+      setActiveDelivery(null);
+      setCourierLocation(null);
+      return;
+    }
     await syncDeliveriesDown();
     const deliveries = getDeliveriesByBusiness(businessId);
     const active = deliveries
@@ -230,12 +251,13 @@ const BusinessChat: React.FC = () => {
     const poll = async () => {
       await syncMessagesDown(selectedConvId);
       const fresh = getMessages(selectedConvId);
+      // Always update messages so courier messages appear immediately (real-time fix)
       if (fresh.length > prevMsgCount.current) {
         const newest = fresh[fresh.length - 1];
         if (newest.senderType !== 'business') playNewMessage();
         prevMsgCount.current = fresh.length;
-        setMessages(fresh);
       }
+      setMessages(fresh);
       const c = conversations.find((x) => x.id === selectedConvId);
       if (c) await loadDelivery(c.courierId);
       loadConvs();
@@ -252,17 +274,24 @@ const BusinessChat: React.FC = () => {
 
   const handleSend = () => {
     if (!text.trim() || !selectedConvId) return;
+    const msgContent = text.trim();
     addMessage(selectedConvId, {
       senderId: businessId,
       senderName: businessName,
       senderType: 'business',
-      content: text.trim(),
+      content: msgContent,
       messageType: 'text',
     });
     setText('');
     const fresh = getMessages(selectedConvId);
     prevMsgCount.current = fresh.length;
     setMessages(fresh);
+
+    // Notify admin by email when sending to admin support conversation
+    const conv = getConversations().find(c => c.id === selectedConvId);
+    if (conv && (conv.courierId === 'admin' || conv.businessId === 'admin')) {
+      sendAdminSupportNotification(businessName, 'business', msgContent).catch(() => {});
+    }
   };
 
   const toggleMute = () => {
@@ -370,17 +399,17 @@ const BusinessChat: React.FC = () => {
         <div className="flex-1">
           <button
             className="text-right"
-            onClick={() => selectedCourier && setShowCourierProfile(true)}
+            onClick={() => selectedConv?.courierId !== 'admin' && selectedCourier && setShowCourierProfile(true)}
           >
             <p className="text-[14px] font-bold hover:underline" style={{ color: '#061b31' }}>
-              {selectedConv?.courierName ?? 'שליח'}
+              {selectedConv?.courierId === 'admin' ? '🔧 מנהל האתר' : (selectedConv?.courierName ?? 'שליח')}
             </p>
             <p className="text-[10px]" style={{ color: '#10b981' }}>● מחובר בזמן אמת</p>
           </button>
         </div>
         <div className="flex items-center gap-2">
-          {/* Courier map link */}
-          {courierLocation && (
+          {/* Courier map link — only for real courier conversations */}
+          {courierLocation && selectedConv?.courierId !== 'admin' && (
             <a
               href={`https://maps.google.com/?q=${courierLocation.lat},${courierLocation.lng}`}
               target="_blank"

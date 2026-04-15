@@ -12,8 +12,10 @@ import {
   type StoredConversation,
   type StoredMessage,
   type StoredDelivery,
+  type StoredCourier,
 } from '../../../services/storage.service';
 import { syncDeliveriesDown, syncMessagesDown, syncConversationsDown } from '../../../services/sync.service';
+import { sendAdminSupportNotification } from '../../../services/email.service';
 import {
   ChatBubbleLeftRightIcon,
   PaperAirplaneIcon,
@@ -28,6 +30,13 @@ import toast from 'react-hot-toast';
 import { playNewMessage, getMuted, setMuted } from '../../../utils/sounds';
 
 const ETA_OPTIONS = ['5 דקות', '10 דקות', '15 דקות', '20 דקות', '30 דקות'];
+
+function navUrl(address: string, pref: 'waze' | 'google' | 'apple'): string {
+  const encoded = encodeURIComponent(address + ', ישראל');
+  if (pref === 'waze') return `https://waze.com/ul?q=${encoded}&navigate=yes`;
+  if (pref === 'apple') return `maps://maps.apple.com/?daddr=${encoded}`;
+  return `https://www.google.com/maps/dir/?api=1&destination=${encoded}`;
+}
 
 const statusLabel: Record<StoredDelivery['status'], string> = {
   scheduled: '📅 מתוזמן',
@@ -139,6 +148,24 @@ const DeliveryBanner: React.FC<{
       {/* Action buttons */}
       {!isDone && (
         <div className="flex gap-2 flex-wrap">
+          {/* Navigation button — pickup or dropoff depending on status */}
+          {(canPickUp || canDeliver) && (() => {
+            const address = canPickUp ? delivery.pickupAddress : delivery.dropAddress;
+            const navPref = getCourier(courierId)?.navPreference ?? 'waze';
+            const label = canPickUp ? '🗺️ נווט לאיסוף' : '🗺️ נווט ללקוח';
+            return (
+              <a
+                href={navUrl(address, navPref)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-bold transition-all active:scale-95"
+                style={{ background: '#fff7ed', border: '1px solid #fde68a', color: '#d97706' }}
+              >
+                {label}
+              </a>
+            );
+          })()}
+
           {/* ETA button */}
           <div className="relative">
             <button
@@ -285,15 +312,22 @@ const CourierChat: React.FC = () => {
 
   const handleSend = () => {
     if (!text.trim() || !selectedConvId) return;
+    const msgContent = text.trim();
     addMessage(selectedConvId, {
       senderId: courierId,
       senderName: courierName,
       senderType: 'courier',
-      content: text.trim(),
+      content: msgContent,
       messageType: 'text',
     });
     setText('');
     setMessages(getMessages(selectedConvId));
+
+    // Notify admin by email when sending to admin support conversation
+    const conv = getConversations().find(c => c.id === selectedConvId);
+    if (conv && (conv.courierId === 'admin' || conv.businessId === 'admin')) {
+      sendAdminSupportNotification(courierName, 'courier', msgContent).catch(() => {});
+    }
   };
 
   const handleBack = () => {
@@ -396,7 +430,7 @@ const CourierChat: React.FC = () => {
         </button>
         <div className="flex-1">
           <p className="text-[14px] font-bold" style={{ color: '#061b31' }}>
-            {selectedConv?.businessName ?? 'עסק'}
+            {selectedConv?.businessId === 'admin' ? '🔧 מנהל האתר' : (selectedConv?.businessName ?? 'עסק')}
           </p>
         </div>
         <button
@@ -408,8 +442,8 @@ const CourierChat: React.FC = () => {
         </button>
       </div>
 
-      {/* Delivery context banner */}
-      {delivery && (
+      {/* Delivery context banner — only for real business conversations */}
+      {delivery && selectedConv?.businessId !== 'admin' && (
         <DeliveryBanner
           delivery={delivery}
           courierId={courierId}
