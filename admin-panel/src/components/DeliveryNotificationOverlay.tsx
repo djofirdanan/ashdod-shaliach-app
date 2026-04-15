@@ -1,6 +1,5 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useSelector } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
 import {
   TruckIcon,
   MapPinIcon,
@@ -11,7 +10,9 @@ import {
 import type { RootState } from '../store';
 import * as storageService from '../services/storage.service';
 import type { DeliveryNotification } from '../services/storage.service';
-import { syncNotificationsDown } from '../services/sync.service';
+import { syncNotificationsDown, joinCandidatesQueue } from '../services/sync.service';
+import { supabase } from '../lib/supabase';
+import { playNewDelivery } from '../utils/sounds';
 import { Modal } from './ui/Modal';
 
 // ─── Single notification card ─────────────────────────────────
@@ -159,7 +160,7 @@ const NotifCard: React.FC<{
             }}
           >
             <CheckIcon className="w-5 h-5" />
-            אני לוקח! ✅
+            אני מגיע! ✋
           </button>
           <button
             onClick={onDetails}
@@ -199,7 +200,7 @@ const DetailModal: React.FC<{
           className="px-5 py-2 rounded-lg text-sm font-bold text-white transition-all"
           style={{ background: 'linear-gradient(135deg, #533afd, #ea2261)' }}
         >
-          ✅ אני לוקח את המשלוח
+          ✋ אני מגיע!
         </button>
       </>
     }
@@ -249,7 +250,6 @@ const DetailModal: React.FC<{
 // ─── Main Overlay ─────────────────────────────────────────────
 export const DeliveryNotificationOverlay: React.FC = () => {
   const portalUser = useSelector((state: RootState) => state.auth.currentPortalUser);
-  const navigate = useNavigate();
 
   const courierToken = localStorage.getItem('admin_token') || '';
   const isCourier = courierToken.startsWith('courier-') || portalUser?.type === 'courier';
@@ -261,18 +261,25 @@ export const DeliveryNotificationOverlay: React.FC = () => {
 
   const [notifications, setNotifications] = useState<DeliveryNotification[]>([]);
   const [detailNotif, setDetailNotif] = useState<DeliveryNotification | null>(null);
+  const prevCountRef = useRef(-1);
 
   const refresh = useCallback(async () => {
     if (!courierId) return;
     await syncNotificationsDown();
     const pending = storageService.getPendingNotifications(courierId);
+    // Play sound when NEW notifications arrive (not on first load)
+    if (prevCountRef.current >= 0 && pending.length > prevCountRef.current) {
+      playNewDelivery();
+    }
+    prevCountRef.current = pending.length;
     setNotifications(pending.slice(0, 3));
   }, [courierId]);
 
+  // ─── Polling every 4 seconds ──────────────────────────────────
   useEffect(() => {
     if (!courierId) return;
     refresh();
-    const interval = setInterval(refresh, 6000);
+    const interval = setInterval(refresh, 4000);
     const onStorage = (e: StorageEvent) => {
       if (e.key === 'app_notif_ping' || e.key === 'app_delivery_notifications') refresh();
     };
@@ -280,13 +287,29 @@ export const DeliveryNotificationOverlay: React.FC = () => {
     return () => { clearInterval(interval); window.removeEventListener('storage', onStorage); };
   }, [courierId, refresh]);
 
-  const handleAccept = (notif: DeliveryNotification) => {
+  // ─── Supabase Realtime: instant push on new notifications ─────
+  useEffect(() => {
+    if (!courierId) return;
+    const channel = supabase
+      .channel(`overlay_notif_${courierId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'delivery_notifications' },
+        () => { refresh(); }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'delivery_notifications' },
+        () => { refresh(); }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [courierId, refresh]);
+
+  const handleAccept = async (notif: DeliveryNotification) => {
     if (!courierId) return;
 
-    // 1. Mark notification as taken
-    storageService.acceptNotification(notif.id, courierId);
-
-    // 2. Find matching pending delivery and update it
+    // 1. Find matching pending delivery
     const allDeliveries = storageService.getDeliveries();
     const matching = allDeliveries.find(
       (d) =>
@@ -297,27 +320,21 @@ export const DeliveryNotificationOverlay: React.FC = () => {
 
     const courierData = storageService.getCourier(courierId);
     const courierName = courierData?.name ?? 'שליח';
+    const courierRating = courierData?.rating ?? 5;
+    const courierVehicle = courierData?.vehicle ?? 'motorcycle';
 
-    let deliveryId = matching?.id;
+    // 2. Join the candidates queue
     if (matching) {
-      storageService.updateDelivery(matching.id, {
-        status: 'accepted',
-        courierId,
-        courierName,
-        acceptedAt: new Date().toISOString(),
-      });
+      await joinCandidatesQueue(matching.id, courierId, courierName, courierRating, courierVehicle);
+      // Store pending candidacy in localStorage
+      localStorage.setItem('pending_candidacy', JSON.stringify({ deliveryId: matching.id, notifId: notif.id }));
     }
 
-    // 3. Get or create conversation between courier and business
-    const conv = storageService.getOrCreateConversation(notif.businessId, courierId);
+    // 3. Mark notification as taken (removes from overlay)
+    storageService.acceptNotification(notif.id, courierId);
 
     // 4. Remove from overlay
     setNotifications((prev) => prev.filter((n) => n.id !== notif.id));
-
-    // 5. Navigate to chat with context
-    const params = new URLSearchParams({ convId: conv.id });
-    if (deliveryId) params.set('deliveryId', deliveryId);
-    navigate(`/courier/chat?${params.toString()}`);
   };
 
   const handleDismiss = (notifId: string) => {

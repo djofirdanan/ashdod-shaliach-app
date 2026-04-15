@@ -30,6 +30,17 @@ import {
 import { HeartIcon as HeartSolid } from '@heroicons/react/24/solid';
 import toast from 'react-hot-toast';
 
+/* ─── Design tokens ───────────────────────────── */
+const BLUE = '#009DE0';
+const BG = '#F4F4F4';
+const CARD_BG = '#FFFFFF';
+const TEXT = '#202125';
+const TEXT2 = '#757575';
+const BORDER = '#E8E8E8';
+const SUCCESS = '#1BA672';
+const WARNING = '#F58F1F';
+const ERROR = '#E23437';
+
 const vehicleOptions: { value: StoredCourier['vehicle']; label: string }[] = [
   { value: 'motorcycle', label: 'אופנוע' },
   { value: 'bicycle', label: 'אופניים' },
@@ -44,7 +55,7 @@ function StarRating({ rating }: { rating: number }) {
   return (
     <div className="flex gap-0.5">
       {[1, 2, 3, 4, 5].map((i) => (
-        <span key={i} style={{ color: i <= Math.round(rating) ? '#f59e0b' : '#e8ecf0', fontSize: 14 }}>★</span>
+        <span key={i} style={{ color: i <= Math.round(rating) ? WARNING : BORDER, fontSize: 14 }}>★</span>
       ))}
     </div>
   );
@@ -54,16 +65,20 @@ const StarPicker: React.FC<{ value: number; onChange: (v: number) => void }> = (
   <div className="flex gap-1">
     {[1, 2, 3, 4, 5].map((i) => (
       <button key={i} onClick={() => onChange(i)} className="text-2xl leading-none">
-        <span style={{ color: i <= value ? '#f59e0b' : '#e8ecf0' }}>★</span>
+        <span style={{ color: i <= value ? WARNING : BORDER }}>★</span>
       </button>
     ))}
   </div>
 );
 
-const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
-  <div className="rounded-2xl overflow-hidden" style={{ background: '#fff', border: '1px solid #e8ecf0', boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}>
-    <div className="px-4 py-3" style={{ borderBottom: '1px solid #f0f4f8' }}>
-      <h2 className="text-[13px] font-black" style={{ color: '#061b31' }}>{title}</h2>
+/* ─── Section card ────────────────────────────── */
+const Section: React.FC<{ label?: string; title: string; children: React.ReactNode }> = ({ label, title, children }) => (
+  <div className="rounded-2xl overflow-hidden" style={{ background: CARD_BG, border: `1px solid ${BORDER}` }}>
+    <div className="px-4 pt-4 pb-3" style={{ borderBottom: `1px solid ${BORDER}` }}>
+      {label && (
+        <p className="text-[10px] font-semibold uppercase tracking-widest mb-0.5" style={{ color: TEXT2 }}>{label}</p>
+      )}
+      <h2 className="text-[14px] font-black" style={{ color: TEXT }}>{title}</h2>
     </div>
     <div className="p-4">{children}</div>
   </div>
@@ -98,37 +113,37 @@ const PastBusinessCard: React.FC<{
   };
 
   return (
-    <div className="rounded-xl p-3" style={{ background: '#f6f9fc', border: '1px solid #e8ecf0' }}>
+    <div className="rounded-xl p-3" style={{ background: BG, border: `1px solid ${BORDER}` }}>
       <div className="flex items-center gap-3 mb-2">
         {business.logo ? (
           <img src={business.logo} alt="" className="w-10 h-10 rounded-xl object-cover flex-shrink-0" />
         ) : (
           <div
             className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-white text-[14px] font-black"
-            style={{ background: 'linear-gradient(135deg, #533afd, #ea2261)' }}
+            style={{ background: BLUE }}
           >
             {business.businessName[0]}
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <p className="text-[13px] font-bold truncate" style={{ color: '#061b31' }}>{business.businessName}</p>
+          <p className="text-[13px] font-bold truncate" style={{ color: TEXT }}>{business.businessName}</p>
           <div className="flex items-center gap-1">
             <StarRating rating={business.rating} />
-            <span className="text-[11px]" style={{ color: '#8898aa' }}>{business.rating.toFixed(1)}</span>
+            <span className="text-[11px]" style={{ color: TEXT2 }}>{business.rating.toFixed(1)}</span>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={onToggleFavorite}
             className="p-1.5 rounded-lg transition-colors"
-            style={{ color: isFavorite ? '#ea2261' : '#8898aa' }}
+            style={{ color: isFavorite ? ERROR : TEXT2 }}
           >
             {isFavorite ? <HeartSolid className="w-5 h-5" /> : <HeartIcon className="w-5 h-5" />}
           </button>
           <button
             onClick={() => setShowReview(!showReview)}
             className="px-2 py-1 rounded-lg text-[11px] font-bold transition-all"
-            style={{ background: showReview ? '#533afd' : '#f0f4f8', color: showReview ? '#fff' : '#533afd' }}
+            style={{ background: showReview ? BLUE : BORDER, color: showReview ? '#fff' : BLUE }}
           >
             {existingReview ? 'ערוך' : 'דרג'}
           </button>
@@ -136,12 +151,12 @@ const PastBusinessCard: React.FC<{
       </div>
 
       {showReview && (
-        <div className="mt-2 p-3 rounded-xl space-y-2" style={{ background: '#fff', border: '1px solid #e8ecf0' }}>
-          <p className="text-[11px] font-semibold" style={{ color: '#8898aa' }}>דירוג העסק</p>
+        <div className="mt-2 p-3 rounded-xl space-y-2" style={{ background: CARD_BG, border: `1px solid ${BORDER}` }}>
+          <p className="text-[11px] font-semibold" style={{ color: TEXT2 }}>דירוג העסק</p>
           <StarPicker value={rating} onChange={setRating} />
           <textarea
             className="w-full rounded-xl px-3 py-2 text-[12px] outline-none resize-none"
-            style={{ background: '#f6f9fc', border: '1px solid #e8ecf0', color: '#061b31', direction: 'rtl' }}
+            style={{ background: BG, border: `1px solid ${BORDER}`, color: TEXT, direction: 'rtl' }}
             placeholder="הערה (אופציונלי)..."
             rows={2}
             value={comment}
@@ -150,15 +165,15 @@ const PastBusinessCard: React.FC<{
           <div className="flex gap-2">
             <button
               onClick={handleSave}
-              className="flex-1 py-2 rounded-xl text-white text-[12px] font-bold transition-all active:scale-95"
-              style={{ background: 'linear-gradient(135deg, #533afd, #ea2261)' }}
+              className="flex-1 py-2 rounded-2xl text-white text-[12px] font-bold transition-all active:scale-95"
+              style={{ background: BLUE }}
             >
               שמור
             </button>
             <button
               onClick={() => setShowReview(false)}
               className="px-3 py-2 rounded-xl text-[12px] font-bold"
-              style={{ background: '#f0f4f8', color: '#8898aa' }}
+              style={{ background: BORDER, color: TEXT2 }}
             >
               ביטול
             </button>
@@ -188,6 +203,8 @@ const CourierProfile: React.FC = () => {
   const [editPhone, setEditPhone] = useState('');
   const [editVehicle, setEditVehicle] = useState<StoredCourier['vehicle']>('motorcycle');
   const [editPlate, setEditPlate] = useState('');
+  const [editBitPhone, setEditBitPhone] = useState('');
+  const [editNavPref, setEditNavPref] = useState<'waze' | 'google' | 'apple'>('waze');
 
   // Password change
   const [pwMode, setPwMode] = useState(false);
@@ -209,6 +226,8 @@ const CourierProfile: React.FC = () => {
       setEditPhone(c.phone);
       setEditVehicle(c.vehicle);
       setEditPlate(c.vehiclePlate ?? '');
+      setEditBitPhone(c.bitPhone ?? '');
+      setEditNavPref(c.navPreference ?? 'waze');
     }
 
     const deliveries = getDeliveriesByCourier(courierId).filter(d => d.status === 'delivered');
@@ -249,6 +268,8 @@ const CourierProfile: React.FC = () => {
       phone: editPhone.trim(),
       vehicle: editVehicle,
       vehiclePlate: editPlate.trim() || undefined,
+      bitPhone: editBitPhone.trim() || undefined,
+      navPreference: editNavPref,
     });
     setCourier(updated);
     setEditMode(false);
@@ -307,45 +328,49 @@ const CourierProfile: React.FC = () => {
   const isAvailable = courier?.isAvailable ?? true;
 
   return (
-    <div className="max-w-lg mx-auto px-4 py-5 space-y-4">
-      {/* Photo / Avatar card */}
+    <div className="max-w-lg mx-auto px-4 py-5 space-y-4" style={{ background: BG, minHeight: '100vh' }}>
+
+      {/* Profile header card */}
       <div
-        className="rounded-2xl p-5 flex flex-col items-center text-center"
-        style={{ background: 'linear-gradient(135deg, #061b31, #1c1e54)', boxShadow: '0 8px 24px rgba(6,27,49,0.25)' }}
+        className="rounded-2xl p-6 flex flex-col items-center text-center"
+        style={{ background: CARD_BG, border: `1px solid ${BORDER}` }}
       >
-        <div className="relative mb-3">
+        <div className="relative mb-4">
           {courier?.photo ? (
             <img
               src={courier.photo}
               alt="פרופיל"
               className="w-20 h-20 rounded-full object-cover"
-              style={{ border: '3px solid rgba(255,255,255,0.2)' }}
+              style={{ border: `3px solid ${BLUE}` }}
             />
           ) : (
             <div
-              className="w-20 h-20 rounded-full flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, #533afd, #ea2261)' }}
+              className="w-20 h-20 rounded-full flex items-center justify-center text-white text-[28px] font-black"
+              style={{ background: BLUE }}
             >
-              <UserCircleIcon className="w-10 h-10 text-white" />
+              {courier?.name?.[0] ?? '?'}
             </div>
           )}
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="absolute -bottom-1 -left-1 w-7 h-7 rounded-full flex items-center justify-center"
-            style={{ background: '#fff' }}
+            className="absolute -bottom-1 -left-1 w-7 h-7 rounded-full flex items-center justify-center shadow"
+            style={{ background: CARD_BG, border: `1px solid ${BORDER}` }}
           >
-            <CameraIcon className="w-4 h-4" style={{ color: '#533afd' }} />
+            <CameraIcon className="w-4 h-4" style={{ color: BLUE }} />
           </button>
           <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
         </div>
-        <h1 className="text-white text-[20px] font-black">{courier?.name ?? 'שליח'}</h1>
-        <p className="text-white/60 text-[13px] mt-1">
+
+        <h1 className="text-[20px] font-black" style={{ color: TEXT }}>{courier?.name ?? 'שליח'}</h1>
+        <p className="text-[13px] mt-1" style={{ color: TEXT2 }}>
           {courier ? vehicleLabel[courier.vehicle] : ''}
           {courier?.vehiclePlate ? ` · ${courier.vehiclePlate}` : ''}
         </p>
+
+        {/* Rating stars */}
         <div className="flex gap-0.5 mt-2">
           {[1,2,3,4,5].map(i => (
-            <span key={i} style={{ color: i <= Math.round(courier?.rating ?? 5) ? '#f59e0b' : 'rgba(255,255,255,0.2)', fontSize: 18 }}>★</span>
+            <span key={i} style={{ color: i <= Math.round(courier?.rating ?? 5) ? WARNING : BORDER, fontSize: 18 }}>★</span>
           ))}
         </div>
 
@@ -354,14 +379,14 @@ const CourierProfile: React.FC = () => {
           onClick={toggleAvailability}
           className="mt-4 px-5 py-2 rounded-full font-bold text-[13px] flex items-center gap-2 transition-all active:scale-95"
           style={{
-            background: isAvailable ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)',
-            border: `1px solid ${isAvailable ? 'rgba(16,185,129,0.4)' : 'rgba(239,68,68,0.4)'}`,
-            color: isAvailable ? '#34d399' : '#f87171',
+            background: isAvailable ? `${SUCCESS}18` : `${ERROR}18`,
+            border: `1px solid ${isAvailable ? SUCCESS : ERROR}40`,
+            color: isAvailable ? SUCCESS : ERROR,
           }}
         >
           <span
             className="w-2.5 h-2.5 rounded-full"
-            style={{ background: isAvailable ? '#10b981' : '#ef4444' }}
+            style={{ background: isAvailable ? SUCCESS : ERROR }}
           />
           {isAvailable ? 'זמין לקבל משלוחים' : 'לא זמין כרגע'}
         </button>
@@ -369,26 +394,26 @@ const CourierProfile: React.FC = () => {
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-2xl p-4 text-center" style={{ background: '#fff', border: '1px solid #e8ecf0' }}>
-          <p className="text-[22px] font-black" style={{ color: '#533afd' }}>{courier?.totalDeliveries ?? 0}</p>
-          <p className="text-[11px] mt-1" style={{ color: '#8898aa' }}>משלוחים הושלמו</p>
+        <div className="rounded-2xl p-4 text-center" style={{ background: CARD_BG, border: `1px solid ${BORDER}` }}>
+          <p className="text-[22px] font-black" style={{ color: BLUE }}>{courier?.totalDeliveries ?? 0}</p>
+          <p className="text-[11px] mt-1" style={{ color: TEXT2 }}>משלוחים הושלמו</p>
         </div>
-        <div className="rounded-2xl p-4 text-center" style={{ background: '#fff', border: '1px solid #e8ecf0' }}>
-          <p className="text-[22px] font-black" style={{ color: '#10b981' }}>₪{courier?.earnings.total ?? 0}</p>
-          <p className="text-[11px] mt-1" style={{ color: '#8898aa' }}>סה"כ הכנסות</p>
+        <div className="rounded-2xl p-4 text-center" style={{ background: CARD_BG, border: `1px solid ${BORDER}` }}>
+          <p className="text-[22px] font-black" style={{ color: SUCCESS }}>₪{courier?.earnings.total ?? 0}</p>
+          <p className="text-[11px] mt-1" style={{ color: TEXT2 }}>סה"כ הכנסות</p>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 p-1 rounded-2xl" style={{ background: '#f0f4f8' }}>
+      <div className="flex gap-1 p-1 rounded-2xl" style={{ background: BORDER }}>
         {(['info', 'businesses'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setActiveTab(t)}
             className="flex-1 py-2 rounded-xl text-[13px] font-bold transition-all"
             style={{
-              background: activeTab === t ? '#fff' : 'transparent',
-              color: activeTab === t ? '#533afd' : '#8898aa',
+              background: activeTab === t ? CARD_BG : 'transparent',
+              color: activeTab === t ? BLUE : TEXT2,
               boxShadow: activeTab === t ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
             }}
           >
@@ -400,12 +425,12 @@ const CourierProfile: React.FC = () => {
       {activeTab === 'info' && (
         <>
           {/* Email notifications */}
-          <Section title="🔔 התראות מייל">
+          <Section label="הגדרות" title="התראות מייל">
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-[13px] font-bold" style={{ color: '#061b31' }}>משלוח חדש זמין</p>
-                  <p className="text-[11px]" style={{ color: '#8898aa' }}>קבל מייל כשמשלוח חדש מתפרסם</p>
+                  <p className="text-[13px] font-bold" style={{ color: TEXT }}>משלוח חדש זמין</p>
+                  <p className="text-[11px]" style={{ color: TEXT2 }}>קבל מייל כשמשלוח חדש מתפרסם</p>
                 </div>
                 <button
                   onClick={() => {
@@ -415,16 +440,16 @@ const CourierProfile: React.FC = () => {
                     setCourier(updated);
                     toast.success(next ? 'התראות מייל הופעלו' : 'התראות מייל כובו');
                   }}
-                  className="relative w-12 h-6 rounded-full transition-colors"
-                  style={{ background: courier?.emailOnNewDelivery ? '#533afd' : '#e8ecf0' }}
+                  className="relative w-12 h-6 rounded-full transition-colors flex-shrink-0"
+                  style={{ background: courier?.emailOnNewDelivery ? BLUE : BORDER }}
                 >
                   <span
-                    className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"
-                    style={{ transform: courier?.emailOnNewDelivery ? 'translateX(-26px)' : 'translateX(-2px)' }}
+                    className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all"
+                    style={{ left: courier?.emailOnNewDelivery ? '26px' : '2px' }}
                   />
                 </button>
               </div>
-              <p className="text-[10px]" style={{ color: '#c0cadd' }}>
+              <p className="text-[10px]" style={{ color: '#C0C0C0' }}>
                 * דורש הגדרת שירות מייל (EmailJS / SMTP) בהגדרות האדמין
               </p>
             </div>
@@ -433,21 +458,21 @@ const CourierProfile: React.FC = () => {
           {/* Support */}
           <div
             className="rounded-2xl p-4 flex items-center gap-3 cursor-pointer transition-all hover:shadow-md"
-            style={{ background: '#fff', border: '1px solid #e8ecf0' }}
+            style={{ background: CARD_BG, border: `1px solid ${BORDER}` }}
             onClick={() => navigate('/courier/support')}
           >
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: '#eef2ff' }}>
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: `${BLUE}15` }}>
               <span className="text-[18px]">🎧</span>
             </div>
             <div className="flex-1">
-              <p className="text-[14px] font-black" style={{ color: '#061b31' }}>צור קשר / תמיכה</p>
-              <p className="text-[11px]" style={{ color: '#8898aa' }}>שלח הודעה לצוות התמיכה</p>
+              <p className="text-[14px] font-black" style={{ color: TEXT }}>צור קשר / תמיכה</p>
+              <p className="text-[11px]" style={{ color: TEXT2 }}>שלח הודעה לצוות התמיכה</p>
             </div>
-            <span style={{ color: '#8898aa' }}>{'<'}</span>
+            <span style={{ color: TEXT2 }}>{'<'}</span>
           </div>
 
           {/* Edit details */}
-          <Section title="פרטים אישיים">
+          <Section label="פרופיל" title="פרטים אישיים">
             {!editMode ? (
               <>
                 {[
@@ -456,16 +481,18 @@ const CourierProfile: React.FC = () => {
                   { label: 'טלפון', value: courier?.phone },
                   { label: 'רכב', value: courier ? vehicleLabel[courier.vehicle] : '' },
                   { label: 'מספר רכב', value: courier?.vehiclePlate },
+                  { label: '💙 Bit', value: courier?.bitPhone },
+                  { label: '🗺️ ניווט', value: courier?.navPreference === 'waze' ? 'Waze' : courier?.navPreference === 'apple' ? 'Apple Maps' : courier?.navPreference === 'google' ? 'Google Maps' : 'Waze (ברירת מחדל)' },
                 ].map(({ label, value }) => (
-                  <div key={label} className="flex items-center justify-between py-2.5" style={{ borderBottom: '1px solid #f0f4f8' }}>
-                    <span className="text-[11px] font-semibold" style={{ color: '#8898aa' }}>{label}</span>
-                    <span className="text-[13px] font-bold" style={{ color: '#061b31' }}>{value || '—'}</span>
+                  <div key={label} className="flex items-center justify-between py-2.5" style={{ borderBottom: `1px solid ${BG}` }}>
+                    <span className="text-[11px] font-semibold" style={{ color: TEXT2 }}>{label}</span>
+                    <span className="text-[13px] font-bold" style={{ color: TEXT }}>{value || '—'}</span>
                   </div>
                 ))}
                 <button
                   onClick={() => setEditMode(true)}
                   className="mt-3 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-[13px] transition-all active:scale-95"
-                  style={{ background: '#f0f4f8', color: '#533afd' }}
+                  style={{ background: BG, color: BLUE, border: `1px solid ${BORDER}` }}
                 >
                   <PencilIcon className="w-4 h-4" />
                   ערוך פרטים
@@ -477,19 +504,20 @@ const CourierProfile: React.FC = () => {
                   { label: 'שם מלא', value: editName, setter: setEditName },
                   { label: 'טלפון', value: editPhone, setter: setEditPhone },
                   { label: 'מספר רכב', value: editPlate, setter: setEditPlate },
+                  { label: '💙 טלפון לתשלום Bit', value: editBitPhone, setter: setEditBitPhone },
                 ].map(({ label, value, setter }) => (
                   <div key={label}>
-                    <label className="text-[11px] font-semibold block mb-1" style={{ color: '#8898aa' }}>{label}</label>
+                    <label className="text-[11px] font-semibold block mb-1" style={{ color: TEXT2 }}>{label}</label>
                     <input
                       className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none"
-                      style={{ background: '#f6f9fc', border: '1px solid #e8ecf0', color: '#061b31', direction: 'rtl' }}
+                      style={{ background: BG, border: `1px solid ${BORDER}`, color: TEXT, direction: 'rtl' }}
                       value={value}
                       onChange={(e) => setter(e.target.value)}
                     />
                   </div>
                 ))}
                 <div>
-                  <label className="text-[11px] font-semibold block mb-1" style={{ color: '#8898aa' }}>סוג רכב</label>
+                  <label className="text-[11px] font-semibold block mb-1" style={{ color: TEXT2 }}>סוג רכב</label>
                   <div className="grid grid-cols-2 gap-2">
                     {vehicleOptions.map(opt => (
                       <button
@@ -497,8 +525,32 @@ const CourierProfile: React.FC = () => {
                         onClick={() => setEditVehicle(opt.value)}
                         className="py-2 rounded-xl text-[12px] font-bold transition-all"
                         style={{
-                          background: editVehicle === opt.value ? '#533afd' : '#f0f4f8',
-                          color: editVehicle === opt.value ? '#fff' : '#8898aa',
+                          background: editVehicle === opt.value ? BLUE : BG,
+                          color: editVehicle === opt.value ? '#fff' : TEXT2,
+                          border: `1px solid ${editVehicle === opt.value ? BLUE : BORDER}`,
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold block mb-1" style={{ color: TEXT2 }}>🗺️ אפליקציית ניווט מועדפת</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {([
+                      { value: 'waze', label: '🗺️ Waze' },
+                      { value: 'google', label: '📍 גוגל' },
+                      { value: 'apple', label: '🍎 Apple' },
+                    ] as const).map(opt => (
+                      <button
+                        key={opt.value}
+                        onClick={() => setEditNavPref(opt.value)}
+                        className="py-2 rounded-xl text-[11px] font-bold transition-all"
+                        style={{
+                          background: editNavPref === opt.value ? BLUE : BG,
+                          color: editNavPref === opt.value ? '#fff' : TEXT2,
+                          border: `1px solid ${editNavPref === opt.value ? BLUE : BORDER}`,
                         }}
                       >
                         {opt.label}
@@ -509,8 +561,8 @@ const CourierProfile: React.FC = () => {
                 <div className="flex gap-2 pt-1">
                   <button
                     onClick={handleSaveDetails}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-white font-bold text-[13px] transition-all active:scale-95"
-                    style={{ background: 'linear-gradient(135deg, #533afd, #ea2261)' }}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-2xl text-white font-bold text-[13px] transition-all active:scale-95"
+                    style={{ background: BLUE }}
                   >
                     <CheckIcon className="w-4 h-4" />
                     שמור
@@ -518,7 +570,7 @@ const CourierProfile: React.FC = () => {
                   <button
                     onClick={() => setEditMode(false)}
                     className="px-4 py-2.5 rounded-xl font-bold text-[13px]"
-                    style={{ background: '#f0f4f8', color: '#8898aa' }}
+                    style={{ background: BG, color: TEXT2, border: `1px solid ${BORDER}` }}
                   >
                     <XMarkIcon className="w-4 h-4" />
                   </button>
@@ -528,12 +580,12 @@ const CourierProfile: React.FC = () => {
           </Section>
 
           {/* Password change */}
-          <Section title="שינוי סיסמה">
+          <Section label="אבטחה" title="שינוי סיסמה">
             {!pwMode ? (
               <button
                 onClick={() => setPwMode(true)}
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-[13px] transition-all active:scale-95"
-                style={{ background: '#f0f4f8', color: '#533afd' }}
+                style={{ background: BG, color: BLUE, border: `1px solid ${BORDER}` }}
               >
                 <KeyIcon className="w-4 h-4" />
                 שנה סיסמה
@@ -546,31 +598,31 @@ const CourierProfile: React.FC = () => {
                   { label: 'אשר סיסמה חדשה', value: confirmPw, setter: setConfirmPw },
                 ].map(({ label, value, setter }) => (
                   <div key={label}>
-                    <label className="text-[11px] font-semibold block mb-1" style={{ color: '#8898aa' }}>{label}</label>
+                    <label className="text-[11px] font-semibold block mb-1" style={{ color: TEXT2 }}>{label}</label>
                     <input
                       type="password"
                       className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none"
-                      style={{ background: '#f6f9fc', border: '1px solid #e8ecf0', color: '#061b31', direction: 'rtl' }}
+                      style={{ background: BG, border: `1px solid ${BORDER}`, color: TEXT, direction: 'rtl' }}
                       value={value}
                       onChange={(e) => setter(e.target.value)}
                     />
                   </div>
                 ))}
                 {pwError && (
-                  <p className="text-[12px] font-semibold" style={{ color: '#ef4444' }}>{pwError}</p>
+                  <p className="text-[12px] font-semibold" style={{ color: ERROR }}>{pwError}</p>
                 )}
                 <div className="flex gap-2">
                   <button
                     onClick={handlePasswordChange}
-                    className="flex-1 py-2.5 rounded-xl text-white font-bold text-[13px] transition-all active:scale-95"
-                    style={{ background: 'linear-gradient(135deg, #533afd, #ea2261)' }}
+                    className="flex-1 py-2.5 rounded-2xl text-white font-bold text-[13px] transition-all active:scale-95"
+                    style={{ background: BLUE }}
                   >
                     שמור
                   </button>
                   <button
                     onClick={() => { setPwMode(false); setPwError(''); setOldPw(''); setNewPw(''); setConfirmPw(''); }}
                     className="px-4 py-2.5 rounded-xl font-bold text-[13px]"
-                    style={{ background: '#f0f4f8', color: '#8898aa' }}
+                    style={{ background: BG, color: TEXT2, border: `1px solid ${BORDER}` }}
                   >
                     ביטול
                   </button>
@@ -586,11 +638,11 @@ const CourierProfile: React.FC = () => {
           {pastBusinesses.length === 0 ? (
             <div
               className="rounded-2xl p-10 flex flex-col items-center gap-3 text-center"
-              style={{ background: '#fff', border: '1px solid #e8ecf0' }}
+              style={{ background: CARD_BG, border: `1px solid ${BORDER}` }}
             >
-              <BuildingStorefrontIcon className="w-10 h-10" style={{ color: '#e8ecf0' }} />
-              <p className="font-bold text-[14px]" style={{ color: '#8898aa' }}>עדיין לא עבדת עם עסקים</p>
-              <p className="text-[12px]" style={{ color: '#8898aa' }}>לאחר שתמסור משלוח, העסק יופיע כאן</p>
+              <BuildingStorefrontIcon className="w-10 h-10" style={{ color: BORDER }} />
+              <p className="font-bold text-[14px]" style={{ color: TEXT2 }}>עדיין לא עבדת עם עסקים</p>
+              <p className="text-[12px]" style={{ color: TEXT2 }}>לאחר שתמסור משלוח, העסק יופיע כאן</p>
             </div>
           ) : (
             pastBusinesses.map(({ business, deliveryId }) => (
@@ -613,7 +665,7 @@ const CourierProfile: React.FC = () => {
       <button
         onClick={handleLogout}
         className="w-full py-4 rounded-2xl font-black text-[15px] transition-all active:scale-95"
-        style={{ background: '#fff', border: '1px solid #fecdd3', color: '#ef4444' }}
+        style={{ background: CARD_BG, border: `1px solid ${ERROR}40`, color: ERROR }}
       >
         התנתקות
       </button>
@@ -622,26 +674,36 @@ const CourierProfile: React.FC = () => {
       {showAvailConfirm && (
         <div
           className="fixed inset-0 z-[200] flex items-center justify-center p-6"
-          style={{ background: 'rgba(0,0,0,0.6)' }}
+          style={{ background: 'rgba(0,0,0,0.5)' }}
           onClick={e => { if (e.target === e.currentTarget) setShowAvailConfirm(false); }}
         >
           <div
             className="w-full max-w-sm rounded-2xl p-6 text-center"
-            style={{ background: '#fff', boxShadow: '0 24px 60px rgba(0,0,0,0.25)' }}
+            style={{ background: CARD_BG, boxShadow: '0 24px 60px rgba(0,0,0,0.15)' }}
             dir="rtl"
           >
             <div className="text-[36px] mb-3">{isAvailable ? '🔴' : '🟢'}</div>
-            <h3 className="text-[17px] font-black mb-2" style={{ color: '#061b31' }}>
+            <h3 className="text-[17px] font-black mb-2" style={{ color: TEXT }}>
               {isAvailable ? 'לסמן כלא זמין?' : 'לסמן כזמין?'}
             </h3>
-            <p className="text-[13px] mb-5" style={{ color: '#8898aa' }}>
+            <p className="text-[13px] mb-5" style={{ color: TEXT2 }}>
               {isAvailable
                 ? 'לא תקבל משלוחים חדשים כל עוד אתה מסומן כלא זמין'
                 : 'תתחיל לקבל התראות על משלוחים חדשים'}
             </p>
             <div className="flex gap-3">
-              <button onClick={() => setShowAvailConfirm(false)} className="flex-1 py-3 rounded-xl font-bold text-[14px]" style={{ background: '#f0f4f8', color: '#8898aa' }}>ביטול</button>
-              <button onClick={confirmToggleAvailability} className="flex-1 py-3 rounded-xl font-bold text-[14px] text-white" style={{ background: isAvailable ? '#ef4444' : '#10b981' }}>
+              <button
+                onClick={() => setShowAvailConfirm(false)}
+                className="flex-1 py-3 rounded-xl font-bold text-[14px]"
+                style={{ background: BG, color: TEXT2, border: `1px solid ${BORDER}` }}
+              >
+                ביטול
+              </button>
+              <button
+                onClick={confirmToggleAvailability}
+                className="flex-1 py-3 rounded-xl font-bold text-[14px] text-white"
+                style={{ background: isAvailable ? ERROR : SUCCESS }}
+              >
                 {isAvailable ? 'אשר — לא זמין' : 'אשר — זמין'}
               </button>
             </div>

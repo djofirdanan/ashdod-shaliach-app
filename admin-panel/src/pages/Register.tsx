@@ -101,6 +101,7 @@ const Register: React.FC = () => {
     phone: '',
     vehicle: 'motorcycle' as 'motorcycle' | 'bicycle' | 'car' | 'scooter',
     vehiclePlate: '',
+    navPreference: 'waze' as 'waze' | 'google' | 'apple',
     password: '',
     confirmPassword: '',
   });
@@ -180,6 +181,7 @@ const Register: React.FC = () => {
         phone: cour.phone,
         vehicle: cour.vehicle,
         vehiclePlate: cour.vehicle !== 'bicycle' ? cour.vehiclePlate || undefined : undefined,
+        navPreference: cour.navPreference,
         isActive: false,
         isBlocked: false,
         rating: 5,
@@ -473,6 +475,34 @@ const Register: React.FC = () => {
                       />
                     )}
                   </div>
+                  {/* Navigation preference */}
+                  <div className="w-full">
+                    <label className="block text-[12px] font-semibold mb-1.5 uppercase tracking-[0.05em]" style={{ color: '#3c4257' }}>
+                      אפליקציית ניווט מועדפת
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {([
+                        { value: 'waze', label: '🗺️ Waze' },
+                        { value: 'google', label: '📍 גוגל מפות' },
+                        { value: 'apple', label: '🍎 Apple Maps' },
+                      ] as const).map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setCour({ ...cour, navPreference: opt.value })}
+                          className="py-2.5 rounded-[6px] text-[11px] font-bold transition-all"
+                          style={{
+                            background: cour.navPreference === opt.value ? '#533afd' : '#f8fafc',
+                            color: cour.navPreference === opt.value ? 'white' : '#6b7c93',
+                            border: `1px solid ${cour.navPreference === opt.value ? '#533afd' : '#e0e6ed'}`,
+                          }}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <Input
                       className={inputClass}

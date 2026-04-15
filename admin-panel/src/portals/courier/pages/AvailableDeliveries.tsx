@@ -1,21 +1,28 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { useSelector } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import type { RootState } from '../../../store';
 import {
   getPendingNotifications,
   acceptNotification,
   dismissNotification,
-  updateDelivery,
   getDeliveries,
   getCourier,
-  getOrCreateConversation,
   type DeliveryNotification,
 } from '../../../services/storage.service';
-import { syncNotificationsDown, syncDeliveriesDown } from '../../../services/sync.service';
+import { syncNotificationsDown, syncDeliveriesDown, joinCandidatesQueue } from '../../../services/sync.service';
+import { supabase } from '../../../lib/supabase';
 import { playNewDelivery } from '../../../utils/sounds';
 import { BellIcon, ArrowPathIcon, TrashIcon, MapPinIcon } from '@heroicons/react/24/outline';
+
+// ─── Design tokens ────────────────────────────────────────────
+const BLUE    = '#009DE0';
+const BG      = '#F4F4F4';
+const CARD_BG = '#FFFFFF';
+const TEXT    = '#202125';
+const TEXT2   = '#757575';
+const BORDER  = '#E8E8E8';
+const SUCCESS = '#1BA672';
+const WARNING = '#F58F1F';
+const ERROR   = '#E23437';
 
 // ─── Haversine distance ───────────────────────────────────────
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -58,7 +65,6 @@ const DistanceInfo: React.FC<{ notif: DeliveryNotification }> = ({ notif }) => {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      // Geocode pickup + drop
       const [p, d] = await Promise.all([
         geocodeAddress(notif.pickupAddress),
         geocodeAddress(notif.dropAddress),
@@ -66,7 +72,6 @@ const DistanceInfo: React.FC<{ notif: DeliveryNotification }> = ({ notif }) => {
       if (cancelled) return;
       if (p && d) setPickupToDropKm(haversineKm(p.lat, p.lng, d.lat, d.lng));
 
-      // My location → pickup
       if (!navigator.geolocation) return;
       navigator.geolocation.getCurrentPosition(
         (pos) => {
@@ -74,7 +79,6 @@ const DistanceInfo: React.FC<{ notif: DeliveryNotification }> = ({ notif }) => {
           if (p) {
             const km = haversineKm(pos.coords.latitude, pos.coords.longitude, p.lat, p.lng);
             setMyToPickupKm(km);
-            // Estimate: avg 25 km/h in city
             setMyToPickupMin(Math.round((km / 25) * 60));
           }
         },
@@ -92,7 +96,7 @@ const DistanceInfo: React.FC<{ notif: DeliveryNotification }> = ({ notif }) => {
       {pickupToDropKm !== null && (
         <span
           className="flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-bold"
-          style={{ background: '#f0f4f8', color: '#533afd' }}
+          style={{ background: '#E6F5FC', color: BLUE }}
         >
           <MapPinIcon className="w-3 h-3" />
           מרחק משלוח: {pickupToDropKm.toFixed(1)} ק"מ
@@ -101,7 +105,7 @@ const DistanceInfo: React.FC<{ notif: DeliveryNotification }> = ({ notif }) => {
       {myToPickupKm !== null && myToPickupMin !== null && (
         <span
           className="flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-bold"
-          style={{ background: '#fff7ed', color: '#f59e0b' }}
+          style={{ background: '#FFF4E5', color: WARNING }}
         >
           🛵 {myToPickupKm.toFixed(1)} ק"מ ממני • ~{myToPickupMin} דק' לאיסוף
         </span>
@@ -110,16 +114,15 @@ const DistanceInfo: React.FC<{ notif: DeliveryNotification }> = ({ notif }) => {
   );
 };
 
-// ─── Google Maps navigation link ──────────────────────────────
-function mapsLink(from: string, to: string): string {
-  const f = encodeURIComponent(from + ', ישראל');
-  const t = encodeURIComponent(to + ', ישראל');
-  return `https://www.google.com/maps/dir/?api=1&origin=${f}&destination=${t}`;
+// ─── Navigation link ─────────────────────────────────────────
+function navUrl(address: string, pref: 'waze' | 'google' | 'apple'): string {
+  const encoded = encodeURIComponent(address + ', ישראל');
+  if (pref === 'waze') return `https://waze.com/ul?q=${encoded}&navigate=yes`;
+  if (pref === 'apple') return `maps://maps.apple.com/?daddr=${encoded}`;
+  return `https://www.google.com/maps/dir/?api=1&destination=${encoded}`;
 }
 
 const AvailableDeliveries: React.FC = () => {
-  const user = useSelector((s: RootState) => s.auth.user);
-  const navigate = useNavigate();
   const token = localStorage.getItem('admin_token') ?? '';
   const courierId = token.startsWith('courier-') ? token.replace('courier-', '') : '';
 
@@ -127,11 +130,12 @@ const AvailableDeliveries: React.FC = () => {
   const [accepting, setAccepting] = useState<string | null>(null);
   const prevCountRef = useRef(-1);
 
+  // ─── Core refresh function ────────────────────────────────
   const refresh = useCallback(async () => {
     if (!courierId) return;
     await Promise.all([syncNotificationsDown(), syncDeliveriesDown()]);
     const fresh = getPendingNotifications(courierId);
-    // Play sound when new notifications arrive
+    // Play sound only when NEW notifications arrive (not on first load)
     if (prevCountRef.current >= 0 && fresh.length > prevCountRef.current) {
       playNewDelivery();
       toast.success(`📦 משלוח חדש זמין!`, { duration: 4000 });
@@ -140,21 +144,72 @@ const AvailableDeliveries: React.FC = () => {
     setNotifications(fresh);
   }, [courierId]);
 
+  // ─── Polling every 3 seconds ──────────────────────────────
   useEffect(() => {
     refresh();
-    const id = setInterval(refresh, 6000);
+    const id = setInterval(refresh, 3000);
     return () => clearInterval(id);
   }, [refresh]);
 
+  // ─── Refresh when tab becomes visible again ───────────────
+  useEffect(() => {
+    const onVisible = () => { if (!document.hidden) refresh(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [refresh]);
+
+  // ─── Refresh when device comes back online ────────────────
+  useEffect(() => {
+    window.addEventListener('online', refresh);
+    return () => window.removeEventListener('online', refresh);
+  }, [refresh]);
+
+  // ─── Supabase Realtime: instant push on new notifications ─
+  useEffect(() => {
+    if (!courierId) return;
+    const channel = supabase
+      .channel('delivery_notifications_realtime')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'delivery_notifications' },
+        async () => {
+          // New notification inserted → refresh immediately
+          await syncNotificationsDown();
+          const fresh = getPendingNotifications(courierId);
+          if (prevCountRef.current >= 0 && fresh.length > prevCountRef.current) {
+            playNewDelivery();
+            toast.success(`📦 משלוח חדש זמין!`, { duration: 4000 });
+          }
+          prevCountRef.current = fresh.length;
+          setNotifications(fresh);
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'delivery_notifications' },
+        async () => {
+          await syncNotificationsDown();
+          const fresh = getPendingNotifications(courierId);
+          prevCountRef.current = fresh.length;
+          setNotifications(fresh);
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [courierId]);
+
   const courier = courierId ? getCourier(courierId) : null;
   const isUnavailable = courier?.isAvailable === false;
+  const navPref = courier?.navPreference ?? 'waze';
 
+  // ─── Accept delivery — join candidates queue ─────────────
   const handleAccept = async (notif: DeliveryNotification) => {
-    if (!courierId || !user) return;
+    if (!courierId) return;
     setAccepting(notif.id);
     try {
-      acceptNotification(notif.id, courierId);
-
+      // Sync deliveries from Supabase to find the matching delivery
+      await syncDeliveriesDown();
       const allDeliveries = getDeliveries();
       const matching = allDeliveries.find(
         (d) =>
@@ -163,28 +218,27 @@ const AvailableDeliveries: React.FC = () => {
           d.status === 'pending'
       );
 
+      // Get courier data from localStorage
       const courierData = getCourier(courierId);
-      const courierName = courierData?.name ?? user.name ?? 'שליח';
+      const courierName = courierData?.name ?? 'שליח';
+      const courierRating = courierData?.rating ?? 5;
+      const courierVehicle = courierData?.vehicle ?? 'motorcycle';
 
-      let deliveryId = matching?.id;
       if (matching) {
-        updateDelivery(matching.id, {
-          status: 'accepted',
-          courierId,
-          courierName,
-          acceptedAt: new Date().toISOString(),
-        });
+        await joinCandidatesQueue(matching.id, courierId, courierName, courierRating, courierVehicle);
+        // Store pending candidacy in localStorage
+        localStorage.setItem('pending_candidacy', JSON.stringify({ deliveryId: matching.id, notifId: notif.id }));
       }
 
-      // Open chat with business
-      const conv = getOrCreateConversation(notif.businessId, courierId);
-      toast.success('קיבלת את המשלוח! עובר לצ׳אט...');
-      const params = new URLSearchParams({ convId: conv.id });
-      if (deliveryId) params.set('deliveryId', deliveryId);
-      navigate(`/courier/chat?${params.toString()}`);
+      // Mark notification as taken
+      acceptNotification(notif.id, courierId);
+      setNotifications(prev => prev.filter(n => n.id !== notif.id));
+      prevCountRef.current = Math.max(0, prevCountRef.current - 1);
+
+      toast.success('נוספת לתור! ממתין לאישור העסק 🕐');
     } catch (err) {
       console.error(err);
-      toast.error('שגיאה בקבלת המשלוח');
+      toast.error('שגיאה בהצטרפות לתור');
     } finally {
       setAccepting(null);
     }
@@ -194,25 +248,27 @@ const AvailableDeliveries: React.FC = () => {
     if (!courierId) return;
     dismissNotification(notif.id, courierId);
     setNotifications(prev => prev.filter(n => n.id !== notif.id));
+    prevCountRef.current = Math.max(0, prevCountRef.current - 1);
   };
 
   const handleClearAll = () => {
     if (!courierId) return;
     notifications.forEach(n => dismissNotification(n.id, courierId));
     setNotifications([]);
+    prevCountRef.current = 0;
     toast.success('כל ההודעות נוקו');
   };
 
   return (
-    <div className="max-w-lg mx-auto px-4 py-5">
+    <div className="max-w-lg mx-auto px-4 py-5" style={{ background: BG, minHeight: '100vh' }}>
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
-        <h1 className="text-[20px] font-black" style={{ color: '#061b31' }}>
+        <h1 className="text-[20px] font-black" style={{ color: TEXT }}>
           משלוחים פנויים
           {notifications.length > 0 && (
             <span
               className="mr-2 text-[13px] px-2 py-0.5 rounded-full font-bold"
-              style={{ background: '#ea2261', color: '#fff' }}
+              style={{ background: ERROR, color: '#fff' }}
             >
               {notifications.length}
             </span>
@@ -222,8 +278,8 @@ const AvailableDeliveries: React.FC = () => {
           {notifications.length > 0 && (
             <button
               onClick={handleClearAll}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold transition-all active:scale-95"
-              style={{ background: '#fff0f0', color: '#ef4444', border: '1px solid #fecdd3' }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-2xl text-[12px] font-semibold transition-all active:scale-95"
+              style={{ background: '#FDECEA', color: ERROR, border: `1px solid #F5C6C6` }}
             >
               <TrashIcon className="w-4 h-4" />
               נקה
@@ -231,8 +287,8 @@ const AvailableDeliveries: React.FC = () => {
           )}
           <button
             onClick={refresh}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold transition-all active:scale-95"
-            style={{ background: '#f0f4f8', color: '#533afd', border: '1px solid #e8ecf0' }}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-2xl text-[12px] font-semibold transition-all active:scale-95"
+            style={{ background: BG, color: BLUE, border: `1px solid ${BORDER}` }}
           >
             <ArrowPathIcon className="w-4 h-4" />
             רענן
@@ -244,13 +300,13 @@ const AvailableDeliveries: React.FC = () => {
       {isUnavailable && (
         <div
           className="rounded-2xl p-4 mb-4 flex items-center gap-3"
-          style={{ background: '#fef2f2', border: '1px solid #fecdd3' }}
+          style={{ background: '#FDECEA', border: `1px solid #F5C6C6` }}
         >
           <span className="text-2xl">🔴</span>
           <div>
-            <p className="text-[13px] font-black" style={{ color: '#ef4444' }}>אתה מסומן כלא זמין</p>
-            <p className="text-[11px]" style={{ color: '#f87171' }}>
-              לא תקבל התראות על משלוחים. שנה את הסטטוס שלך בכפתור "זמין/לא זמין" למעלה.
+            <p className="text-[13px] font-black" style={{ color: ERROR }}>אתה מסומן כלא זמין</p>
+            <p className="text-[11px]" style={{ color: '#C0392B' }}>
+              לא תקבל התראות על משלוחים. שנה את הסטטוס שלך בפרופיל.
             </p>
           </div>
         </div>
@@ -259,17 +315,17 @@ const AvailableDeliveries: React.FC = () => {
       {!isUnavailable && notifications.length === 0 ? (
         <div
           className="rounded-2xl p-10 flex flex-col items-center gap-3 text-center"
-          style={{ background: '#fff', border: '1px solid #e8ecf0' }}
+          style={{ background: CARD_BG, border: `1px solid ${BORDER}`, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
         >
           <div
             className="w-16 h-16 rounded-2xl flex items-center justify-center"
-            style={{ background: '#f0f4f8' }}
+            style={{ background: '#E6F5FC' }}
           >
-            <BellIcon className="w-8 h-8" style={{ color: '#8898aa' }} />
+            <BellIcon className="w-8 h-8" style={{ color: BLUE }} />
           </div>
-          <p className="font-bold text-[16px]" style={{ color: '#061b31' }}>אין משלוחים פנויים כרגע</p>
-          <p className="text-[12px]" style={{ color: '#8898aa' }}>
-            המערכת מסנכרנת עם השרת כל 6 שניות...
+          <p className="font-bold text-[16px]" style={{ color: TEXT }}>אין משלוחים פנויים כרגע</p>
+          <p className="text-[12px]" style={{ color: TEXT2 }}>
+            המערכת מסנכרנת בזמן אמת עם השרת...
           </p>
         </div>
       ) : (
@@ -278,26 +334,30 @@ const AvailableDeliveries: React.FC = () => {
             <div
               key={n.id}
               className="rounded-2xl p-4"
-              style={{ background: '#fff', border: '1px solid #e8ecf0', boxShadow: '0 2px 12px rgba(83,58,253,0.06)' }}
+              style={{
+                background: CARD_BG,
+                border: `1px solid ${BORDER}`,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+              }}
             >
               {/* Business + price */}
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <div
                     className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-[12px] font-black"
-                    style={{ background: 'linear-gradient(135deg, #533afd, #ea2261)' }}
+                    style={{ background: `linear-gradient(135deg, ${BLUE}, #0077AA)` }}
                   >
                     {n.businessName[0]}
                   </div>
                   <div>
-                    <p className="text-[13px] font-bold" style={{ color: '#061b31' }}>{n.businessName}</p>
-                    <p className="text-[10px]" style={{ color: '#8898aa' }}>
+                    <p className="text-[13px] font-bold" style={{ color: TEXT }}>{n.businessName}</p>
+                    <p className="text-[10px]" style={{ color: TEXT2 }}>
                       {new Date(n.createdAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
                     </p>
                   </div>
                 </div>
                 {n.price != null && (
-                  <span className="text-[16px] font-black" style={{ color: '#533afd' }}>
+                  <span className="text-[16px] font-black" style={{ color: BLUE }}>
                     ₪{n.price}
                   </span>
                 )}
@@ -308,22 +368,22 @@ const AvailableDeliveries: React.FC = () => {
                 <div className="flex gap-2 items-start">
                   <div
                     className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 text-[10px] font-bold text-white"
-                    style={{ background: '#533afd' }}
+                    style={{ background: SUCCESS }}
                   >א</div>
                   <div>
-                    <p className="text-[11px] font-semibold" style={{ color: '#8898aa' }}>איסוף</p>
-                    <p className="text-[13px] font-semibold" style={{ color: '#061b31' }}>{n.pickupAddress}</p>
+                    <p className="text-[11px] font-semibold" style={{ color: TEXT2 }}>איסוף</p>
+                    <p className="text-[13px] font-semibold" style={{ color: TEXT }}>{n.pickupAddress}</p>
                   </div>
                 </div>
-                <div className="w-px h-3 mr-2.5" style={{ background: '#e8ecf0' }} />
+                <div className="w-px h-3 mr-2.5" style={{ background: BORDER }} />
                 <div className="flex gap-2 items-start">
                   <div
                     className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 text-[10px] font-bold text-white"
-                    style={{ background: '#ea2261' }}
+                    style={{ background: ERROR }}
                   >ב</div>
                   <div>
-                    <p className="text-[11px] font-semibold" style={{ color: '#8898aa' }}>מסירה</p>
-                    <p className="text-[13px] font-semibold" style={{ color: '#061b31' }}>{n.dropAddress}</p>
+                    <p className="text-[11px] font-semibold" style={{ color: TEXT2 }}>מסירה</p>
+                    <p className="text-[13px] font-semibold" style={{ color: TEXT }}>{n.dropAddress}</p>
                   </div>
                 </div>
               </div>
@@ -331,34 +391,43 @@ const AvailableDeliveries: React.FC = () => {
               {/* Distance info */}
               <DistanceInfo notif={n} />
 
-              {/* Google Maps link */}
+              {/* Navigation link — uses courier's preferred nav app */}
               <a
-                href={mapsLink(n.pickupAddress, n.dropAddress)}
+                href={navUrl(n.pickupAddress, navPref)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 text-[11px] font-semibold mb-3"
-                style={{ color: '#533afd' }}
+                style={{ color: BLUE }}
               >
-                🗺️ פתח בGoogle Maps
+                🗺️ נווט לכתובת האיסוף
               </a>
 
               {/* Payment / vehicle info tags */}
               <div className="flex flex-wrap gap-1.5 mb-3">
                 {n.paymentMethod && (
-                  <span className="text-[11px] px-2 py-0.5 rounded-full font-bold" style={{ background: '#f0f4f8', color: '#8898aa' }}>
+                  <span
+                    className="text-[11px] px-2 py-0.5 rounded-full font-bold"
+                    style={{ background: BG, color: TEXT2 }}
+                  >
                     {n.paymentMethod === 'cash' ? '💵 מזומן' : '📱 ביט'}
                   </span>
                 )}
                 {n.customerPaid !== undefined && (
                   <span
                     className="text-[11px] px-2 py-0.5 rounded-full font-bold"
-                    style={{ background: n.customerPaid ? '#f0fdf4' : '#fff7ed', color: n.customerPaid ? '#10b981' : '#f59e0b' }}
+                    style={{
+                      background: n.customerPaid ? '#E8F8F2' : '#FFF4E5',
+                      color: n.customerPaid ? SUCCESS : WARNING,
+                    }}
                   >
                     {n.customerPaid ? '✅ שולם ע"י לקוח' : '💳 גביה בעת המסירה'}
                   </span>
                 )}
                 {n.requiredVehicle && (
-                  <span className="text-[11px] px-2 py-0.5 rounded-full font-bold" style={{ background: '#eef2ff', color: '#533afd' }}>
+                  <span
+                    className="text-[11px] px-2 py-0.5 rounded-full font-bold"
+                    style={{ background: '#E6F5FC', color: BLUE }}
+                  >
                     {n.requiredVehicle === 'motorcycle' ? '🏍️ אופנוע' : n.requiredVehicle === 'bicycle' ? '🚲 אופניים' : n.requiredVehicle === 'scooter' ? '🛵 קטנוע' : '🚗 רכב'}
                   </span>
                 )}
@@ -367,7 +436,7 @@ const AvailableDeliveries: React.FC = () => {
               {n.description && (
                 <div
                   className="rounded-xl px-3 py-2 mb-3 text-[12px]"
-                  style={{ background: '#f6f9fc', color: '#8898aa' }}
+                  style={{ background: BG, color: TEXT2 }}
                 >
                   {n.description}
                 </div>
@@ -378,15 +447,18 @@ const AvailableDeliveries: React.FC = () => {
                 <button
                   onClick={() => handleAccept(n)}
                   disabled={accepting === n.id}
-                  className="flex-1 py-3 rounded-xl text-white font-black text-[14px] transition-all active:scale-95 disabled:opacity-60"
-                  style={{ background: 'linear-gradient(135deg, #533afd, #ea2261)', boxShadow: '0 4px 12px rgba(83,58,253,0.25)' }}
+                  className="flex-1 py-3 rounded-2xl text-white font-black text-[14px] transition-all active:scale-95 disabled:opacity-60"
+                  style={{
+                    background: BLUE,
+                    boxShadow: '0 4px 12px rgba(0,157,224,0.30)',
+                  }}
                 >
-                  {accepting === n.id ? 'מקבל...' : '✅ קבל משלוח'}
+                  {accepting === n.id ? 'מצטרף לתור...' : 'אני מגיע! ✋'}
                 </button>
                 <button
                   onClick={() => handleDismiss(n)}
-                  className="px-4 py-3 rounded-xl font-bold text-[13px] transition-all active:scale-95"
-                  style={{ background: '#f0f4f8', color: '#8898aa', border: '1px solid #e8ecf0' }}
+                  className="px-4 py-3 rounded-2xl font-bold text-[13px] transition-all active:scale-95"
+                  style={{ background: BG, color: TEXT2, border: `1px solid ${BORDER}` }}
                 >
                   ✕
                 </button>

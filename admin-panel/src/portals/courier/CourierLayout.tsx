@@ -3,7 +3,8 @@ import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import type { RootState, AppDispatch } from '../../store';
 import { logoutUser } from '../../store/authSlice';
-import { getPendingNotifications, getCourier, updateCourier, updateCourierLocation, getDeliveriesByCourier } from '../../services/storage.service';
+import { getPendingNotifications, getCourier, updateCourier, updateCourierLocation, getDeliveriesByCourier, getDeliveries, getOrCreateConversation, updateDelivery } from '../../services/storage.service';
+import { pingCandidateHeartbeat, getCandidacyStatus } from '../../services/sync.service';
 import { DeliveryNotificationOverlay } from '../../components/DeliveryNotificationOverlay';
 import {
   HomeIcon,
@@ -11,9 +12,17 @@ import {
   TruckIcon,
   ChatBubbleLeftRightIcon,
   UserCircleIcon,
-  ArrowRightOnRectangleIcon,
 } from '@heroicons/react/24/outline';
+import {
+  HomeIcon as HomeIconSolid,
+  BellIcon as BellIconSolid,
+  TruckIcon as TruckIconSolid,
+  ChatBubbleLeftRightIcon as ChatIconSolid,
+  UserCircleIcon as UserIconSolid,
+} from '@heroicons/react/24/solid';
 import toast from 'react-hot-toast';
+
+const BLUE = '#009DE0';
 
 const CourierLayout: React.FC = () => {
   const navigate = useNavigate();
@@ -24,14 +33,16 @@ const CourierLayout: React.FC = () => {
   const token = localStorage.getItem('admin_token') ?? '';
   const courierId = token.startsWith('courier-') ? token.replace('courier-', '') : '';
 
-  const [pendingCount, setPendingCount] = useState(0);
-  const [isAvailable, setIsAvailable] = useState(true);
-  const [showAvailConfirm, setShowAvailConfirm] = useState(false);
+  const [pendingCount,      setPendingCount]      = useState(0);
+  const [isAvailable,       setIsAvailable]       = useState(true);
+  const [showAvailConfirm,  setShowAvailConfirm]  = useState(false);
+  const [courierName,       setCourierName]       = useState('');
 
   const refreshAvailability = useCallback(() => {
     if (!courierId) return;
     const c = getCourier(courierId);
     setIsAvailable(c?.isAvailable ?? true);
+    if (c?.name) setCourierName(c.name);
   }, [courierId]);
 
   useEffect(() => {
@@ -62,9 +73,43 @@ const CourierLayout: React.FC = () => {
     return () => clearInterval(locId);
   }, [courierId]);
 
-  const handleToggleAvailability = () => {
-    setShowAvailConfirm(true); // always show confirmation first
-  };
+  // ─── Heartbeat: ping every 20s while waiting for business acceptance ──────
+  useEffect(() => {
+    if (!courierId) return;
+    const tick = async () => {
+      const raw = localStorage.getItem('pending_candidacy');
+      if (!raw) return;
+      let parsed: { deliveryId: string; notifId: string };
+      try { parsed = JSON.parse(raw); } catch { return; }
+      const { deliveryId } = parsed;
+
+      // Ping heartbeat
+      await pingCandidateHeartbeat(deliveryId, courierId);
+
+      // Check candidacy status
+      const status = await getCandidacyStatus(deliveryId, courierId);
+      if (status === 'accepted') {
+        // Find delivery and open chat
+        const allDeliveries = getDeliveries();
+        const delivery = allDeliveries.find(d => d.id === deliveryId);
+        if (delivery) {
+          updateDelivery(deliveryId, { status: 'accepted', courierId, acceptedAt: new Date().toISOString() });
+          const conv = getOrCreateConversation(delivery.businessId, courierId);
+          localStorage.removeItem('pending_candidacy');
+          toast.success('🎉 אושרת על ידי העסק!');
+          navigate(`/courier/chat?convId=${conv.id}&deliveryId=${deliveryId}`);
+        } else {
+          localStorage.removeItem('pending_candidacy');
+          toast.success('🎉 אושרת על ידי העסק!');
+        }
+      } else if (status === 'rejected') {
+        localStorage.removeItem('pending_candidacy');
+        toast.error('❌ העסק בחר שליח אחר, המשך לחפש');
+      }
+    };
+    const id = setInterval(tick, 20_000);
+    return () => clearInterval(id);
+  }, [courierId, navigate]);
 
   const confirmToggleAvailability = () => {
     if (!courierId) return;
@@ -81,157 +126,167 @@ const CourierLayout: React.FC = () => {
   };
 
   const navItems = [
-    { label: 'ראשי', path: '/courier/dashboard', icon: HomeIcon, badge: 0 },
-    { label: 'פנויים', path: '/courier/available', icon: BellIcon, badge: pendingCount },
-    { label: 'משלוחים', path: '/courier/deliveries', icon: TruckIcon, badge: 0 },
-    { label: 'צ׳אט', path: '/courier/chat', icon: ChatBubbleLeftRightIcon, badge: 0 },
-    { label: 'פרופיל', path: '/courier/profile', icon: UserCircleIcon, badge: 0 },
+    { label: 'ראשי',     path: '/courier/dashboard',  icon: HomeIcon,                iconSolid: HomeIconSolid,  badge: 0 },
+    { label: 'פנויים',   path: '/courier/available',  icon: BellIcon,               iconSolid: BellIconSolid,  badge: pendingCount },
+    { label: 'משלוחים', path: '/courier/deliveries', icon: TruckIcon,              iconSolid: TruckIconSolid, badge: 0 },
+    { label: 'צ׳אט',    path: '/courier/chat',       icon: ChatBubbleLeftRightIcon, iconSolid: ChatIconSolid,  badge: 0 },
+    { label: 'פרופיל',  path: '/courier/profile',    icon: UserCircleIcon,         iconSolid: UserIconSolid,  badge: 0 },
   ];
 
   return (
-    <div dir="rtl" className="min-h-screen flex flex-col" style={{ background: '#f6f9fc' }}>
-      {/* Top header */}
+    <div dir="rtl" className="min-h-screen flex flex-col" style={{ background: '#F4F4F4' }}>
+
+      {/* ── Top header ── */}
       <header
-        className="flex items-center justify-between px-4 py-3 sticky top-0 z-40"
+        className="flex items-center justify-between px-4 sticky top-0 z-40"
         style={{
-          background: 'linear-gradient(135deg, #061b31, #1c1e54)',
-          boxShadow: '0 2px 12px rgba(6,27,49,0.35)',
+          background: '#FFFFFF',
+          borderBottom: '1px solid #E8E8E8',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+          height: 56,
         }}
       >
-        <div className="flex items-center gap-2">
+        {/* Right: logo + name */}
+        <div className="flex items-center gap-2.5">
           <div
-            className="w-8 h-8 rounded-lg flex items-center justify-center"
-            style={{ background: 'linear-gradient(135deg, #533afd, #ea2261)' }}
+            className="w-8 h-8 rounded-xl flex items-center justify-center"
+            style={{ background: BLUE }}
           >
             <TruckIcon className="w-4 h-4 text-white" />
           </div>
           <div>
-            <p className="text-white font-black text-[14px] leading-tight">אשדוד-שליח</p>
-            <p className="text-white/60 text-[11px]">{user?.name ?? 'פורטל שליחים'}</p>
+            <p className="font-black text-[15px] leading-tight" style={{ color: '#202125' }}>
+              {courierName || user?.name || 'אשדוד-שליח'}
+            </p>
+            <p className="text-[11px]" style={{ color: '#757575' }}>פורטל שליחים</p>
           </div>
         </div>
+
+        {/* Left: availability pill + logout */}
         <div className="flex items-center gap-2">
-          {/* Availability toggle */}
           <button
-            onClick={handleToggleAvailability}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-bold transition-all active:scale-95"
+            onClick={() => setShowAvailConfirm(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-bold transition-all active:scale-95"
             style={{
-              background: isAvailable ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.15)',
-              border: `1px solid ${isAvailable ? 'rgba(16,185,129,0.4)' : 'rgba(239,68,68,0.3)'}`,
-              color: isAvailable ? '#34d399' : '#f87171',
+              background: isAvailable ? '#E8F8F0' : '#FFF0F0',
+              border:     `1.5px solid ${isAvailable ? '#1BA672' : '#E23437'}`,
+              color:      isAvailable ? '#1BA672' : '#E23437',
             }}
           >
             <span
               className="w-2 h-2 rounded-full"
-              style={{ background: isAvailable ? '#10b981' : '#ef4444' }}
+              style={{ background: isAvailable ? '#1BA672' : '#E23437' }}
             />
             {isAvailable ? 'זמין' : 'לא זמין'}
           </button>
           <button
             onClick={handleLogout}
-            className="flex items-center gap-1 px-2 py-1.5 rounded-lg transition-all hover:opacity-80"
-            style={{ background: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.15)' }}
+            className="text-[13px] font-semibold px-3 py-1.5 rounded-xl transition-all active:scale-95"
+            style={{ color: BLUE, background: '#EAF7FD', border: `1px solid ${BLUE}30` }}
           >
-            <ArrowRightOnRectangleIcon className="w-4 h-4 text-white" />
+            יציאה
           </button>
         </div>
       </header>
 
-      {/* Page content */}
-      <main className="flex-1 overflow-y-auto pb-24">
+      {/* ── Page content ── */}
+      <main className="flex-1 overflow-y-auto pb-20">
         <Outlet />
       </main>
 
-      {/* Bottom navigation */}
+      {/* ── Bottom navigation ── */}
       <nav
-        className="fixed bottom-0 right-0 left-0 z-40 flex items-center justify-around py-2"
+        className="fixed bottom-0 right-0 left-0 z-40 flex items-center justify-around"
         style={{
-          background: '#ffffff',
-          borderTop: '1px solid #e8ecf0',
-          boxShadow: '0 -4px 20px rgba(0,0,0,0.08)',
+          background: '#FFFFFF',
+          borderTop: '1px solid #E8E8E8',
+          boxShadow: '0 -2px 12px rgba(0,0,0,0.06)',
+          height: 60,
         }}
       >
-        {navItems.map(({ label, path, icon: Icon, badge }) => {
+        {navItems.map(({ label, path, icon: Icon, iconSolid: IconSolid, badge }) => {
           const active = location.pathname === path ||
             (path === '/courier/dashboard' && location.pathname === '/courier');
           return (
             <Link
               key={path}
               to={path}
-              className="flex flex-col items-center gap-0.5 relative min-w-[52px] py-1"
+              className="flex flex-col items-center gap-0.5 relative min-w-[52px] py-1.5"
             >
               <div className="relative">
-                <Icon
-                  className="w-6 h-6 transition-colors"
-                  style={{ color: active ? '#533afd' : '#8898aa' }}
-                />
+                {active
+                  ? <IconSolid className="w-6 h-6" style={{ color: BLUE }} />
+                  : <Icon      className="w-6 h-6" style={{ color: '#AAAAAA' }} />
+                }
                 {badge > 0 && (
                   <span
-                    className="absolute -top-1 -left-1 min-w-[16px] h-4 px-0.5 rounded-full flex items-center justify-center text-[9px] text-white font-bold"
-                    style={{ background: '#ea2261' }}
+                    className="absolute -top-1 -right-1 min-w-[16px] h-4 px-0.5 rounded-full flex items-center justify-center text-[9px] text-white font-bold"
+                    style={{ background: '#E23437' }}
                   >
                     {badge > 9 ? '9+' : badge}
                   </span>
                 )}
               </div>
               <span
-                className="text-[10px] font-medium transition-colors"
-                style={{ color: active ? '#533afd' : '#8898aa' }}
+                className="text-[10px] font-medium"
+                style={{ color: active ? BLUE : '#AAAAAA' }}
               >
                 {label}
               </span>
-              {active && (
-                <span
-                  className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full"
-                  style={{ background: '#533afd' }}
-                />
-              )}
             </Link>
           );
         })}
       </nav>
 
-      {/* Delivery popup overlay */}
+      {/* ── Delivery popup overlay ── */}
       <DeliveryNotificationOverlay />
 
-      {/* Availability confirmation dialog */}
+      {/* ── Availability confirmation dialog ── */}
       {showAvailConfirm && (
         <div
-          className="fixed inset-0 z-[200] flex items-center justify-center p-6"
-          style={{ background: 'rgba(0,0,0,0.6)' }}
+          className="fixed inset-0 z-[200] flex items-end justify-center"
+          style={{ background: 'rgba(0,0,0,0.45)' }}
           onClick={e => { if (e.target === e.currentTarget) setShowAvailConfirm(false); }}
         >
           <div
-            className="w-full max-w-sm rounded-2xl p-6 text-center"
-            style={{ background: '#fff', boxShadow: '0 24px 60px rgba(0,0,0,0.25)' }}
+            className="w-full max-w-lg rounded-t-3xl p-6"
+            style={{ background: '#fff' }}
             dir="rtl"
           >
-            <div
-              className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 text-[28px]"
-              style={{ background: isAvailable ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)' }}
-            >
-              {isAvailable ? '🔴' : '🟢'}
+            {/* Handle bar */}
+            <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#E8E8E8' }} />
+
+            <div className="flex items-center gap-3 mb-4">
+              <div
+                className="w-12 h-12 rounded-2xl flex items-center justify-center text-[22px]"
+                style={{ background: isAvailable ? '#FFF0F0' : '#E8F8F0' }}
+              >
+                {isAvailable ? '🔴' : '🟢'}
+              </div>
+              <div>
+                <h3 className="text-[17px] font-black" style={{ color: '#202125' }}>
+                  {isAvailable ? 'סימון כלא זמין?' : 'סימון כזמין?'}
+                </h3>
+                <p className="text-[13px]" style={{ color: '#757575' }}>
+                  {isAvailable
+                    ? 'לא תקבל משלוחים חדשים'
+                    : 'תתחיל לקבל התראות על משלוחים'}
+                </p>
+              </div>
             </div>
-            <h3 className="text-[17px] font-black mb-2" style={{ color: '#061b31' }}>
-              {isAvailable ? 'סימון כלא זמין?' : 'סימון כזמין?'}
-            </h3>
-            <p className="text-[13px] mb-5" style={{ color: '#8898aa' }}>
-              {isAvailable
-                ? 'לא תקבל משלוחים חדשים כל עוד אתה מסומן כלא זמין'
-                : 'תתחיל לקבל התראות על משלוחים חדשים'}
-            </p>
-            <div className="flex gap-3">
+
+            <div className="flex gap-3 mt-2">
               <button
                 onClick={() => setShowAvailConfirm(false)}
-                className="flex-1 py-3 rounded-xl font-bold text-[14px]"
-                style={{ background: '#f0f4f8', color: '#8898aa' }}
+                className="flex-1 py-3.5 rounded-2xl font-bold text-[14px]"
+                style={{ background: '#F4F4F4', color: '#757575' }}
               >
                 ביטול
               </button>
               <button
                 onClick={confirmToggleAvailability}
-                className="flex-1 py-3 rounded-xl font-bold text-[14px] text-white"
-                style={{ background: isAvailable ? '#ef4444' : '#10b981' }}
+                className="flex-1 py-3.5 rounded-2xl font-bold text-[14px] text-white"
+                style={{ background: isAvailable ? '#E23437' : '#1BA672' }}
               >
                 {isAvailable ? 'אשר — לא זמין' : 'אשר — זמין'}
               </button>

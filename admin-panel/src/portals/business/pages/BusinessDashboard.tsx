@@ -7,12 +7,15 @@ import {
   getBusiness,
   getDeliveries,
   getOrCreateConversation,
+  updateDelivery,
   type StoredDelivery,
 } from '../../../services/storage.service';
-import { syncDeliveriesDown } from '../../../services/sync.service';
+import { syncDeliveriesDown, getCandidates, rejectCandidate, acceptCandidate, type DeliveryCandidate } from '../../../services/sync.service';
 import { TruckIcon, PlusIcon, ChevronLeftIcon, XMarkIcon, ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline';
+import toast from 'react-hot-toast';
 
-const BLUE = '#009DE0';
+const BLUE  = '#009DE0';
+const GREEN = '#1BA672';
 
 const STATUS_LABEL: Record<StoredDelivery['status'], string> = {
   scheduled: '📅 מתוזמן',
@@ -38,6 +41,155 @@ function formatTime(iso: string): string {
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' });
 }
+
+// ─── Candidate review sheet ───────────────────────────────────────────────────
+const CandidateReviewSheet: React.FC<{
+  deliveryId: string;
+  businessId: string;
+  onClose: () => void;
+  onAccepted: () => void;
+}> = ({ deliveryId, businessId, onClose, onAccepted }) => {
+  const navigate = useNavigate();
+  const [candidates, setCandidates] = useState<DeliveryCandidate[]>([]);
+  const [loading, setLoading] = useState(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const refresh = async () => {
+    // 1. Fetch waiting candidates
+    const list = await getCandidates(deliveryId);
+
+    // 2. Auto-reject stale heartbeats (> 60s old)
+    const STALE_MS = 60_000;
+    const now = Date.now();
+    for (const c of list) {
+      if (now - new Date(c.lastHeartbeat).getTime() > STALE_MS) {
+        await rejectCandidate(deliveryId, c.courierId);
+      }
+    }
+    // Re-fetch after auto-rejects
+    const fresh = await getCandidates(deliveryId);
+    setCandidates(fresh);
+  };
+
+  useEffect(() => {
+    refresh();
+    intervalRef.current = setInterval(refresh, 4000);
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deliveryId]);
+
+  const top = candidates[0] ?? null;
+
+  const handleAccept = async () => {
+    if (!top) return;
+    setLoading(true);
+    await acceptCandidate(deliveryId, top.courierId);
+    // Update delivery in local storage + Supabase
+    updateDelivery(deliveryId, {
+      status: 'accepted',
+      courierId: top.courierId,
+      courierName: top.courierName,
+      acceptedAt: new Date().toISOString(),
+    });
+    // Open or create chat conversation
+    const conv = getOrCreateConversation(businessId, top.courierId);
+    setLoading(false);
+    onAccepted();
+    navigate(`/business/chat?convId=${conv.id}&deliveryId=${deliveryId}`);
+    onClose();
+  };
+
+  const handleReject = async () => {
+    if (!top) return;
+    await rejectCandidate(deliveryId, top.courierId);
+    await refresh();
+    toast.success('הועבר למועמד הבא');
+  };
+
+  const vehicleEmoji = (v: string) =>
+    v === 'motorcycle' ? '🏍️' : v === 'bicycle' ? '🚲' : v === 'scooter' ? '🛵' : '🚗';
+
+  return (
+    <div className="fixed inset-0 z-[150] flex items-end justify-center" style={{ background: 'rgba(0,0,0,0.5)' }}>
+      <div className="w-full max-w-lg rounded-t-3xl pb-8 pt-2 px-5" style={{ background: '#fff' }} dir="rtl">
+        <div className="w-10 h-1 rounded-full mx-auto my-3" style={{ background: '#E8E8E8' }} />
+
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-[17px] font-black" style={{ color: '#202125' }}>
+            {candidates.length === 0 ? '🔍 מחפש שליחים...' : `🏍️ שליח מגיע! (${candidates.length} מועמדים)`}
+          </h2>
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100">
+            <XMarkIcon className="w-5 h-5" style={{ color: '#757575' }} />
+          </button>
+        </div>
+
+        {candidates.length === 0 ? (
+          <div className="py-8 text-center">
+            <div className="text-[40px] mb-3 animate-pulse">🔍</div>
+            <p className="text-[15px] font-bold" style={{ color: '#202125' }}>מחפש שליחים זמינים...</p>
+            <p className="text-[12px] mt-1" style={{ color: '#757575' }}>ההודעה נשלחה לכל השליחים הזמינים</p>
+          </div>
+        ) : top ? (
+          <>
+            {/* Queue counter */}
+            {candidates.length > 1 && (
+              <div className="flex gap-1.5 mb-4 justify-center">
+                {candidates.map((_, i) => (
+                  <div key={i} className="h-1.5 rounded-full flex-1" style={{ background: i === 0 ? BLUE : '#E8E8E8', maxWidth: 40 }} />
+                ))}
+              </div>
+            )}
+
+            {/* Top candidate card */}
+            <div className="rounded-2xl p-4 mb-4" style={{ background: '#F4F4F4', border: `2px solid ${BLUE}30` }}>
+              <div className="flex items-center gap-3">
+                {/* Avatar */}
+                <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-white text-[22px] font-black flex-shrink-0"
+                  style={{ background: `linear-gradient(135deg, ${BLUE}, #0077a8)` }}>
+                  {top.courierName.charAt(0)}
+                </div>
+                <div className="flex-1">
+                  <p className="font-black text-[17px]" style={{ color: '#202125' }}>{top.courierName}</p>
+                  {/* Stars */}
+                  <div className="flex items-center gap-1 mt-0.5">
+                    {[1,2,3,4,5].map(i => (
+                      <span key={i} style={{ color: i <= Math.round(top.courierRating) ? '#F58F1F' : '#E8E8E8', fontSize: 14 }}>★</span>
+                    ))}
+                    <span className="text-[11px] mr-1" style={{ color: '#757575' }}>{top.courierRating.toFixed(1)}</span>
+                  </div>
+                  <p className="text-[12px] mt-0.5" style={{ color: '#757575' }}>
+                    {vehicleEmoji(top.courierVehicle)} · ממתין{' '}
+                    {Math.round((Date.now() - new Date(top.joinedAt).getTime()) / 1000)} שניות
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3">
+              <button
+                onClick={handleReject}
+                disabled={loading}
+                className="flex-1 py-3.5 rounded-2xl font-bold text-[14px] transition-all active:scale-95 disabled:opacity-50"
+                style={{ background: '#F4F4F4', color: '#757575' }}
+              >
+                {candidates.length > 1 ? `⏭️ הבא בתור (${candidates.length - 1})` : '❌ דחה'}
+              </button>
+              <button
+                onClick={handleAccept}
+                disabled={loading}
+                className="flex-2 flex-1 py-3.5 rounded-2xl font-black text-[15px] text-white transition-all active:scale-95 disabled:opacity-50"
+                style={{ background: GREEN, boxShadow: `0 6px 20px ${GREEN}40` }}
+              >
+                ✅ בחר שליח זה
+              </button>
+            </div>
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+};
 
 // ─── Live tracking status sheet ──────────────────────────────────────────────
 const STEPS: Array<{ status: StoredDelivery['status']; label: string; emoji: string }> = [
@@ -381,14 +533,28 @@ const BusinessDashboard: React.FC = () => {
         )}
       </div>
 
-      {/* ── Live delivery tracking sheet ── */}
-      {trackingId && businessId && (
-        <TrackingSheet
-          deliveryId={trackingId}
-          businessId={businessId}
-          onClose={() => setSearchParams({})}
-        />
-      )}
+      {/* ── Live delivery tracking / candidate review sheet ── */}
+      {trackingId && businessId && (() => {
+        const d = deliveries.find(x => x.id === trackingId);
+        if (!d) return null;
+        if (d.status === 'pending' || d.status === 'scheduled') {
+          return (
+            <CandidateReviewSheet
+              deliveryId={trackingId}
+              businessId={businessId}
+              onClose={() => setSearchParams({})}
+              onAccepted={() => setSearchParams({})}
+            />
+          );
+        }
+        return (
+          <TrackingSheet
+            deliveryId={trackingId}
+            businessId={businessId}
+            onClose={() => setSearchParams({})}
+          />
+        );
+      })()}
     </div>
   );
 };

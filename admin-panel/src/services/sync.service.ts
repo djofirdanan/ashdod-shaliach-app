@@ -617,3 +617,112 @@ export async function getCourierLocationFromDB(courierId: string): Promise<{ lat
     return null;
   }
 }
+
+// ─── Delivery Candidates Queue ─────────────────────────────────
+
+export interface DeliveryCandidate {
+  id: string;
+  deliveryId: string;
+  courierId: string;
+  courierName: string;
+  courierRating: number;
+  courierVehicle: string;
+  joinedAt: string;
+  lastHeartbeat: string;
+  status: 'waiting' | 'rejected' | 'accepted';
+}
+
+function dbToCandidate(row: Record<string, unknown>): DeliveryCandidate {
+  return {
+    id: row.id as string,
+    deliveryId: row.delivery_id as string,
+    courierId: row.courier_id as string,
+    courierName: row.courier_name as string,
+    courierRating: Number(row.courier_rating ?? 5),
+    courierVehicle: (row.courier_vehicle as string) || 'motorcycle',
+    joinedAt: row.joined_at as string,
+    lastHeartbeat: row.last_heartbeat as string,
+    status: (row.status as 'waiting' | 'rejected' | 'accepted') || 'waiting',
+  };
+}
+
+/** Fetch waiting candidates for a delivery, ordered by joined_at */
+export async function getCandidates(deliveryId: string): Promise<DeliveryCandidate[]> {
+  const { data } = await supabase
+    .from('delivery_candidates')
+    .select('*')
+    .eq('delivery_id', deliveryId)
+    .eq('status', 'waiting')
+    .order('joined_at', { ascending: true });
+  return data ? data.map(dbToCandidate) : [];
+}
+
+/** Courier joins the candidates queue for a delivery */
+export async function joinCandidatesQueue(
+  deliveryId: string,
+  courierId: string,
+  courierName: string,
+  courierRating: number,
+  courierVehicle: string,
+): Promise<void> {
+  const { error } = await supabase.from('delivery_candidates').upsert({
+    delivery_id: deliveryId,
+    courier_id: courierId,
+    courier_name: courierName,
+    courier_rating: courierRating,
+    courier_vehicle: courierVehicle,
+    joined_at: new Date().toISOString(),
+    last_heartbeat: new Date().toISOString(),
+    status: 'waiting',
+  }, { onConflict: 'delivery_id,courier_id' });
+  if (error) console.error('[sync] joinCandidatesQueue error:', error.message);
+}
+
+/** Courier pings to say "I'm still here" */
+export async function pingCandidateHeartbeat(deliveryId: string, courierId: string): Promise<void> {
+  await supabase
+    .from('delivery_candidates')
+    .update({ last_heartbeat: new Date().toISOString() })
+    .eq('delivery_id', deliveryId)
+    .eq('courier_id', courierId)
+    .eq('status', 'waiting');
+}
+
+/** Business rejects the current top candidate */
+export async function rejectCandidate(deliveryId: string, courierId: string): Promise<void> {
+  await supabase
+    .from('delivery_candidates')
+    .update({ status: 'rejected' })
+    .eq('delivery_id', deliveryId)
+    .eq('courier_id', courierId);
+}
+
+/** Business accepts a candidate — also rejects everyone else */
+export async function acceptCandidate(deliveryId: string, courierId: string): Promise<void> {
+  await supabase
+    .from('delivery_candidates')
+    .update({ status: 'accepted' })
+    .eq('delivery_id', deliveryId)
+    .eq('courier_id', courierId);
+  // Reject all other waiting candidates
+  await supabase
+    .from('delivery_candidates')
+    .update({ status: 'rejected' })
+    .eq('delivery_id', deliveryId)
+    .eq('status', 'waiting')
+    .neq('courier_id', courierId);
+}
+
+/** Get a single courier's candidacy status for a delivery */
+export async function getCandidacyStatus(
+  deliveryId: string,
+  courierId: string,
+): Promise<'waiting' | 'rejected' | 'accepted' | null> {
+  const { data } = await supabase
+    .from('delivery_candidates')
+    .select('status')
+    .eq('delivery_id', deliveryId)
+    .eq('courier_id', courierId)
+    .single();
+  return data ? (data.status as 'waiting' | 'rejected' | 'accepted') : null;
+}
