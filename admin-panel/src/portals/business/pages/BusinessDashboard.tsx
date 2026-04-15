@@ -1,176 +1,394 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../../../store';
 import {
   getDeliveriesByBusiness,
   getBusiness,
+  getDeliveries,
+  getOrCreateConversation,
   type StoredDelivery,
 } from '../../../services/storage.service';
-import { TruckIcon, PlusCircleIcon } from '@heroicons/react/24/outline';
+import { syncDeliveriesDown } from '../../../services/sync.service';
+import { TruckIcon, PlusIcon, ChevronLeftIcon, XMarkIcon, ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline';
 
-const statusLabel: Record<StoredDelivery['status'], string> = {
+const BLUE = '#009DE0';
+
+const STATUS_LABEL: Record<StoredDelivery['status'], string> = {
   scheduled: '📅 מתוזמן',
-  pending: 'ממתין לשליח',
-  accepted: 'שליח בדרך לאיסוף',
+  pending:   'ממתין לשליח',
+  accepted:  'שליח בדרך לאיסוף',
   picked_up: 'בדרך ללקוח',
-  delivered: 'נמסר',
+  delivered: 'נמסר ✓',
   cancelled: 'בוטל',
 };
 
-const statusColor: Record<StoredDelivery['status'], string> = {
-  scheduled: '#6366f1',
-  pending: '#8898aa',
-  accepted: '#533afd',
-  picked_up: '#f59e0b',
-  delivered: '#10b981',
-  cancelled: '#ef4444',
+const STATUS_COLOR: Record<StoredDelivery['status'], { bg: string; text: string }> = {
+  scheduled: { bg: '#EEF2FF', text: '#6366F1' },
+  pending:   { bg: '#F4F4F4', text: '#757575' },
+  accepted:  { bg: '#EAF7FD', text: BLUE },
+  picked_up: { bg: '#FFF8E6', text: '#F58F1F' },
+  delivered: { bg: '#E8F8F0', text: '#1BA672' },
+  cancelled: { bg: '#FFF0F0', text: '#E23437' },
 };
 
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+}
 function formatDate(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return new Date(iso).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' });
 }
 
+// ─── Live tracking status sheet ──────────────────────────────────────────────
+const STEPS: Array<{ status: StoredDelivery['status']; label: string; emoji: string }> = [
+  { status: 'pending',   label: 'מחפש שליח...',        emoji: '🔍' },
+  { status: 'accepted',  label: 'שליח בדרך לאיסוף',   emoji: '🏍️' },
+  { status: 'picked_up', label: 'בדרך אליך',           emoji: '📦' },
+  { status: 'delivered', label: 'נמסר בהצלחה! ✅',    emoji: '🎉' },
+];
+const STEP_ORDER: StoredDelivery['status'][] = ['pending', 'accepted', 'picked_up', 'delivered'];
+
+const TrackingSheet: React.FC<{
+  deliveryId: string;
+  businessId: string;
+  onClose: () => void;
+}> = ({ deliveryId, businessId, onClose }) => {
+  const navigate  = useNavigate();
+  const [delivery, setDelivery] = useState<StoredDelivery | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const fetchDelivery = async () => {
+    await syncDeliveriesDown().catch(() => {});
+    const d = getDeliveries().find(x => x.id === deliveryId) ?? null;
+    setDelivery(d);
+    if (d?.status === 'delivered' || d?.status === 'cancelled') {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    }
+  };
+
+  useEffect(() => {
+    fetchDelivery();
+    intervalRef.current = setInterval(fetchDelivery, 3000);
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [deliveryId]);
+
+  if (!delivery) return null;
+
+  const isDone      = delivery.status === 'delivered' || delivery.status === 'cancelled';
+  const isCancelled = delivery.status === 'cancelled';
+  const currentIdx  = STEP_ORDER.indexOf(delivery.status as StoredDelivery['status']);
+
+  const handleOpenChat = () => {
+    if (!delivery.courierId) return;
+    const conv = getOrCreateConversation(businessId, delivery.courierId);
+    navigate(`/business/chat?convId=${conv.id}&deliveryId=${deliveryId}`);
+    onClose();
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[150] flex items-end justify-center"
+      style={{ background: 'rgba(0,0,0,0.5)' }}
+    >
+      <div
+        className="w-full max-w-lg rounded-t-3xl pb-8 pt-2 px-5"
+        style={{ background: '#fff', animation: 'slideUp 0.35s cubic-bezier(0.34,1.56,0.64,1)' }}
+        dir="rtl"
+      >
+        <style>{`@keyframes slideUp { from { transform: translateY(100%); opacity:0 } to { transform: translateY(0); opacity:1 } }`}</style>
+
+        {/* Handle bar */}
+        <div className="w-10 h-1 rounded-full mx-auto my-3" style={{ background: '#E8E8E8' }} />
+
+        {/* Close */}
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-[17px] font-black" style={{ color: '#202125' }}>
+            {isCancelled ? '❌ המשלוח בוטל' : isDone ? '🎉 נמסר בהצלחה!' : '📡 עוקב אחר המשלוח'}
+          </h2>
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100 transition-colors">
+            <XMarkIcon className="w-5 h-5" style={{ color: '#757575' }} />
+          </button>
+        </div>
+
+        {/* Delivery summary */}
+        <div
+          className="rounded-2xl p-3 mb-4 space-y-1"
+          style={{ background: '#F4F4F4' }}
+        >
+          <p className="text-[12px]" style={{ color: '#757575' }}>
+            📍 <span className="font-semibold" style={{ color: '#202125' }}>{delivery.dropAddress}</span>
+          </p>
+          <p className="text-[12px]" style={{ color: '#757575' }}>
+            💰 <span className="font-bold" style={{ color: BLUE }}>₪{delivery.price}</span>
+            {delivery.courierName && (
+              <> &nbsp;·&nbsp; 🧑‍✈️ <span style={{ color: '#202125' }}>{delivery.courierName}</span></>
+            )}
+          </p>
+        </div>
+
+        {/* Steps */}
+        {!isCancelled && (
+          <div className="space-y-3 mb-5">
+            {STEPS.map((step, idx) => {
+              const done    = currentIdx >= idx;
+              const active  = currentIdx === idx;
+              return (
+                <div key={step.status} className="flex items-center gap-3">
+                  {/* Circle */}
+                  <div
+                    className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-[16px] transition-all"
+                    style={{
+                      background: done ? BLUE : '#E8E8E8',
+                      boxShadow: active ? `0 0 0 4px ${BLUE}30` : undefined,
+                      animation: active ? 'pulse 1.5s infinite' : undefined,
+                    }}
+                  >
+                    {done ? (active ? step.emoji : '✓') : <span style={{ opacity: 0.3 }}>{step.emoji}</span>}
+                  </div>
+                  {/* Label */}
+                  <div className="flex-1">
+                    <p
+                      className="text-[14px] font-bold"
+                      style={{ color: done ? '#202125' : '#AAAAAA' }}
+                    >
+                      {step.label}
+                    </p>
+                    {active && step.status === 'pending' && (
+                      <p className="text-[11px] mt-0.5" style={{ color: '#757575' }}>
+                        מחפש שליח זמין בסביבה...
+                      </p>
+                    )}
+                    {active && step.status === 'accepted' && delivery.courierName && (
+                      <p className="text-[11px] mt-0.5" style={{ color: '#757575' }}>
+                        {delivery.courierName} מגיע לאיסוף
+                      </p>
+                    )}
+                  </div>
+                  {/* Connection line */}
+                  {idx < STEPS.length - 1 && (
+                    <div className="absolute" style={{ display: 'none' }} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="space-y-2">
+          {delivery.courierId && !isDone && (
+            <button
+              onClick={handleOpenChat}
+              className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-white flex items-center justify-center gap-2 transition-all active:scale-95"
+              style={{ background: BLUE, boxShadow: `0 6px 20px ${BLUE}30` }}
+            >
+              <ChatBubbleLeftRightIcon className="w-5 h-5" />
+              פתח צ׳אט עם השליח
+            </button>
+          )}
+          <button
+            onClick={() => { onClose(); navigate('/business/deliveries'); }}
+            className="w-full py-3 rounded-2xl font-semibold text-[13px] transition-all active:scale-95"
+            style={{ background: '#F4F4F4', color: '#757575' }}
+          >
+            {isDone ? 'סגור' : 'הסתר ועקוב מהרקע'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const BusinessDashboard: React.FC = () => {
-  const navigate = useNavigate();
+  const navigate        = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const user = useSelector((s: RootState) => s.auth.user);
 
-  const token = localStorage.getItem('admin_token') ?? '';
+  const token      = localStorage.getItem('admin_token') ?? '';
   const businessId = token.startsWith('business-') ? token.replace('business-', '') : '';
 
+  // Live tracking sheet
+  const trackingId = searchParams.get('tracking');
+
   const [deliveries, setDeliveries] = useState<StoredDelivery[]>([]);
-  const [balance, setBalance] = useState(0);
+  const [balance,    setBalance]    = useState(0);
+  const [bizName,    setBizName]    = useState('');
 
   useEffect(() => {
     if (!businessId) return;
-    const d = getDeliveriesByBusiness(businessId);
-    setDeliveries(d);
+    const d   = getDeliveriesByBusiness(businessId);
     const biz = getBusiness(businessId);
+    setDeliveries(d);
     setBalance(biz?.balance ?? 0);
+    if (biz?.businessName) setBizName(biz.businessName);
   }, [businessId]);
 
-  const activeCount = deliveries.filter((d) =>
-    ['pending', 'accepted', 'picked_up'].includes(d.status)
-  ).length;
-  const recent = [...deliveries].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 5);
+  const activeCount = deliveries.filter(d => ['pending','accepted','picked_up'].includes(d.status)).length;
+  const doneCount   = deliveries.filter(d => d.status === 'delivered').length;
+  const recent      = [...deliveries].sort((a,b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 6);
+
+  const displayName = bizName || user?.name || 'עסק';
 
   return (
-    <div className="max-w-lg mx-auto px-4 py-5 space-y-5">
-      {/* Welcome card */}
+    <div className="max-w-lg mx-auto" dir="rtl">
+
+      {/* ── Hero greeting banner ── */}
       <div
-        className="rounded-2xl p-5 text-white relative overflow-hidden"
-        style={{ background: 'linear-gradient(135deg, #533afd, #ea2261)', boxShadow: '0 8px 24px rgba(83,58,253,0.30)' }}
+        className="px-5 pt-6 pb-7"
+        style={{ background: BLUE }}
       >
-        <div
-          className="absolute rounded-full pointer-events-none"
-          style={{ top: -40, left: -40, width: 160, height: 160, background: 'rgba(255,255,255,0.08)' }}
-        />
-        <p className="text-white/70 text-[12px] font-semibold mb-1">ברוך הבא</p>
-        <h1 className="text-white text-[22px] font-black mb-4">{user?.name ?? 'עסק'}</h1>
+        <p className="text-white/80 text-[13px] font-medium mb-1">שלום,</p>
+        <h1 className="text-white text-[24px] font-black mb-5">{displayName} 👋</h1>
+
+        {/* Quick-action card */}
         <button
           onClick={() => navigate('/business/new-delivery')}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-[13px] transition-all active:scale-95"
-          style={{ background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.35)' }}
+          className="w-full flex items-center gap-4 p-4 rounded-2xl transition-all active:scale-[0.98]"
+          style={{ background: 'rgba(255,255,255,0.18)', border: '1.5px solid rgba(255,255,255,0.35)' }}
         >
-          <PlusCircleIcon className="w-5 h-5" />
-          בקש משלוח חדש
+          <div
+            className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
+            style={{ background: '#FFFFFF' }}
+          >
+            <PlusIcon className="w-6 h-6" style={{ color: BLUE }} />
+          </div>
+          <div className="flex-1 text-right">
+            <p className="text-white font-black text-[16px]">בקש משלוח חדש</p>
+            <p className="text-white/70 text-[12px]">שליח יאסוף תוך דקות</p>
+          </div>
+          <ChevronLeftIcon className="w-5 h-5 text-white/60" />
         </button>
       </div>
 
-      {/* Stats row */}
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          { label: 'סה"כ משלוחים', value: deliveries.length },
-          { label: 'פעילים', value: activeCount, color: '#533afd' },
-          { label: 'יתרה ₪', value: balance.toFixed(0), color: '#10b981' },
-        ].map((s) => (
-          <div
-            key={s.label}
-            className="rounded-2xl p-3 text-center"
-            style={{ background: '#fff', border: '1px solid #e8ecf0', boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}
-          >
-            <p className="text-[20px] font-black" style={{ color: s.color ?? '#061b31' }}>
-              {s.value}
-            </p>
-            <p className="text-[10px] mt-1" style={{ color: '#8898aa' }}>{s.label}</p>
-          </div>
-        ))}
+      {/* ── Stats row ── */}
+      <div className="px-4 -mt-3">
+        <div
+          className="grid grid-cols-3 gap-3 rounded-2xl p-4"
+          style={{ background: '#FFFFFF', boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }}
+        >
+          {[
+            { label: 'סה"כ',    value: deliveries.length, color: '#202125' },
+            { label: 'פעילים',  value: activeCount,        color: BLUE      },
+            { label: 'הושלמו',  value: doneCount,          color: '#1BA672' },
+          ].map(s => (
+            <div key={s.label} className="text-center">
+              <p className="text-[22px] font-black" style={{ color: s.color }}>{s.value}</p>
+              <p className="text-[11px] mt-0.5" style={{ color: '#AAAAAA' }}>{s.label}</p>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* Recent deliveries */}
-      <div>
+      {/* ── Balance chip ── */}
+      {balance !== 0 && (
+        <div className="px-4 mt-3">
+          <div
+            className="flex items-center justify-between px-4 py-3 rounded-2xl"
+            style={{ background: '#FFFFFF', border: '1px solid #E8E8E8' }}
+          >
+            <p className="text-[13px] font-semibold" style={{ color: '#757575' }}>יתרת חשבון</p>
+            <p
+              className="text-[18px] font-black"
+              style={{ color: balance >= 0 ? '#1BA672' : '#E23437' }}
+            >
+              ₪{balance.toFixed(0)}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Recent deliveries ── */}
+      <div className="px-4 mt-5 pb-6">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-[15px] font-black" style={{ color: '#061b31' }}>משלוחים אחרונים</h2>
+          <h2 className="text-[17px] font-black" style={{ color: '#202125' }}>משלוחים אחרונים</h2>
           {deliveries.length > 0 && (
             <button
               onClick={() => navigate('/business/deliveries')}
-              className="text-[12px] font-semibold"
-              style={{ color: '#533afd' }}
+              className="text-[13px] font-semibold flex items-center gap-0.5"
+              style={{ color: BLUE }}
             >
               הכל
+              <ChevronLeftIcon className="w-4 h-4" />
             </button>
           )}
         </div>
 
         {deliveries.length === 0 ? (
+          /* Empty state */
           <div
-            className="rounded-2xl p-8 flex flex-col items-center gap-3 text-center"
-            style={{ background: '#fff', border: '1px solid #e8ecf0' }}
+            className="rounded-2xl p-8 flex flex-col items-center gap-4 text-center"
+            style={{ background: '#FFFFFF', border: '1px solid #E8E8E8' }}
           >
             <div
-              className="w-14 h-14 rounded-2xl flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, #533afd22, #ea226122)' }}
+              className="w-16 h-16 rounded-full flex items-center justify-center"
+              style={{ background: '#EAF7FD' }}
             >
-              <TruckIcon className="w-7 h-7" style={{ color: '#533afd' }} />
+              <TruckIcon className="w-8 h-8" style={{ color: BLUE }} />
             </div>
             <div>
-              <p className="font-bold text-[15px]" style={{ color: '#061b31' }}>אין משלוחים עדיין</p>
-              <p className="text-[12px] mt-1" style={{ color: '#8898aa' }}>הזמן את המשלוח הראשון שלך</p>
+              <p className="font-black text-[16px]" style={{ color: '#202125' }}>אין משלוחים עדיין</p>
+              <p className="text-[13px] mt-1" style={{ color: '#757575' }}>הזמן את המשלוח הראשון שלך</p>
             </div>
             <button
               onClick={() => navigate('/business/new-delivery')}
-              className="mt-1 px-5 py-2.5 rounded-xl text-white text-[13px] font-bold transition-all active:scale-95"
-              style={{ background: 'linear-gradient(135deg, #533afd, #ea2261)' }}
+              className="px-6 py-3 rounded-2xl text-white font-bold text-[14px] transition-all active:scale-95"
+              style={{ background: BLUE }}
             >
               בקש משלוח ראשון
             </button>
           </div>
         ) : (
-          <div className="space-y-2">
-            {recent.map((d) => (
-              <div
-                key={d.id}
-                className="rounded-2xl p-4"
-                style={{ background: '#fff', border: '1px solid #e8ecf0', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span
-                    className="text-[11px] font-bold px-2 py-0.5 rounded-full"
-                    style={{ background: statusColor[d.status] + '18', color: statusColor[d.status] }}
-                  >
-                    {statusLabel[d.status]}
-                  </span>
-                  <span className="text-[11px]" style={{ color: '#8898aa' }}>
-                    {formatDate(d.createdAt)}
-                  </span>
-                </div>
-                <p className="text-[13px] font-semibold" style={{ color: '#061b31' }}>
-                  {d.dropAddress}
-                </p>
-                {d.courierName && (
-                  <p className="text-[11px] mt-1" style={{ color: '#8898aa' }}>
-                    שליח: {d.courierName}
+          <div className="space-y-3">
+            {recent.map(d => {
+              const sc = STATUS_COLOR[d.status];
+              return (
+                <div
+                  key={d.id}
+                  className="rounded-2xl p-4"
+                  style={{ background: '#FFFFFF', border: '1px solid #E8E8E8', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}
+                >
+                  {/* Row 1: status + time */}
+                  <div className="flex items-center justify-between mb-2.5">
+                    <span
+                      className="text-[11px] font-bold px-2.5 py-1 rounded-full"
+                      style={{ background: sc.bg, color: sc.text }}
+                    >
+                      {STATUS_LABEL[d.status]}
+                    </span>
+                    <span className="text-[11px]" style={{ color: '#AAAAAA' }}>
+                      {formatDate(d.createdAt)} • {formatTime(d.createdAt)}
+                    </span>
+                  </div>
+
+                  {/* Row 2: address */}
+                  <p className="text-[14px] font-semibold" style={{ color: '#202125' }}>
+                    📍 {d.dropAddress}
                   </p>
-                )}
-                <p className="text-[13px] font-bold mt-1.5" style={{ color: '#533afd' }}>
-                  ₪{d.price}
-                </p>
-              </div>
-            ))}
+
+                  {/* Row 3: courier + price */}
+                  <div className="flex items-center justify-between mt-2">
+                    <p className="text-[12px]" style={{ color: '#757575' }}>
+                      {d.courierName ? `שליח: ${d.courierName}` : 'ממתין לשליח'}
+                    </p>
+                    <p className="text-[15px] font-black" style={{ color: BLUE }}>
+                      ₪{d.price}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
+
+      {/* ── Live delivery tracking sheet ── */}
+      {trackingId && businessId && (
+        <TrackingSheet
+          deliveryId={trackingId}
+          businessId={businessId}
+          onClose={() => setSearchParams({})}
+        />
+      )}
     </div>
   );
 };

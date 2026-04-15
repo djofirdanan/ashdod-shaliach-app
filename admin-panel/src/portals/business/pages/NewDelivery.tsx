@@ -16,6 +16,15 @@ import {
 } from '@heroicons/react/24/outline';
 import { DEFAULT_PRICING_ZONES } from '../../../utils/constants';
 
+// ── Wolt design tokens ──────────────────────────────────────────────────────
+const BLUE    = '#009DE0';
+const BG      = '#F4F4F4';
+const CARD_BG = '#FFFFFF';
+const TEXT    = '#202125';
+const TEXT2   = '#757575';
+const BORDER  = '#E8E8E8';
+const SUCCESS = '#1BA672';
+
 // Vehicle type options
 const VEHICLE_OPTIONS = [
   { value: '', label: 'כל כלי רכב', icon: '🚗🛵🚲', desc: 'כל שליח יכול לקחת' },
@@ -38,10 +47,10 @@ const inputStyle: React.CSSProperties = {
   width: '100%',
   padding: '12px 14px',
   borderRadius: '12px',
-  border: '1px solid #e8ecf0',
+  border: `1px solid ${BORDER}`,
   fontSize: '14px',
-  color: '#061b31',
-  background: '#f6f9fc',
+  color: TEXT,
+  background: BG,
   outline: 'none',
   direction: 'rtl',
 };
@@ -49,9 +58,17 @@ const inputStyle: React.CSSProperties = {
 const labelStyle: React.CSSProperties = {
   fontSize: '12px',
   fontWeight: 700,
-  color: '#8898aa',
+  color: TEXT2,
   marginBottom: '6px',
   display: 'block',
+};
+
+const cardStyle: React.CSSProperties = {
+  background: CARD_BG,
+  border: `1px solid ${BORDER}`,
+  borderRadius: '16px',
+  padding: '20px',
+  boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
 };
 
 // Load pricing zones
@@ -139,7 +156,7 @@ const NewDelivery: React.FC = () => {
       const isNow = !isScheduled;
 
       // Add delivery record
-      addDelivery({
+      const newDelivery = addDelivery({
         businessId,
         businessName,
         pickupAddress: pickupAddress.trim(),
@@ -168,14 +185,14 @@ const NewDelivery: React.FC = () => {
           paymentMethod,
           customerPaid,
         });
-        toast.success('המשלוח נשלח! שליח יאסוף בקרוב 🚀');
       } else {
         const dt = new Date(scheduledAt!);
         const formatted = dt.toLocaleString('he-IL', { weekday: 'short', hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
         toast.success(`המשלוח תוזמן ל-${formatted} ✅`);
       }
 
-      navigate('/business/deliveries');
+      // Navigate to dashboard with tracking param so the live-status sheet opens
+      navigate(`/business/dashboard?tracking=${newDelivery.id}`);
     } catch (err) {
       console.error(err);
       toast.error('שגיאה בשליחת הבקשה');
@@ -187,302 +204,391 @@ const NewDelivery: React.FC = () => {
   const displayPrice = price ? `₪${price}` : 'בחר אזור לחישוב אוטומטי';
 
   return (
-    <div className="max-w-lg mx-auto px-4 py-5 pb-10">
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <div
-          className="w-10 h-10 rounded-2xl flex items-center justify-center"
-          style={{ background: 'linear-gradient(135deg, #533afd, #ea2261)' }}
-        >
-          <TruckIcon className="w-5 h-5 text-white" />
-        </div>
-        <div>
-          <h1 className="text-[20px] font-black" style={{ color: '#061b31' }}>בקשת משלוח חדשה</h1>
-          <p className="text-[12px]" style={{ color: '#8898aa' }}>מלא את פרטי המשלוח</p>
-        </div>
-      </div>
+    <div style={{ background: BG, minHeight: '100vh', padding: '0 0 40px' }}>
+      <div style={{ maxWidth: 520, margin: '0 auto', padding: '20px 16px 0' }}>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-
-        {/* ── Addresses ── */}
-        <div
-          className="rounded-2xl p-5 space-y-4"
-          style={{ background: '#fff', border: '1px solid #e8ecf0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}
-        >
-          <p className="text-[13px] font-black" style={{ color: '#061b31' }}>📍 כתובות</p>
-          <div>
-            <label style={labelStyle}>כתובת איסוף *</label>
-            <input style={inputStyle} placeholder="רחוב, עיר" value={pickupAddress} onChange={e => setPickupAddress(e.target.value)} required />
+        {/* ── Header ── */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+          <div
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 14,
+              background: BLUE,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <TruckIcon style={{ width: 22, height: 22, color: '#fff' }} />
           </div>
           <div>
-            <label style={labelStyle}>כתובת מסירה *</label>
-            <input style={inputStyle} placeholder="לאן לשלוח?" value={dropAddress} onChange={e => setDropAddress(e.target.value)} required />
+            <h1 style={{ fontSize: 20, fontWeight: 900, color: TEXT, margin: 0 }}>בקשת משלוח חדשה</h1>
+            <p style={{ fontSize: 12, color: TEXT2, margin: 0 }}>מלא את פרטי המשלוח</p>
           </div>
         </div>
 
-        {/* ── Vehicle type ── */}
-        <div
-          className="rounded-2xl p-5"
-          style={{ background: '#fff', border: '1px solid #e8ecf0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}
-        >
-          <p className="text-[13px] font-black mb-3" style={{ color: '#061b31' }}>🛵 סוג כלי רכב נדרש</p>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {VEHICLE_OPTIONS.map(opt => (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => setRequiredVehicle(opt.value)}
-                className="flex flex-col items-center gap-1 p-3 rounded-xl text-center transition-all active:scale-95"
-                style={{
-                  background: requiredVehicle === opt.value ? '#eef2ff' : '#f6f9fc',
-                  border: `1.5px solid ${requiredVehicle === opt.value ? '#533afd' : '#e8ecf0'}`,
-                }}
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          {/* ── Addresses ── */}
+          <div style={{ ...cardStyle }}>
+            <p style={{ fontSize: 13, fontWeight: 900, color: TEXT, margin: '0 0 16px' }}>📍 כתובות</p>
+            <div style={{ marginBottom: 12 }}>
+              <label style={labelStyle}>כתובת איסוף *</label>
+              <input style={inputStyle} placeholder="רחוב, עיר" value={pickupAddress} onChange={e => setPickupAddress(e.target.value)} required />
+            </div>
+            <div>
+              <label style={labelStyle}>כתובת מסירה *</label>
+              <input style={inputStyle} placeholder="לאן לשלוח?" value={dropAddress} onChange={e => setDropAddress(e.target.value)} required />
+            </div>
+          </div>
+
+          {/* ── Vehicle type ── */}
+          <div style={{ ...cardStyle }}>
+            <p style={{ fontSize: 13, fontWeight: 900, color: TEXT, margin: '0 0 12px' }}>🛵 סוג כלי רכב נדרש</p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+              {VEHICLE_OPTIONS.map(opt => {
+                const selected = requiredVehicle === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setRequiredVehicle(opt.value)}
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: 4,
+                      padding: '12px 8px',
+                      borderRadius: 12,
+                      border: `1.5px solid ${selected ? BLUE : BORDER}`,
+                      background: selected ? '#EAF7FD' : BG,
+                      cursor: 'pointer',
+                      textAlign: 'center',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    <span style={{ fontSize: 20 }}>{opt.icon}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: selected ? BLUE : TEXT }}>{opt.label}</span>
+                    <span style={{ fontSize: 10, color: TEXT2 }}>{opt.desc}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ── Zone + price ── */}
+          <div style={{ ...cardStyle }}>
+            <p style={{ fontSize: 13, fontWeight: 900, color: TEXT, margin: '0 0 12px' }}>💰 תמחור</p>
+            <div style={{ marginBottom: 12 }}>
+              <label style={labelStyle}>בחר אזור משלוח</label>
+              <select
+                style={{ ...inputStyle }}
+                value={selectedZoneId}
+                onChange={e => setSelectedZoneId(e.target.value)}
               >
-                <span className="text-[20px]">{opt.icon}</span>
-                <span className="text-[12px] font-bold" style={{ color: requiredVehicle === opt.value ? '#533afd' : '#061b31' }}>{opt.label}</span>
-                <span className="text-[10px]" style={{ color: '#8898aa' }}>{opt.desc}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* ── Zone + price ── */}
-        <div
-          className="rounded-2xl p-5 space-y-3"
-          style={{ background: '#fff', border: '1px solid #e8ecf0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}
-        >
-          <p className="text-[13px] font-black" style={{ color: '#061b31' }}>💰 תמחור</p>
-          <div>
-            <label style={labelStyle}>בחר אזור משלוח</label>
-            <select
-              style={{ ...inputStyle }}
-              value={selectedZoneId}
-              onChange={e => setSelectedZoneId(e.target.value)}
-            >
-              <option value="">— בחר אזור —</option>
-              {zones.map(z => (
-                <option key={z.id} value={z.id}>{z.name} — ₪{z.basePrice}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label style={labelStyle}>תשלום לשליח (₪) — ניתן לעריכה ידנית</label>
-            <div className="relative">
-              <input
-                style={{ ...inputStyle, direction: 'ltr', paddingRight: 36 }}
-                type="number"
-                min="0"
-                step="1"
-                placeholder="35"
-                value={price}
-                onChange={e => setPrice(e.target.value)}
-              />
-              {selectedZoneId && (
-                <span
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-[11px] font-bold"
-                  style={{ color: '#533afd' }}
-                >
-                  חישוב אוטומטי
-                </span>
+                <option value="">— בחר אזור —</option>
+                {zones.map(z => (
+                  <option key={z.id} value={z.id}>{z.name} — ₪{z.basePrice}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>תשלום לשליח (₪) — ניתן לעריכה ידנית</label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  style={{ ...inputStyle, direction: 'ltr', paddingRight: 36 }}
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="35"
+                  value={price}
+                  onChange={e => setPrice(e.target.value)}
+                />
+                {selectedZoneId && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      left: 12,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: BLUE,
+                    }}
+                  >
+                    חישוב אוטומטי
+                  </span>
+                )}
+              </div>
+              {requiredVehicle === 'bicycle' && (
+                <p style={{ fontSize: 11, marginTop: 4, color: TEXT2 }}>
+                  🚲 אופניים — הנחה של 20% על המחיר הבסיסי
+                </p>
               )}
-            </div>
-            {requiredVehicle === 'bicycle' && (
-              <p className="text-[11px] mt-1" style={{ color: '#8898aa' }}>
-                🚲 אופניים — הנחה של 20% על המחיר הבסיסי
-              </p>
-            )}
-            {requiredVehicle === 'car' && (
-              <p className="text-[11px] mt-1" style={{ color: '#8898aa' }}>
-                🚗 רכב — תוספת 25% על המחיר הבסיסי
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* ── Payment method ── */}
-        <div
-          className="rounded-2xl p-5 space-y-3"
-          style={{ background: '#fff', border: '1px solid #e8ecf0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}
-        >
-          <p className="text-[13px] font-black" style={{ color: '#061b31' }}>
-            <CreditCardIcon className="w-4 h-4 inline ml-1" />
-            אופן תשלום לשליח
-          </p>
-          <div className="flex gap-2">
-            {(['cash', 'bit'] as const).map(pm => (
-              <button
-                key={pm}
-                type="button"
-                onClick={() => setPaymentMethod(pm)}
-                className="flex-1 py-3 rounded-xl font-bold text-[13px] transition-all active:scale-95"
-                style={{
-                  background: paymentMethod === pm ? '#eef2ff' : '#f6f9fc',
-                  border: `1.5px solid ${paymentMethod === pm ? '#533afd' : '#e8ecf0'}`,
-                  color: paymentMethod === pm ? '#533afd' : '#8898aa',
-                }}
-              >
-                {pm === 'cash' ? '💵 מזומן' : '📱 ביט'}
-              </button>
-            ))}
-          </div>
-
-          <div className="pt-1">
-            <p className="text-[12px] font-bold mb-2" style={{ color: '#061b31' }}>
-              תשלום מהלקוח
-            </p>
-            <div className="flex gap-2">
-              {[
-                { value: true, label: '✅ הלקוח כבר שילם', desc: 'לא צריך לגבות' },
-                { value: false, label: '💳 שליח גובה', desc: 'גביה בעת המסירה' },
-              ].map(opt => (
-                <button
-                  key={String(opt.value)}
-                  type="button"
-                  onClick={() => setCustomerPaid(opt.value)}
-                  className="flex-1 p-3 rounded-xl text-right transition-all active:scale-95"
-                  style={{
-                    background: customerPaid === opt.value ? (opt.value ? '#f0fdf4' : '#fff7ed') : '#f6f9fc',
-                    border: `1.5px solid ${customerPaid === opt.value ? (opt.value ? '#86efac' : '#fed7aa') : '#e8ecf0'}`,
-                  }}
-                >
-                  <p className="text-[12px] font-bold" style={{ color: '#061b31' }}>{opt.label}</p>
-                  <p className="text-[10px] mt-0.5" style={{ color: '#8898aa' }}>{opt.desc}</p>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* ── Customer info ── */}
-        <div
-          className="rounded-2xl p-5 space-y-3"
-          style={{ background: '#fff', border: '1px solid #e8ecf0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}
-        >
-          <p className="text-[13px] font-black" style={{ color: '#061b31' }}>👤 פרטי לקוח (אופציונלי)</p>
-          <div>
-            <label style={labelStyle}>שם הלקוח</label>
-            <input style={inputStyle} placeholder="ישראל ישראלי" value={customerName} onChange={e => setCustomerName(e.target.value)} />
-          </div>
-          <div>
-            <label style={labelStyle}>טלפון הלקוח</label>
-            <input style={inputStyle} placeholder="050-0000000" type="tel" dir="ltr" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} />
-          </div>
-          <div>
-            <label style={labelStyle}>הערות</label>
-            <textarea
-              style={{ ...inputStyle, minHeight: 64, resize: 'none' }}
-              placeholder="פרטים נוספים..."
-              value={description}
-              onChange={e => setDescription(e.target.value)}
-            />
-          </div>
-        </div>
-
-        {/* ── Scheduled delivery ── */}
-        <div
-          className="rounded-2xl p-5"
-          style={{ background: '#fff', border: '1px solid #e8ecf0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}
-        >
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <CalendarDaysIcon className="w-4 h-4" style={{ color: '#533afd' }} />
-              <p className="text-[13px] font-black" style={{ color: '#061b31' }}>תזמון משלוח עתידי</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsScheduled(!isScheduled)}
-              className="relative w-11 h-6 rounded-full transition-colors"
-              style={{ background: isScheduled ? '#533afd' : '#e8ecf0' }}
-            >
-              <span
-                className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"
-                style={{ transform: isScheduled ? 'translateX(1.25rem)' : 'translateX(0.125rem)' }}
-              />
-            </button>
-          </div>
-
-          {isScheduled ? (
-            <div className="space-y-3">
-              <div
-                className="flex items-start gap-2 p-3 rounded-xl text-[12px]"
-                style={{ background: '#eef2ff', color: '#533afd' }}
-              >
-                <InformationCircleIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                <span>המשלוח יתוזמן ושליחים יקבלו התראה בזמן שנקבע</span>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label style={labelStyle}>תאריך</label>
-                  <input
-                    type="date"
-                    style={{ ...inputStyle, direction: 'ltr' }}
-                    min={new Date().toISOString().split('T')[0]}
-                    value={scheduledDate}
-                    onChange={e => setScheduledDate(e.target.value)}
-                    required={isScheduled}
-                  />
-                </div>
-                <div>
-                  <label style={labelStyle}>שעה</label>
-                  <input
-                    type="time"
-                    style={{ ...inputStyle, direction: 'ltr' }}
-                    value={scheduledTime}
-                    onChange={e => setScheduledTime(e.target.value)}
-                    required={isScheduled}
-                  />
-                </div>
-              </div>
-              {scheduledDate && scheduledTime && (
-                <p className="text-[12px] font-bold text-center" style={{ color: '#10b981' }}>
-                  ✅ תוזמן ל: {new Date(`${scheduledDate}T${scheduledTime}`).toLocaleString('he-IL', { weekday: 'long', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+              {requiredVehicle === 'car' && (
+                <p style={{ fontSize: 11, marginTop: 4, color: TEXT2 }}>
+                  🚗 רכב — תוספת 25% על המחיר הבסיסי
                 </p>
               )}
             </div>
-          ) : (
-            <p className="text-[12px]" style={{ color: '#8898aa' }}>
-              כבוי — המשלוח יישלח עכשיו מיד
-            </p>
-          )}
-        </div>
-
-        {/* ── Summary + submit ── */}
-        {price && (
-          <div
-            className="rounded-2xl p-4 flex items-center justify-between"
-            style={{ background: '#eef2ff', border: '1px solid #c7d2fe' }}
-          >
-            <div>
-              <p className="text-[12px] font-semibold" style={{ color: '#6366f1' }}>
-                {VEHICLE_OPTIONS.find(v => v.value === requiredVehicle)?.icon} {VEHICLE_OPTIONS.find(v => v.value === requiredVehicle)?.label || 'כל כלי רכב'}
-                {' · '}
-                {paymentMethod === 'cash' ? '💵 מזומן' : '📱 ביט'}
-                {' · '}
-                {customerPaid ? 'שולם ע"י הלקוח' : 'גביה ע"י שליח'}
-              </p>
-            </div>
-            <p className="text-[22px] font-black" style={{ color: '#533afd' }}>₪{price}</p>
           </div>
-        )}
 
-        <button
-          type="submit"
-          disabled={isLoading}
-          className="w-full py-4 rounded-2xl text-white font-black text-[15px] transition-all active:scale-95 disabled:opacity-60"
-          style={{ background: 'linear-gradient(135deg, #533afd, #ea2261)', boxShadow: '0 6px 20px rgba(83,58,253,0.30)' }}
-        >
-          {isLoading ? 'שולח...' : isScheduled ? '📅 תזמן משלוח' : '🚀 שלח בקשת משלוח'}
-        </button>
+          {/* ── Payment method ── */}
+          <div style={{ ...cardStyle }}>
+            <p style={{ fontSize: 13, fontWeight: 900, color: TEXT, margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <CreditCardIcon style={{ width: 16, height: 16, display: 'inline' }} />
+              אופן תשלום לשליח
+            </p>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+              {(['cash', 'bit'] as const).map(pm => {
+                const selected = paymentMethod === pm;
+                return (
+                  <button
+                    key={pm}
+                    type="button"
+                    onClick={() => setPaymentMethod(pm)}
+                    style={{
+                      flex: 1,
+                      padding: '12px 0',
+                      borderRadius: 12,
+                      fontWeight: 700,
+                      fontSize: 13,
+                      border: `1.5px solid ${selected ? BLUE : BORDER}`,
+                      background: selected ? '#EAF7FD' : BG,
+                      color: selected ? BLUE : TEXT2,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    {pm === 'cash' ? '💵 מזומן' : '📱 ביט'}
+                  </button>
+                );
+              })}
+            </div>
 
-        <button
-          type="button"
-          onClick={() => navigate('/business/deliveries')}
-          className="w-full py-3 rounded-2xl font-bold text-[14px] transition-all"
-          style={{ background: '#f6f9fc', color: '#8898aa' }}
-        >
-          ביטול
-        </button>
-      </form>
+            <div>
+              <p style={{ fontSize: 12, fontWeight: 700, color: TEXT, marginBottom: 8 }}>
+                תשלום מהלקוח
+              </p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {[
+                  { value: true, label: '✅ הלקוח כבר שילם', desc: 'לא צריך לגבות' },
+                  { value: false, label: '💳 שליח גובה', desc: 'גביה בעת המסירה' },
+                ].map(opt => {
+                  const selected = customerPaid === opt.value;
+                  const selectedBg  = opt.value ? '#F0FDF4' : '#FFF7ED';
+                  const selectedBdr = opt.value ? '#86EFAC' : '#FED7AA';
+                  return (
+                    <button
+                      key={String(opt.value)}
+                      type="button"
+                      onClick={() => setCustomerPaid(opt.value)}
+                      style={{
+                        flex: 1,
+                        padding: 12,
+                        borderRadius: 12,
+                        textAlign: 'right',
+                        border: `1.5px solid ${selected ? selectedBdr : BORDER}`,
+                        background: selected ? selectedBg : BG,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      <p style={{ fontSize: 12, fontWeight: 700, color: TEXT, margin: 0 }}>{opt.label}</p>
+                      <p style={{ fontSize: 10, color: TEXT2, margin: '2px 0 0' }}>{opt.desc}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* ── Customer info ── */}
+          <div style={{ ...cardStyle }}>
+            <p style={{ fontSize: 13, fontWeight: 900, color: TEXT, margin: '0 0 12px' }}>👤 פרטי לקוח (אופציונלי)</p>
+            <div style={{ marginBottom: 12 }}>
+              <label style={labelStyle}>שם הלקוח</label>
+              <input style={inputStyle} placeholder="ישראל ישראלי" value={customerName} onChange={e => setCustomerName(e.target.value)} />
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={labelStyle}>טלפון הלקוח</label>
+              <input style={{ ...inputStyle, direction: 'ltr' }} placeholder="050-0000000" type="tel" dir="ltr" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} />
+            </div>
+            <div>
+              <label style={labelStyle}>הערות</label>
+              <textarea
+                style={{ ...inputStyle, minHeight: 64, resize: 'none' }}
+                placeholder="פרטים נוספים..."
+                value={description}
+                onChange={e => setDescription(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* ── Scheduled delivery ── */}
+          <div style={{ ...cardStyle }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: isScheduled ? 12 : 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <CalendarDaysIcon style={{ width: 16, height: 16, color: BLUE }} />
+                <p style={{ fontSize: 13, fontWeight: 900, color: TEXT, margin: 0 }}>תזמון משלוח עתידי</p>
+              </div>
+              {/* Toggle — uses left positioning instead of translateX */}
+              <button
+                type="button"
+                onClick={() => setIsScheduled(!isScheduled)}
+                style={{
+                  position: 'relative',
+                  width: 44,
+                  height: 24,
+                  borderRadius: 12,
+                  border: 'none',
+                  background: isScheduled ? BLUE : BORDER,
+                  cursor: 'pointer',
+                  transition: 'background 0.2s',
+                  flexShrink: 0,
+                }}
+              >
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: 2,
+                    left: isScheduled ? 22 : 2,
+                    width: 20,
+                    height: 20,
+                    borderRadius: '50%',
+                    background: '#fff',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                    transition: 'left 0.2s',
+                  }}
+                />
+              </button>
+            </div>
+
+            {isScheduled ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 8,
+                    padding: 12,
+                    borderRadius: 12,
+                    background: '#EAF7FD',
+                    color: BLUE,
+                    fontSize: 12,
+                  }}
+                >
+                  <InformationCircleIcon style={{ width: 16, height: 16, flexShrink: 0, marginTop: 1 }} />
+                  <span>המשלוח יתוזמן ושליחים יקבלו התראה בזמן שנקבע</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={labelStyle}>תאריך</label>
+                    <input
+                      type="date"
+                      style={{ ...inputStyle, direction: 'ltr' }}
+                      min={new Date().toISOString().split('T')[0]}
+                      value={scheduledDate}
+                      onChange={e => setScheduledDate(e.target.value)}
+                      required={isScheduled}
+                    />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>שעה</label>
+                    <input
+                      type="time"
+                      style={{ ...inputStyle, direction: 'ltr' }}
+                      value={scheduledTime}
+                      onChange={e => setScheduledTime(e.target.value)}
+                      required={isScheduled}
+                    />
+                  </div>
+                </div>
+                {scheduledDate && scheduledTime && (
+                  <p style={{ fontSize: 12, fontWeight: 700, textAlign: 'center', color: SUCCESS, margin: 0 }}>
+                    ✅ תוזמן ל: {new Date(`${scheduledDate}T${scheduledTime}`).toLocaleString('he-IL', { weekday: 'long', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p style={{ fontSize: 12, color: TEXT2, margin: 0 }}>
+                כבוי — המשלוח יישלח עכשיו מיד
+              </p>
+            )}
+          </div>
+
+          {/* ── Price summary bar ── */}
+          {price && (
+            <div
+              style={{
+                borderRadius: 16,
+                padding: '14px 18px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: '#EAF7FD',
+                border: `1px solid ${BLUE}22`,
+              }}
+            >
+              <div>
+                <p style={{ fontSize: 12, fontWeight: 600, color: BLUE, margin: 0 }}>
+                  {VEHICLE_OPTIONS.find(v => v.value === requiredVehicle)?.icon}{' '}
+                  {VEHICLE_OPTIONS.find(v => v.value === requiredVehicle)?.label || 'כל כלי רכב'}
+                  {' · '}
+                  {paymentMethod === 'cash' ? '💵 מזומן' : '📱 ביט'}
+                  {' · '}
+                  {customerPaid ? 'שולם ע"י הלקוח' : 'גביה ע"י שליח'}
+                </p>
+              </div>
+              <p style={{ fontSize: 22, fontWeight: 900, color: BLUE, margin: 0 }}>₪{price}</p>
+            </div>
+          )}
+
+          {/* ── Submit ── */}
+          <button
+            type="submit"
+            disabled={isLoading}
+            style={{
+              width: '100%',
+              padding: '16px 0',
+              borderRadius: 16,
+              border: 'none',
+              background: BLUE,
+              color: '#fff',
+              fontWeight: 900,
+              fontSize: 15,
+              cursor: isLoading ? 'not-allowed' : 'pointer',
+              opacity: isLoading ? 0.6 : 1,
+              transition: 'opacity 0.15s',
+              boxShadow: `0 6px 20px ${BLUE}44`,
+            }}
+          >
+            {isLoading ? 'שולח...' : isScheduled ? '📅 תזמן משלוח' : '🚀 שלח בקשת משלוח'}
+          </button>
+
+          {/* ── Cancel ── */}
+          <button
+            type="button"
+            onClick={() => navigate('/business/deliveries')}
+            style={{
+              width: '100%',
+              padding: '12px 0',
+              borderRadius: 16,
+              border: 'none',
+              background: BG,
+              color: TEXT2,
+              fontWeight: 700,
+              fontSize: 14,
+              cursor: 'pointer',
+            }}
+          >
+            ביטול
+          </button>
+
+        </form>
+      </div>
     </div>
   );
 };
