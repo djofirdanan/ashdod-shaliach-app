@@ -242,10 +242,10 @@ const CourierLayout: React.FC = () => {
           {/* Text */}
           <div className="flex-1 min-w-0">
             <p className="text-[13px] font-black leading-tight truncate" style={{ color: '#202125' }}>
-              ⏳ ממתין לאישור העסק
+              ממתין לאישור העסק
             </p>
             <p className="text-[11px] truncate" style={{ color: '#F58F1F' }}>
-              📍 {candidacyBanner.dropAddress}
+              {candidacyBanner.dropAddress}
               {candidacyBanner.price > 0 && ` · ₪${candidacyBanner.price}`}
               {' · '}
               {Math.round((Date.now() - new Date(candidacyBanner.joinedAt).getTime()) / 60000)} דק׳ בתור

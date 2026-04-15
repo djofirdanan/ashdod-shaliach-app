@@ -12,7 +12,12 @@ import {
 } from '../../../services/storage.service';
 import { syncDeliveriesDown, getCandidates, rejectCandidate, acceptCandidate, type DeliveryCandidate } from '../../../services/sync.service';
 import { supabase } from '../../../lib/supabase';
-import { TruckIcon, PlusIcon, ChevronLeftIcon, XMarkIcon, ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline';
+import {
+  TruckIcon, PlusIcon, ChevronLeftIcon, XMarkIcon,
+  ChatBubbleLeftRightIcon, MagnifyingGlassIcon,
+  CheckIcon, MapPinIcon, BanknotesIcon, ClockIcon,
+  ArrowRightIcon,
+} from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 
 const BLUE  = '#009DE0';
@@ -44,6 +49,13 @@ function formatDate(iso: string): string {
 }
 
 // ─── Candidate review sheet ───────────────────────────────────────────────────
+const VEHICLE_LABEL: Record<string, string> = {
+  motorcycle: 'אופנוע',
+  scooter: 'קטנוע',
+  bicycle: 'אופניים',
+  car: 'רכב',
+};
+
 const CandidateReviewSheet: React.FC<{
   deliveryId: string;
   businessId: string;
@@ -52,14 +64,14 @@ const CandidateReviewSheet: React.FC<{
 }> = ({ deliveryId, businessId, onClose, onAccepted }) => {
   const navigate = useNavigate();
   const [candidates, setCandidates] = useState<DeliveryCandidate[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading,    setLoading]    = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const refresh = async () => {
-    // 1. Fetch waiting candidates
-    const list = await getCandidates(deliveryId);
+  // Delivery details for display
+  const delivery = getDeliveries().find(d => d.id === deliveryId) ?? null;
 
-    // 2. Auto-reject stale heartbeats (> 60s old)
+  const refresh = async () => {
+    const list = await getCandidates(deliveryId);
     const STALE_MS = 60_000;
     const now = Date.now();
     for (const c of list) {
@@ -67,9 +79,7 @@ const CandidateReviewSheet: React.FC<{
         await rejectCandidate(deliveryId, c.courierId);
       }
     }
-    // Re-fetch after auto-rejects
-    const fresh = await getCandidates(deliveryId);
-    setCandidates(fresh);
+    setCandidates(await getCandidates(deliveryId));
   };
 
   useEffect(() => {
@@ -85,14 +95,12 @@ const CandidateReviewSheet: React.FC<{
     if (!top) return;
     setLoading(true);
     await acceptCandidate(deliveryId, top.courierId);
-    // Update delivery in local storage + Supabase
     updateDelivery(deliveryId, {
       status: 'accepted',
       courierId: top.courierId,
       courierName: top.courierName,
       acceptedAt: new Date().toISOString(),
     });
-    // Open or create chat conversation
     const conv = getOrCreateConversation(businessId, top.courierId);
     setLoading(false);
     onAccepted();
@@ -107,61 +115,126 @@ const CandidateReviewSheet: React.FC<{
     toast.success('הועבר למועמד הבא');
   };
 
-  const vehicleEmoji = (v: string) =>
-    v === 'motorcycle' ? '🏍️' : v === 'bicycle' ? '🚲' : v === 'scooter' ? '🛵' : '🚗';
+  const waitSec = top ? Math.round((Date.now() - new Date(top.joinedAt).getTime()) / 1000) : 0;
+  const waitLabel = waitSec < 60 ? `${waitSec} שנ׳` : `${Math.floor(waitSec / 60)} דק׳`;
 
   return (
     <div className="fixed inset-0 z-[150] flex items-end justify-center" style={{ background: 'rgba(0,0,0,0.5)' }}>
-      <div className="w-full max-w-lg rounded-t-3xl pb-8 pt-2 px-5" style={{ background: '#fff' }} dir="rtl">
+      <div
+        className="w-full max-w-lg rounded-t-3xl pb-8 pt-2 px-5"
+        style={{ background: '#fff', animation: 'slideUp 0.3s cubic-bezier(0.34,1.56,0.64,1)' }}
+        dir="rtl"
+      >
+        <style>{`@keyframes slideUp{from{transform:translateY(100%);opacity:0}to{transform:translateY(0);opacity:1}}`}</style>
         <div className="w-10 h-1 rounded-full mx-auto my-3" style={{ background: '#E8E8E8' }} />
 
+        {/* Header */}
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-[17px] font-black" style={{ color: '#202125' }}>
-            {candidates.length === 0 ? '🔍 מחפש שליחים...' : `🏍️ שליח מגיע! (${candidates.length} מועמדים)`}
-          </h2>
-          <button onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100">
-            <XMarkIcon className="w-5 h-5" style={{ color: '#757575' }} />
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: candidates.length > 0 ? '#E8F8F0' : '#F4F4F4' }}>
+              {candidates.length > 0
+                ? <TruckIcon className="w-4 h-4" style={{ color: GREEN }} />
+                : <MagnifyingGlassIcon className="w-4 h-4" style={{ color: '#AAAAAA' }} />
+              }
+            </div>
+            <h2 className="text-[17px] font-black" style={{ color: '#202125' }}>
+              {candidates.length === 0
+                ? 'מחפש שליחים...'
+                : `שליח מגיע! (${candidates.length} ${candidates.length === 1 ? 'מועמד' : 'מועמדים'})`
+              }
+            </h2>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-xl" style={{ background: '#F4F4F4' }}>
+            <XMarkIcon className="w-4 h-4" style={{ color: '#757575' }} />
           </button>
         </div>
 
+        {/* Delivery details card — always visible */}
+        {delivery && (
+          <div className="rounded-2xl p-3 mb-4 space-y-2" style={{ background: '#F8F9FA', border: '1px solid #E8E8E8' }}>
+            <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: '#AAAAAA' }}>פרטי המשלוח</p>
+            <div className="flex items-start gap-2">
+              <MapPinIcon className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: '#1BA672' }} />
+              <div className="min-w-0">
+                <p className="text-[10px]" style={{ color: '#AAAAAA' }}>איסוף</p>
+                <p className="text-[13px] font-semibold truncate" style={{ color: '#202125' }}>{delivery.pickupAddress}</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-2">
+              <MapPinIcon className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: '#E23437' }} />
+              <div className="min-w-0">
+                <p className="text-[10px]" style={{ color: '#AAAAAA' }}>מסירה</p>
+                <p className="text-[13px] font-semibold truncate" style={{ color: '#202125' }}>{delivery.dropAddress}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 pt-1 border-t" style={{ borderColor: '#E8E8E8' }}>
+              <BanknotesIcon className="w-4 h-4" style={{ color: BLUE }} />
+              <span className="text-[14px] font-black" style={{ color: BLUE }}>₪{delivery.price}</span>
+              {delivery.description && (
+                <span className="text-[11px] truncate" style={{ color: '#757575' }}>· {delivery.description}</span>
+              )}
+            </div>
+          </div>
+        )}
+
         {candidates.length === 0 ? (
-          <div className="py-8 text-center">
-            <div className="text-[40px] mb-3 animate-pulse">🔍</div>
+          /* Empty state */
+          <div className="py-6 flex flex-col items-center gap-3">
+            <div
+              className="w-16 h-16 rounded-full flex items-center justify-center"
+              style={{ background: '#F4F4F4' }}
+            >
+              <MagnifyingGlassIcon className="w-8 h-8 animate-pulse" style={{ color: '#AAAAAA' }} />
+            </div>
             <p className="text-[15px] font-bold" style={{ color: '#202125' }}>מחפש שליחים זמינים...</p>
-            <p className="text-[12px] mt-1" style={{ color: '#757575' }}>ההודעה נשלחה לכל השליחים הזמינים</p>
+            <p className="text-[12px]" style={{ color: '#757575' }}>ההודעה נשלחה לכל השליחים הזמינים</p>
           </div>
         ) : top ? (
           <>
-            {/* Queue counter */}
+            {/* Queue progress dots */}
             {candidates.length > 1 && (
               <div className="flex gap-1.5 mb-4 justify-center">
                 {candidates.map((_, i) => (
-                  <div key={i} className="h-1.5 rounded-full flex-1" style={{ background: i === 0 ? BLUE : '#E8E8E8', maxWidth: 40 }} />
+                  <div key={i} className="h-1.5 rounded-full transition-all" style={{ background: i === 0 ? BLUE : '#E8E8E8', width: i === 0 ? 24 : 12 }} />
                 ))}
               </div>
             )}
 
-            {/* Top candidate card */}
-            <div className="rounded-2xl p-4 mb-4" style={{ background: '#F4F4F4', border: `2px solid ${BLUE}30` }}>
+            {/* Courier card */}
+            <div className="rounded-2xl p-4 mb-4" style={{ background: '#F4F4F4', border: `2px solid ${BLUE}20` }}>
               <div className="flex items-center gap-3">
                 {/* Avatar */}
-                <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-white text-[22px] font-black flex-shrink-0"
-                  style={{ background: `linear-gradient(135deg, ${BLUE}, #0077a8)` }}>
+                <div
+                  className="w-14 h-14 rounded-2xl flex items-center justify-center text-white text-[22px] font-black flex-shrink-0"
+                  style={{ background: `linear-gradient(135deg, ${BLUE}, #0077a8)` }}
+                >
                   {top.courierName.charAt(0)}
                 </div>
-                <div className="flex-1">
+
+                <div className="flex-1 min-w-0">
                   <p className="font-black text-[17px]" style={{ color: '#202125' }}>{top.courierName}</p>
-                  {/* Stars */}
-                  <div className="flex items-center gap-1 mt-0.5">
+
+                  {/* Star rating */}
+                  <div className="flex items-center gap-0.5 mt-0.5">
                     {[1,2,3,4,5].map(i => (
-                      <span key={i} style={{ color: i <= Math.round(top.courierRating) ? '#F58F1F' : '#E8E8E8', fontSize: 14 }}>★</span>
+                      <span key={i} style={{ color: i <= Math.round(top.courierRating) ? '#F58F1F' : '#E8E8E8', fontSize: 13 }}>★</span>
                     ))}
-                    <span className="text-[11px] mr-1" style={{ color: '#757575' }}>{top.courierRating.toFixed(1)}</span>
+                    <span className="text-[11px] mr-1 font-semibold" style={{ color: '#757575' }}>{top.courierRating.toFixed(1)}</span>
                   </div>
-                  <p className="text-[12px] mt-0.5" style={{ color: '#757575' }}>
-                    {vehicleEmoji(top.courierVehicle)} · ממתין{' '}
-                    {Math.round((Date.now() - new Date(top.joinedAt).getTime()) / 1000)} שניות
-                  </p>
+
+                  {/* Vehicle + wait time */}
+                  <div className="flex items-center gap-2 mt-1">
+                    <div className="flex items-center gap-1 px-2 py-0.5 rounded-lg" style={{ background: '#E8E8E8' }}>
+                      <TruckIcon className="w-3 h-3" style={{ color: '#757575' }} />
+                      <span className="text-[11px] font-semibold" style={{ color: '#757575' }}>
+                        {VEHICLE_LABEL[top.courierVehicle] ?? top.courierVehicle}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1 px-2 py-0.5 rounded-lg" style={{ background: '#E8E8E8' }}>
+                      <ClockIcon className="w-3 h-3" style={{ color: '#757575' }} />
+                      <span className="text-[11px] font-semibold" style={{ color: '#757575' }}>ממתין {waitLabel}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -171,18 +244,29 @@ const CandidateReviewSheet: React.FC<{
               <button
                 onClick={handleReject}
                 disabled={loading}
-                className="flex-1 py-3.5 rounded-2xl font-bold text-[14px] transition-all active:scale-95 disabled:opacity-50"
+                className="flex-1 py-3.5 rounded-2xl font-bold text-[14px] flex items-center justify-center gap-1.5 transition-all active:scale-95 disabled:opacity-50"
                 style={{ background: '#F4F4F4', color: '#757575' }}
               >
-                {candidates.length > 1 ? `⏭️ הבא בתור (${candidates.length - 1})` : '❌ דחה'}
+                {candidates.length > 1 ? (
+                  <>
+                    <ArrowRightIcon className="w-4 h-4" />
+                    הבא בתור ({candidates.length - 1})
+                  </>
+                ) : (
+                  <>
+                    <XMarkIcon className="w-4 h-4" />
+                    דחה
+                  </>
+                )}
               </button>
               <button
                 onClick={handleAccept}
                 disabled={loading}
-                className="flex-2 flex-1 py-3.5 rounded-2xl font-black text-[15px] text-white transition-all active:scale-95 disabled:opacity-50"
+                className="flex-1 py-3.5 rounded-2xl font-black text-[15px] text-white flex items-center justify-center gap-1.5 transition-all active:scale-95 disabled:opacity-50"
                 style={{ background: GREEN, boxShadow: `0 6px 20px ${GREEN}40` }}
               >
-                ✅ בחר שליח זה
+                <CheckIcon className="w-5 h-5" />
+                בחר שליח זה
               </button>
             </div>
           </>
@@ -193,11 +277,11 @@ const CandidateReviewSheet: React.FC<{
 };
 
 // ─── Live tracking status sheet ──────────────────────────────────────────────
-const STEPS: Array<{ status: StoredDelivery['status']; label: string; emoji: string }> = [
-  { status: 'pending',   label: 'מחפש שליח...',        emoji: '🔍' },
-  { status: 'accepted',  label: 'שליח בדרך לאיסוף',   emoji: '🏍️' },
-  { status: 'picked_up', label: 'בדרך אליך',           emoji: '📦' },
-  { status: 'delivered', label: 'נמסר בהצלחה! ✅',    emoji: '🎉' },
+const STEPS: Array<{ status: StoredDelivery['status']; label: string }> = [
+  { status: 'pending',   label: 'מחפש שליח...'       },
+  { status: 'accepted',  label: 'שליח בדרך לאיסוף'  },
+  { status: 'picked_up', label: 'בדרך אליך'          },
+  { status: 'delivered', label: 'נמסר בהצלחה'        },
 ];
 const STEP_ORDER: StoredDelivery['status'][] = ['pending', 'accepted', 'picked_up', 'delivered'];
 
@@ -256,7 +340,7 @@ const TrackingSheet: React.FC<{
         {/* Close */}
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-[17px] font-black" style={{ color: '#202125' }}>
-            {isCancelled ? '❌ המשלוח בוטל' : isDone ? '🎉 נמסר בהצלחה!' : '📡 עוקב אחר המשלוח'}
+            {isCancelled ? 'המשלוח בוטל' : isDone ? 'נמסר בהצלחה' : 'מעקב משלוח'}
           </h2>
           <button onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100 transition-colors">
             <XMarkIcon className="w-5 h-5" style={{ color: '#757575' }} />
@@ -264,19 +348,22 @@ const TrackingSheet: React.FC<{
         </div>
 
         {/* Delivery summary */}
-        <div
-          className="rounded-2xl p-3 mb-4 space-y-1"
-          style={{ background: '#F4F4F4' }}
-        >
-          <p className="text-[12px]" style={{ color: '#757575' }}>
-            📍 <span className="font-semibold" style={{ color: '#202125' }}>{delivery.dropAddress}</span>
-          </p>
-          <p className="text-[12px]" style={{ color: '#757575' }}>
-            💰 <span className="font-bold" style={{ color: BLUE }}>₪{delivery.price}</span>
+        <div className="rounded-2xl p-3 mb-4 space-y-2" style={{ background: '#F4F4F4' }}>
+          <div className="flex items-center gap-2">
+            <MapPinIcon className="w-4 h-4 flex-shrink-0" style={{ color: '#E23437' }} />
+            <span className="text-[13px] font-semibold" style={{ color: '#202125' }}>{delivery.dropAddress}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <BanknotesIcon className="w-4 h-4 flex-shrink-0" style={{ color: BLUE }} />
+            <span className="text-[13px] font-bold" style={{ color: BLUE }}>₪{delivery.price}</span>
             {delivery.courierName && (
-              <> &nbsp;·&nbsp; 🧑‍✈️ <span style={{ color: '#202125' }}>{delivery.courierName}</span></>
+              <>
+                <span style={{ color: '#E8E8E8' }}>·</span>
+                <TruckIcon className="w-4 h-4 flex-shrink-0" style={{ color: '#757575' }} />
+                <span className="text-[13px]" style={{ color: '#202125' }}>{delivery.courierName}</span>
+              </>
             )}
-          </p>
+          </div>
         </div>
 
         {/* Steps */}
@@ -289,14 +376,19 @@ const TrackingSheet: React.FC<{
                 <div key={step.status} className="flex items-center gap-3">
                   {/* Circle */}
                   <div
-                    className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-[16px] transition-all"
+                    className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-all"
                     style={{
                       background: done ? BLUE : '#E8E8E8',
                       boxShadow: active ? `0 0 0 4px ${BLUE}30` : undefined,
-                      animation: active ? 'pulse 1.5s infinite' : undefined,
                     }}
                   >
-                    {done ? (active ? step.emoji : '✓') : <span style={{ opacity: 0.3 }}>{step.emoji}</span>}
+                    {done && !active
+                      ? <CheckIcon className="w-4 h-4 text-white" />
+                      : idx === 0 ? <MagnifyingGlassIcon className="w-4 h-4" style={{ color: done ? '#fff' : '#AAAAAA' }} />
+                      : idx === 1 ? <TruckIcon className="w-4 h-4" style={{ color: done ? '#fff' : '#AAAAAA' }} />
+                      : idx === 2 ? <MapPinIcon className="w-4 h-4" style={{ color: done ? '#fff' : '#AAAAAA' }} />
+                      : <CheckIcon className="w-4 h-4" style={{ color: done ? '#fff' : '#AAAAAA' }} />
+                    }
                   </div>
                   {/* Label */}
                   <div className="flex-1">
@@ -418,7 +510,7 @@ const BusinessDashboard: React.FC = () => {
           // Auto-open the candidate review sheet
           setSearchParams({ tracking: deliveryId });
           setDeliveries(getDeliveriesByBusiness(businessId));
-          toast('🏍️ שליח הצטרף לתור!', { icon: '🔔' });
+          toast.success('שליח הצטרף לתור!');
         }
       )
       .subscribe();
@@ -566,9 +658,7 @@ const BusinessDashboard: React.FC = () => {
                     </span>
                     <div className="flex items-center gap-2">
                       {isTrackable && (
-                        <span className="text-[11px] font-semibold" style={{ color: BLUE }}>
-                          📡 עקוב
-                        </span>
+                        <span className="text-[11px] font-semibold" style={{ color: BLUE }}>עקוב</span>
                       )}
                       <span className="text-[11px]" style={{ color: '#AAAAAA' }}>
                         {formatDate(d.createdAt)} • {formatTime(d.createdAt)}
@@ -578,7 +668,7 @@ const BusinessDashboard: React.FC = () => {
 
                   {/* Row 2: address */}
                   <p className="text-[14px] font-semibold" style={{ color: '#202125' }}>
-                    📍 {d.dropAddress}
+                    {d.dropAddress}
                   </p>
 
                   {/* Row 3: courier + price */}

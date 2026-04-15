@@ -140,10 +140,10 @@ const BusinessLayout: React.FC = () => {
           {/* Text */}
           <div className="flex-1 min-w-0">
             <p className="text-[13px] font-black leading-tight" style={{ color: '#202125' }}>
-              🏍️ {waitingDelivery.candidateCount === 1 ? 'שליח ממתין לאישורך!' : `${waitingDelivery.candidateCount} שליחים ממתינים!`}
+              {waitingDelivery.candidateCount === 1 ? 'שליח ממתין לאישורך' : `${waitingDelivery.candidateCount} שליחים ממתינים`}
             </p>
             <p className="text-[11px] truncate" style={{ color: '#757575' }}>
-              📍 {waitingDelivery.dropAddress}
+              {waitingDelivery.dropAddress}
             </p>
           </div>
 
