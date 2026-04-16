@@ -1,5 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useRegisterSW } from 'virtual:pwa-register/react';
 import { syncDown } from './services/sync.service';
 import {
   getDeliveries,
@@ -62,17 +63,18 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
   return <>{children}</>;
 };
 
-/** Check every minute for scheduled deliveries whose time has arrived */
+/** Check every 30 seconds for scheduled deliveries whose time has arrived */
 function checkScheduledDeliveries() {
   const now = new Date();
   const deliveries = getDeliveries();
   for (const d of deliveries) {
-    if (d.status === 'scheduled' && d.scheduledAt) {
+    if (d.status === 'scheduled' && d.scheduledAt && !d.notificationSent) {
       if (new Date(d.scheduledAt) <= now) {
-        // Time arrived — switch to pending and send notification
-        updateDelivery(d.id, { status: 'pending' });
+        // Time arrived — switch to pending, mark notification sent, fire to couriers
+        updateDelivery(d.id, { status: 'pending', notificationSent: true });
         const biz = getBusiness(d.businessId);
         addDeliveryNotification({
+          deliveryId: d.id,
           businessId: d.businessId,
           businessName: biz?.businessName ?? d.businessName,
           pickupAddress: d.pickupAddress,
@@ -82,26 +84,60 @@ function checkScheduledDeliveries() {
           requiredVehicle: d.requiredVehicle,
           paymentMethod: d.paymentMethod,
           customerPaid: d.customerPaid,
-          scheduledAt: d.scheduledAt,
         });
-        console.log(`[scheduler] Activated scheduled delivery ${d.id}`);
+        console.log(`[scheduler] Activated scheduled delivery ${d.id} at ${new Date().toISOString()}`);
       }
     }
   }
 }
+
+// ── PWA update banner ────────────────────────────────────────────────────────
+const UpdateBanner: React.FC = () => {
+  const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW();
+  if (!needRefresh) return null;
+  return (
+    <div
+      dir="rtl"
+      style={{
+        position: 'fixed', bottom: 72, right: 0, left: 0, zIndex: 9999,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: 12, padding: '10px 16px', margin: '0 12px',
+        background: '#061b31', borderRadius: 14,
+        boxShadow: '0 4px 24px rgba(0,0,0,0.35)',
+        border: '1px solid rgba(83,58,253,0.4)',
+      }}
+    >
+      <p style={{ fontSize: 13, fontWeight: 700, color: '#fff', margin: 0 }}>
+        גרסה חדשה זמינה
+      </p>
+      <button
+        onClick={() => updateServiceWorker(true)}
+        style={{
+          padding: '6px 14px', borderRadius: 8, border: 'none',
+          background: 'linear-gradient(135deg, #533afd, #ea2261)',
+          color: '#fff', fontWeight: 700, fontSize: 12, cursor: 'pointer',
+          flexShrink: 0,
+        }}
+      >
+        עדכן עכשיו
+      </button>
+    </div>
+  );
+};
 
 const App: React.FC = () => {
   // On every app start: pull latest data from Supabase into localStorage
   useEffect(() => {
     syncDown();
     checkScheduledDeliveries(); // check on startup too
-    const t = setInterval(checkScheduledDeliveries, 60_000); // every minute
+    const t = setInterval(checkScheduledDeliveries, 30_000); // every 30 seconds
     return () => clearInterval(t);
   }, []);
 
   return (
     <Provider store={store}>
       <div dir="rtl">
+        <UpdateBanner />
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<Login />} />

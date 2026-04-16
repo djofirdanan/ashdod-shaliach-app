@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { CheckCircle, MapTrifold, MapPin as PhosphorMapPin, AppleLogo } from '@phosphor-icons/react';
 import {
   TruckIcon,
   BuildingStorefrontIcon,
@@ -16,10 +17,27 @@ import * as storageService from '../services/storage.service';
 import { addBusinessAsync, addCourierAsync } from '../services/storage.service';
 import { DEFAULT_PRICING_ZONES } from '../utils/constants';
 import { sendWelcomeBusiness, sendWelcomeCourier } from '../services/email.service';
+import AddressAutocomplete from '../components/AddressAutocomplete';
+import CityMultiSelect from '../components/CityMultiSelect';
+import CitySelect from '../components/CitySelect';
 
 type TabType = 'business' | 'courier';
 
-const CATEGORIES = ['מסעדה', 'בית קפה', 'מכולת', 'פרמצ׳יה', 'אחר'];
+const CATEGORIES = [
+  'מסעדה',
+  'בית קפה',
+  'פיצרייה',
+  'מכולת / סופר',
+  'פרמציה / תרופות',
+  'פרחים',
+  'בגדים / אופנה',
+  'ספרים / צעצועים',
+  'אלקטרוניקה',
+  'קונדיטוריה / מאפייה',
+  'בריאות / ספא',
+  'חיות מחמד',
+  'אחר',
+];
 const VEHICLE_OPTIONS = [
   { value: 'motorcycle', label: 'אופנוע' },
   { value: 'bicycle', label: 'אופניים' },
@@ -34,7 +52,7 @@ const SuccessScreen: React.FC<{ type: TabType; name: string }> = ({ type, name }
       className="w-20 h-20 rounded-full flex items-center justify-center mb-6"
       style={{ background: 'linear-gradient(135deg, #533afd22, #ea226122)' }}
     >
-      <span className="text-4xl">✓</span>
+      <CheckCircle size={48} weight="fill" style={{ color: '#533afd' }} />
     </div>
     <h2 className="text-2xl font-black mb-3" style={{ color: '#061b31' }}>
       ההרשמה הושלמה!
@@ -82,6 +100,7 @@ const Register: React.FC = () => {
   const [success, setSuccess] = useState<{ type: TabType; name: string } | null>(null);
 
   // Business form
+  const [bizCustomCategory, setBizCustomCategory] = useState('');
   const [biz, setBiz] = useState({
     businessName: '',
     contactPerson: '',
@@ -105,6 +124,7 @@ const Register: React.FC = () => {
     navPreference: 'waze' as 'waze' | 'google' | 'apple',
     password: '',
     confirmPassword: '',
+    serviceCities: [] as string[],
   });
 
   const zones = DEFAULT_PRICING_ZONES.map((z) => z.name);
@@ -137,7 +157,7 @@ const Register: React.FC = () => {
         contactPerson: biz.contactPerson,
         phone: biz.phone,
         address: { street: biz.street, city: biz.city, zone: biz.zone || undefined },
-        category: biz.category,
+        category: biz.category === 'אחר' && bizCustomCategory.trim() ? bizCustomCategory.trim() : biz.category,
         isActive: false, // needs admin approval
         isBlocked: false,
         balance: 0,
@@ -158,6 +178,10 @@ const Register: React.FC = () => {
     e.preventDefault();
     if (!cour.name || !cour.email || !cour.phone || !cour.password) {
       toast.error('נא למלא את כל השדות החובה');
+      return;
+    }
+    if (cour.serviceCities.length === 0) {
+      toast.error('נא לבחור לפחות עיר אחת שבה אתה מוכן לשלח');
       return;
     }
     if (cour.password.length < 6) {
@@ -189,6 +213,7 @@ const Register: React.FC = () => {
         totalDeliveries: 0,
         activeDeliveries: 0,
         earnings: { today: 0, thisWeek: 0, thisMonth: 0, total: 0 },
+        serviceCities: cour.serviceCities,
       });
       // Send welcome email (fire and forget)
       sendWelcomeCourier(cour.email, cour.name).catch(() => {});
@@ -352,20 +377,22 @@ const Register: React.FC = () => {
                     />
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <Input
-                      className={inputClass}
+                    <AddressAutocomplete
                       label="כתובת *"
+                      required
                       placeholder="רחוב הרצל 22"
-                      leftIcon={<MapPinIcon className="w-4 h-4" />}
                       value={biz.street}
-                      onChange={(e) => setBiz({ ...biz, street: e.target.value })}
+                      onChange={(v) => setBiz(prev => ({ ...prev, street: v }))}
+                      onCityChange={(city) => setBiz(prev => ({ ...prev, city }))}
+                      className="w-full px-3 py-2.5 rounded-[6px] text-sm border outline-none transition-all"
+                      style={{ borderColor: '#e0e6ed', background: '#f8fafc', color: '#061b31', fontFamily: 'inherit' }}
+                      labelStyle={{ color: '#3c4257', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '6px' }}
                     />
-                    <Input
-                      className={inputClass}
+                    <CitySelect
                       label="עיר"
-                      placeholder="אשדוד"
+                      placeholder="חפש עיר..."
                       value={biz.city}
-                      onChange={(e) => setBiz({ ...biz, city: e.target.value })}
+                      onChange={(city) => setBiz({ ...biz, city })}
                     />
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -393,6 +420,18 @@ const Register: React.FC = () => {
                       </select>
                     </div>
                   </div>
+                  {biz.category === 'אחר' && (
+                    <div className="w-full">
+                      <label className="block text-[12px] font-semibold mb-1.5 uppercase tracking-[0.05em]" style={{ color: '#3c4257' }}>תחום העסק (חופשי)</label>
+                      <input
+                        value={bizCustomCategory}
+                        onChange={(e) => setBizCustomCategory(e.target.value)}
+                        placeholder="לדוגמה: חנות ספרים, כלי בית..."
+                        className="w-full px-3 py-2.5 rounded-[6px] text-sm border outline-none transition-all"
+                        style={{ borderColor: '#e0e6ed', background: '#f8fafc', color: '#061b31', fontFamily: 'inherit', direction: 'rtl' }}
+                      />
+                    </div>
+                  )}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <Input
                       className={inputClass}
@@ -476,6 +515,18 @@ const Register: React.FC = () => {
                       />
                     )}
                   </div>
+                  {/* Service cities */}
+                  <div>
+                    <p className="text-[13px] font-bold mb-1" style={{ color: '#202125' }}>ערים שאתה מוכן לשלח בהן *</p>
+                    <CityMultiSelect
+                      selected={cour.serviceCities}
+                      onChange={(cities) => setCour({ ...cour, serviceCities: cities })}
+                    />
+                    {cour.serviceCities.length === 0 && (
+                      <p className="text-[11px] mt-1" style={{ color: '#E23437' }}>בחר לפחות עיר אחת</p>
+                    )}
+                  </div>
+
                   {/* Navigation preference */}
                   <div className="w-full">
                     <label className="block text-[12px] font-semibold mb-1.5 uppercase tracking-[0.05em]" style={{ color: '#3c4257' }}>
@@ -483,22 +534,22 @@ const Register: React.FC = () => {
                     </label>
                     <div className="grid grid-cols-3 gap-2">
                       {([
-                        { value: 'waze', label: '🗺️ Waze' },
-                        { value: 'google', label: '📍 גוגל מפות' },
-                        { value: 'apple', label: '🍎 Apple Maps' },
+                        { value: 'waze', label: 'Waze', icon: <MapTrifold size={13} /> },
+                        { value: 'google', label: 'גוגל מפות', icon: <PhosphorMapPin size={13} /> },
+                        { value: 'apple', label: 'Apple Maps', icon: <AppleLogo size={13} /> },
                       ] as const).map((opt) => (
                         <button
                           key={opt.value}
                           type="button"
                           onClick={() => setCour({ ...cour, navPreference: opt.value })}
-                          className="py-2.5 rounded-[6px] text-[11px] font-bold transition-all"
+                          className="py-2.5 rounded-[6px] text-[11px] font-bold transition-all flex items-center justify-center gap-1"
                           style={{
                             background: cour.navPreference === opt.value ? '#533afd' : '#f8fafc',
                             color: cour.navPreference === opt.value ? 'white' : '#6b7c93',
                             border: `1px solid ${cour.navPreference === opt.value ? '#533afd' : '#e0e6ed'}`,
                           }}
                         >
-                          {opt.label}
+                          {opt.icon} {opt.label}
                         </button>
                       ))}
                     </div>

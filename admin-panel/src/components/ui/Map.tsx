@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { Star } from '@phosphor-icons/react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { Courier, Delivery } from '../../types';
@@ -81,7 +82,7 @@ export const LiveMap: React.FC<LiveMapProps> = ({
                   משלוחים פעילים: <strong>{courier.activeDeliveries}</strong>
                 </p>
                 <p className="text-sm">
-                  דירוג: <strong>⭐ {courier.rating.toFixed(1)}</strong>
+                  דירוג: <strong className="flex items-center gap-1"><Star size={12} weight="fill" style={{ color: '#f59e0b' }} /> {courier.rating.toFixed(1)}</strong>
                 </p>
               </div>
             </Popup>

@@ -402,7 +402,7 @@ const Settings: React.FC = () => {
                 אם עסק או שליח לא מצליחים להתחבר ממכשיר אחר (טלפון/מחשב אחר), לחץ על הכפתור למטה כדי לדחוף את כל הנתונים מהמחשב הזה לשרת. לאחר מכן הכניסה תעבוד מכל מכשיר.
               </p>
             </div>
-            <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
               <Button
                 variant="primary"
                 leftIcon={syncingUp ? <ArrowPathIcon className="w-4 h-4 animate-spin" /> : <CloudArrowUpIcon className="w-4 h-4" />}
@@ -446,7 +446,7 @@ const Settings: React.FC = () => {
                 אם הנתונים לא מתעדכנים, יש שגיאות בתצוגה, או שמשהו לא עובד כמו שצריך — ניקוי הקאש מוחק את הנתונים המקומיים ומוריד הכל מחדש מהשרת. לוגאאוט לא יתרחש.
               </p>
             </div>
-            <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
               <Button
                 variant="danger"
                 leftIcon={clearingCache ? <ArrowPathIcon className="w-4 h-4 animate-spin" /> : <TrashIcon className="w-4 h-4" />}

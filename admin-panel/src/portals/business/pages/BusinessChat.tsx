@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { Confetti, Truck, Calendar, CheckCircle, XCircle, Package, MapPin as PhosphorMapPin, Gear } from '@phosphor-icons/react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   getConversations,
@@ -11,6 +12,8 @@ import {
   getDeliveries,
   deleteConversation,
   addReview,
+  getReviewsByTarget,
+  getReviewsByReviewer,
   updateBusiness,
   getOrCreateSupportTicket,
   getSupportMessages,
@@ -19,6 +22,7 @@ import {
   type StoredMessage,
   type StoredDelivery,
   type StoredCourier,
+  type StoredReview,
   type SupportMessage,
   type SupportTicket,
 } from '../../../services/storage.service';
@@ -35,6 +39,15 @@ import {
   TrashIcon,
 } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
+import {
+  compressImage,
+  encodeVoiceContent,
+  encodeDocContent,
+  renderMediaMessage,
+  AttachmentMenu,
+  VoiceRecorderModal,
+  formatMessagePreview,
+} from '../../../components/ChatMedia';
 
 const BLUE  = '#009DE0';
 const GREEN = '#1BA672';
@@ -80,7 +93,7 @@ const BusinessCompletionModal: React.FC<{
   if (submitted) return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.6)' }}>
       <div className="rounded-3xl p-8 text-center" style={{ background: '#fff', margin: 24 }}>
-        <p className="text-5xl mb-3">🎉</p>
+        <p className="mb-3"><Confetti size={48} weight="fill" style={{ color: '#F58F1F' }} /></p>
         <p className="text-[18px] font-black" style={{ color: '#202125' }}>תודה רבה!</p>
         <p className="text-[13px] mt-1" style={{ color: '#757575' }}>המשלוח הושלם בהצלחה</p>
       </div>
@@ -91,7 +104,7 @@ const BusinessCompletionModal: React.FC<{
     <div className="fixed inset-0 z-[200] flex items-end justify-center" style={{ background: 'rgba(0,0,0,0.6)' }}>
       <div className="w-full max-w-lg rounded-t-3xl p-5 pb-8" style={{ background: '#fff' }} dir="rtl">
         <div className="w-10 h-1 rounded-full mx-auto mb-4" style={{ background: '#E8E8E8' }} />
-        <p className="text-4xl text-center mb-2">🎉</p>
+        <div className="flex justify-center mb-2"><Confetti size={40} weight="fill" style={{ color: '#F58F1F' }} /></div>
         <h3 className="text-[18px] font-black text-center mb-1" style={{ color: '#202125' }}>המשלוח הסתיים!</h3>
         <p className="text-[12px] text-center mb-5" style={{ color: '#757575' }}>איך היה השליח {delivery.courierName}?</p>
 
@@ -115,7 +128,7 @@ const BusinessCompletionModal: React.FC<{
 
         <label className="flex items-center gap-2 mb-5 cursor-pointer">
           <input type="checkbox" checked={addFav} onChange={e => setAddFav(e.target.checked)} className="w-4 h-4 rounded" />
-          <span className="text-[13px] font-semibold" style={{ color: '#202125' }}>הוסף לשליחים המועדפים שלי ❤️</span>
+          <span className="text-[13px] font-semibold" style={{ color: '#202125' }}>הוסף לשליחים המועדפים שלי</span>
         </label>
 
         <button onClick={handleSubmit} className="w-full py-3.5 rounded-2xl font-black text-[15px] text-white" style={{ background: GREEN }}>
@@ -126,13 +139,13 @@ const BusinessCompletionModal: React.FC<{
   );
 };
 
-const statusLabel: Record<StoredDelivery['status'], string> = {
-  scheduled: '📅 מתוזמן',
+const statusLabel: Record<StoredDelivery['status'], React.ReactNode> = {
+  scheduled: <span className="flex items-center gap-1"><Calendar size={10} /> מתוזמן</span>,
   pending: 'ממתין לשליח',
-  accepted: '🚗 שליח בדרך לאיסוף',
-  picked_up: '📦 בדרך ללקוח',
-  delivered: '✅ נמסר',
-  cancelled: '❌ בוטל',
+  accepted: <span className="flex items-center gap-1"><Truck size={10} /> שליח בדרך לאיסוף</span>,
+  picked_up: <span className="flex items-center gap-1"><Package size={10} /> בדרך ללקוח</span>,
+  delivered: <span className="flex items-center gap-1"><CheckCircle size={10} /> נמסר</span>,
+  cancelled: <span className="flex items-center gap-1"><XCircle size={10} /> בוטל</span>,
 };
 
 const statusColor: Record<StoredDelivery['status'], string> = {
@@ -145,86 +158,197 @@ const statusColor: Record<StoredDelivery['status'], string> = {
 };
 
 // ─── Courier profile modal ────────────────────────────────────
-const CourierProfileModal: React.FC<{ courier: StoredCourier; onClose: () => void }> = ({ courier, onClose }) => (
-  <div
-    className="fixed inset-0 z-[300] flex items-center justify-center p-4"
-    style={{ background: 'rgba(0,0,0,0.6)' }}
-    onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-  >
-    <div className="w-full max-w-sm rounded-2xl overflow-hidden" style={{ background: '#fff' }} dir="rtl">
-      {/* Header */}
-      <div
-        className="flex items-center gap-3 p-5"
-        style={{ background: 'linear-gradient(135deg, #061b31, #1c1e54)' }}
-      >
-        {courier.photo ? (
-          <img src={courier.photo} className="w-16 h-16 rounded-full object-cover border-2 border-white/30" />
-        ) : (
-          <div
-            className="w-16 h-16 rounded-full flex items-center justify-center text-white text-[22px] font-black"
-            style={{ background: 'linear-gradient(135deg, #533afd, #ea2261)' }}
-          >
-            {courier.name[0]}
-          </div>
-        )}
-        <div>
-          <p className="text-white font-black text-[16px]">{courier.name}</p>
-          <p className="text-white/60 text-[11px]">
-            {courier.vehicle === 'motorcycle' ? '🏍️ אופנוע' : courier.vehicle === 'bicycle' ? '🚲 אופניים' : courier.vehicle === 'scooter' ? '🛵 קטנוע' : '🚗 רכב'}
-          </p>
-          <div className="flex items-center gap-1 mt-1">
-            {[1,2,3,4,5].map((i) => (
-              <span key={i} style={{ color: i <= Math.round(courier.rating) ? '#f59e0b' : 'rgba(255,255,255,0.25)', fontSize: 14 }}>★</span>
-            ))}
-            <span className="text-white/60 text-[11px] mr-1">{courier.rating.toFixed(1)}</span>
-          </div>
-        </div>
-      </div>
-      {/* Details */}
-      <div className="p-4 space-y-3">
-        <div className="flex items-center gap-2">
-          <span className="text-[12px] font-semibold w-20" style={{ color: '#8898aa' }}>טלפון</span>
-          <a href={`tel:${courier.phone}`} className="text-[13px] font-bold" style={{ color: '#533afd' }}>
-            {courier.phone || 'לא זמין'}
-          </a>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[12px] font-semibold w-20" style={{ color: '#8898aa' }}>מייל</span>
-          <a href={`mailto:${courier.email}`} className="text-[13px]" style={{ color: '#061b31' }}>
-            {courier.email}
-          </a>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[12px] font-semibold w-20" style={{ color: '#8898aa' }}>משלוחים</span>
-          <span className="text-[13px] font-bold" style={{ color: '#061b31' }}>{courier.totalDeliveries}</span>
-        </div>
-        {courier.bitPhone && (
-          <div className="flex items-center gap-2">
-            <span className="text-[12px] font-semibold w-20" style={{ color: '#8898aa' }}>Bit 💙</span>
-            <a
-              href={`https://bit.ly/pay/${courier.bitPhone}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[13px] font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-xl"
-              style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe' }}
+const CourierProfileModal: React.FC<{ courier: StoredCourier; businessId: string; onClose: () => void }> = ({ courier, businessId, onClose }) => {
+  const [reviews, setReviews] = useState<StoredReview[]>([]);
+  const [showAllReviews, setShowAllReviews] = useState(false);
+  const [alreadyReviewed, setAlreadyReviewed] = useState(false);
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+
+  useEffect(() => {
+    const r = getReviewsByTarget(courier.id);
+    setReviews(r);
+    const already = getReviewsByReviewer(businessId).some(rv => rv.targetId === courier.id);
+    setAlreadyReviewed(already);
+  }, [courier.id, businessId]);
+
+  const handleSubmitReview = () => {
+    if (rating === 0) return;
+    addReview({
+      reviewerId: businessId,
+      reviewerType: 'business',
+      targetId: courier.id,
+      targetType: 'courier',
+      rating,
+      comment: comment || undefined,
+    });
+    setSubmitted(true);
+    setAlreadyReviewed(true);
+    const r = getReviewsByTarget(courier.id);
+    setReviews(r);
+  };
+
+  const displayedReviews = showAllReviews ? reviews : reviews.slice(0, 3);
+
+  return (
+    <div
+      className="fixed inset-0 z-[300] flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.6)' }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="w-full max-w-sm rounded-2xl overflow-hidden overflow-y-auto" style={{ background: '#fff', maxHeight: '90vh' }} dir="rtl">
+        {/* Header */}
+        <div
+          className="flex items-center gap-3 p-5"
+          style={{ background: 'linear-gradient(135deg, #061b31, #1c1e54)' }}
+        >
+          {courier.photo ? (
+            <img src={courier.photo} className="w-16 h-16 rounded-full object-cover border-2 border-white/30" />
+          ) : (
+            <div
+              className="w-16 h-16 rounded-full flex items-center justify-center text-white text-[22px] font-black"
+              style={{ background: 'linear-gradient(135deg, #533afd, #ea2261)' }}
             >
-              💙 שלם בביט ל-{courier.bitPhone}
+              {courier.name[0]}
+            </div>
+          )}
+          <div>
+            <p className="text-white font-black text-[16px]">{courier.name}</p>
+            <p className="text-white/60 text-[11px]">
+              <span className="flex items-center gap-1"><Truck size={11} /> {courier.vehicle === 'motorcycle' ? 'אופנוע' : courier.vehicle === 'bicycle' ? 'אופניים' : courier.vehicle === 'scooter' ? 'קטנוע' : 'רכב'}</span>
+            </p>
+            <div className="flex items-center gap-1 mt-1">
+              {[1,2,3,4,5].map((i) => (
+                <span key={i} style={{ color: i <= Math.round(courier.rating) ? '#f59e0b' : 'rgba(255,255,255,0.25)', fontSize: 14 }}>★</span>
+              ))}
+              <span className="text-white/60 text-[11px] mr-1">{courier.rating.toFixed(1)}</span>
+            </div>
+          </div>
+        </div>
+        {/* Details */}
+        <div className="p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="text-[12px] font-semibold w-20" style={{ color: '#8898aa' }}>טלפון</span>
+            <a href={`tel:${courier.phone}`} className="text-[13px] font-bold" style={{ color: '#533afd' }}>
+              {courier.phone || 'לא זמין'}
             </a>
           </div>
-        )}
-      </div>
-      <div className="px-4 pb-4">
-        <button
-          onClick={onClose}
-          className="w-full py-3 rounded-xl font-bold text-[14px]"
-          style={{ background: '#f0f4f8', color: '#8898aa' }}
-        >
-          סגור
-        </button>
+          <div className="flex items-center gap-2">
+            <span className="text-[12px] font-semibold w-20" style={{ color: '#8898aa' }}>מייל</span>
+            <a href={`mailto:${courier.email}`} className="text-[13px]" style={{ color: '#061b31' }}>
+              {courier.email}
+            </a>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[12px] font-semibold w-20" style={{ color: '#8898aa' }}>משלוחים</span>
+            <span className="text-[13px] font-bold" style={{ color: '#061b31' }}>{courier.totalDeliveries}</span>
+          </div>
+          {courier.bitPhone && (
+            <div className="flex items-center gap-2">
+              <span className="text-[12px] font-semibold w-20" style={{ color: '#8898aa' }}>Bit</span>
+              <a
+                href={`https://bit.ly/pay/${courier.bitPhone}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[13px] font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-xl"
+                style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe' }}
+              >
+                שלם בביט ל-{courier.bitPhone}
+              </a>
+            </div>
+          )}
+        </div>
+
+        {/* Reviews section */}
+        <div className="px-4 pb-2">
+          <div style={{ borderTop: '1px solid #e8ecf0', paddingTop: 12, marginBottom: 8 }}>
+            <p className="text-[13px] font-black mb-2" style={{ color: '#061b31' }}>ביקורות</p>
+            {reviews.length === 0 ? (
+              <p className="text-[12px]" style={{ color: '#8898aa' }}>אין ביקורות עדיין</p>
+            ) : (
+              <div className="space-y-2">
+                {displayedReviews.map((rv, idx) => (
+                  <div key={rv.id} style={{ borderBottom: idx < displayedReviews.length - 1 ? '1px solid #f0f0f0' : 'none', paddingBottom: 8 }}>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <div className="flex items-center gap-1">
+                        {[1,2,3,4,5].map(i => (
+                          <span key={i} style={{ fontSize: 12, color: i <= rv.rating ? '#f59e0b' : '#E8E8E8' }}>★</span>
+                        ))}
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full mr-1" style={{ background: '#eef2ff', color: '#533afd' }}>עסק</span>
+                      </div>
+                      <span className="text-[10px]" style={{ color: '#8898aa' }}>
+                        {new Date(rv.createdAt).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                      </span>
+                    </div>
+                    {rv.comment && <p className="text-[12px]" style={{ color: '#444' }}>{rv.comment}</p>}
+                  </div>
+                ))}
+                {reviews.length > 3 && (
+                  <button
+                    onClick={() => setShowAllReviews(!showAllReviews)}
+                    className="text-[12px] font-semibold"
+                    style={{ color: '#533afd' }}
+                  >
+                    {showAllReviews ? 'הצג פחות' : `הצג עוד (${reviews.length - 3})`}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Write review section */}
+          <div style={{ borderTop: '1px solid #e8ecf0', paddingTop: 12, marginBottom: 12 }}>
+            {submitted ? (
+              <p className="text-[12px] font-semibold text-center py-2" style={{ color: '#1BA672' }}>הביקורת נשלחה! תודה</p>
+            ) : alreadyReviewed ? (
+              <p className="text-[12px]" style={{ color: '#8898aa' }}>כבר השארת ביקורת</p>
+            ) : (
+              <>
+                <p className="text-[12px] font-bold mb-2" style={{ color: '#061b31' }}>כתוב ביקורת</p>
+                <div className="flex gap-1 mb-2">
+                  {[1,2,3,4,5].map(i => (
+                    <button key={i} onClick={() => setRating(i)}>
+                      <span style={{ fontSize: 24, color: i <= rating ? '#f59e0b' : '#E8E8E8' }}>★</span>
+                    </button>
+                  ))}
+                </div>
+                {rating > 0 && (
+                  <textarea
+                    value={comment}
+                    onChange={e => setComment(e.target.value)}
+                    placeholder="הערות (לא חובה)..."
+                    className="w-full rounded-xl p-3 mb-2 text-[12px] resize-none outline-none"
+                    style={{ border: '1px solid #E8E8E8', background: '#F8F9FA', height: 60, direction: 'rtl' }}
+                  />
+                )}
+                {rating > 0 && (
+                  <button
+                    onClick={handleSubmitReview}
+                    className="w-full py-2.5 rounded-xl font-bold text-[13px] text-white"
+                    style={{ background: '#1BA672' }}
+                  >
+                    שלח ביקורת
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="px-4 pb-4">
+          <button
+            onClick={onClose}
+            className="w-full py-3 rounded-xl font-bold text-[14px]"
+            style={{ background: '#f0f4f8', color: '#8898aa' }}
+          >
+            סגור
+          </button>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 // ─── Delivery status banner ───────────────────────────────────
 const DeliveryBanner: React.FC<{ delivery: StoredDelivery }> = ({ delivery }) => {
@@ -297,11 +421,22 @@ const BusinessChat: React.FC = () => {
   const [showCourierProfile, setShowCourierProfile] = useState(false);
   const [muted, setMutedState] = useState(getMuted());
   const [showOlder, setShowOlder] = useState(false);
+  const [showDeleteAllConvs, setShowDeleteAllConvs] = useState(false);
   const [courierLocation, setCourierLocation] = useState<{ lat: number; lng: number; updatedAt: string } | null>(null);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const prevMsgCount = useRef(0);
   const prevDeliveryStatus = useRef<string | null>(null);
+
+  // ─── Media state ─────────────────────────────────────────────
+  const [showVoiceModal, setShowVoiceModal] = useState(false);
+  const [showSupportVoiceModal, setShowSupportVoiceModal] = useState(false);
+  const imageInputRef     = useRef<HTMLInputElement>(null);
+  const cameraInputRef    = useRef<HTMLInputElement>(null);
+  const docInputRef       = useRef<HTMLInputElement>(null);
+  const suppImageInputRef = useRef<HTMLInputElement>(null);
+  const suppCameraInputRef= useRef<HTMLInputElement>(null);
+  const suppDocInputRef   = useRef<HTMLInputElement>(null);
 
   // ─── Support thread state ────────────────────────────────────
   const SUPPORT_ID = '__support__';
@@ -500,7 +635,7 @@ const BusinessChat: React.FC = () => {
     const next = !muted;
     setMuted(next);
     setMutedState(next);
-    toast.success(next ? '🔇 סאונד מושתק' : '🔊 סאונד פעיל');
+    toast.success(next ? 'סאונד מושתק' : 'סאונד פעיל');
   };
 
   const { recent, older } = groupConversations(conversations);
@@ -510,6 +645,76 @@ const BusinessChat: React.FC = () => {
     if (selectedConvId === id) setSelectedConvId(null);
     loadConvs();
     toast.success('השיחה נמחקה');
+  };
+
+  // ─── Media handlers — regular chat ───────────────────────────
+  const handleImageFile = async (file: File) => {
+    if (!selectedConvId) return;
+    try {
+      const compressed = await compressImage(file);
+      addMessage(selectedConvId, {
+        senderId: businessId, senderName: businessName, senderType: 'business',
+        content: compressed, messageType: 'image',
+      });
+      setMessages(getMessages(selectedConvId));
+    } catch { toast.error('שגיאה בשליחת התמונה'); }
+  };
+  const handleVoiceSend = (audioBase64: string, duration: number) => {
+    if (!selectedConvId) return;
+    setShowVoiceModal(false);
+    addMessage(selectedConvId, {
+      senderId: businessId, senderName: businessName, senderType: 'business',
+      content: encodeVoiceContent(audioBase64, duration), messageType: 'voice',
+    });
+    setMessages(getMessages(selectedConvId));
+  };
+  const handleDocFile = (file: File) => {
+    if (!selectedConvId) return;
+    if (file.size > 5 * 1024 * 1024) { toast.error('מסמך גדול מדי — מקסימום 5MB'); return; }
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      addMessage(selectedConvId!, {
+        senderId: businessId, senderName: businessName, senderType: 'business',
+        content: encodeDocContent(reader.result as string, file.name, file.size),
+        messageType: 'document',
+      });
+      setMessages(getMessages(selectedConvId!));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // ─── Media handlers — support chat ───────────────────────────
+  const refreshSupport = () => {
+    if (!supportTicket) return;
+    const fresh = getSupportMessages(supportTicket.id);
+    setSupportMessages(fresh);
+    prevSupportCount.current = fresh.length;
+  };
+  const handleSuppImageFile = async (file: File) => {
+    if (!supportTicket) return;
+    try {
+      const compressed = await compressImage(file);
+      addSupportMessage(supportTicket.id, 'user', businessName, compressed);
+      playNewMessage(); refreshSupport();
+    } catch { toast.error('שגיאה בשליחת התמונה'); }
+  };
+  const handleSuppVoiceSend = (audioBase64: string, duration: number) => {
+    if (!supportTicket) return;
+    setShowSupportVoiceModal(false);
+    addSupportMessage(supportTicket.id, 'user', businessName,
+      encodeVoiceContent(audioBase64, duration));
+    playNewMessage(); refreshSupport();
+  };
+  const handleSuppDocFile = (file: File) => {
+    if (!supportTicket) return;
+    if (file.size > 5 * 1024 * 1024) { toast.error('מסמך גדול מדי — מקסימום 5MB'); return; }
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      addSupportMessage(supportTicket!.id, 'user', businessName,
+        encodeDocContent(reader.result as string, file.name, file.size));
+      playNewMessage(); refreshSupport();
+    };
+    reader.readAsDataURL(file);
   };
 
   const ConvItem = ({ c }: { c: StoredConversation }) => {
@@ -570,12 +775,19 @@ const BusinessChat: React.FC = () => {
           onTouchEnd={onTouchEnd}
           onClick={() => { if (swipeX < 5 && !showConfirm) { setSelectedConvId(c.id); setActiveDelivery(null); setCourierLocation(null); } else reset(); }}
         >
-          <div
-            className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[14px] flex-shrink-0"
-            style={{ background: 'linear-gradient(135deg, #061b31, #1c1e54)' }}
-          >
-            {(c.courierName || 'ש')[0]}
-          </div>
+          {(() => {
+            const courierData = getCourier(c.courierId);
+            return courierData?.photo ? (
+              <img src={courierData.photo} className="w-10 h-10 rounded-full object-cover flex-shrink-0 border border-gray-100" alt={c.courierName} />
+            ) : (
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[14px] flex-shrink-0"
+                style={{ background: 'linear-gradient(135deg, #061b31, #1c1e54)' }}
+              >
+                {(c.courierName || 'ש')[0]}
+              </div>
+            );
+          })()}
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between">
               <p className="text-[14px] font-bold truncate" style={{ color: '#061b31' }}>{c.courierName || 'שליח'}</p>
@@ -596,7 +808,7 @@ const BusinessChat: React.FC = () => {
               </div>
             </div>
             {c.lastMessage && (
-              <p className="text-[12px] truncate mt-0.5" style={{ color: '#8898aa' }}>{c.lastMessage}</p>
+              <p className="text-[12px] truncate mt-0.5" style={{ color: '#8898aa' }}>{formatMessagePreview(c.lastMessage)}</p>
             )}
             {c.lastMessageAt && (
               <p className="text-[10px] mt-0.5" style={{ color: '#c0cadd' }}>
@@ -619,7 +831,16 @@ const BusinessChat: React.FC = () => {
   if (!selectedConvId) {
     return (
       <div className="max-w-lg mx-auto px-4 py-5">
-        <h1 className="text-[20px] font-black mb-5" style={{ color: '#061b31' }}>הודעות</h1>
+        <div className="flex items-center justify-between mb-5">
+          <h1 className="text-[20px] font-black" style={{ color: '#061b31' }}>הודעות</h1>
+          {conversations.length > 0 && (
+            <button onClick={() => setShowDeleteAllConvs(true)}
+              className="px-3 py-1.5 rounded-xl text-[12px] font-bold"
+              style={{ background: '#FFF5F5', color: '#E23437', border: '1px solid #E2343740' }}>
+              מחק הכל
+            </button>
+          )}
+        </div>
 
         {/* ── Pinned support thread ── */}
         <div className="mb-3">
@@ -633,7 +854,7 @@ const BusinessChat: React.FC = () => {
               className="w-8 h-8 rounded-full flex items-center justify-center text-[13px] flex-shrink-0"
               style={{ background: '#533afd12' }}
             >
-              🎧
+              <Gear size={14} weight="regular" style={{ color: '#533afd' }} />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between">
@@ -687,6 +908,32 @@ const BusinessChat: React.FC = () => {
             )}
           </div>
         )}
+        {showDeleteAllConvs && (
+          <div className="fixed inset-0 z-[200] flex items-end justify-center" style={{ background: 'rgba(0,0,0,0.6)' }}>
+            <div className="w-full max-w-lg rounded-t-3xl p-5 pb-8" style={{ background: '#fff' }} dir="rtl">
+              <div className="w-10 h-1 rounded-full mx-auto mb-4" style={{ background: '#E8E8E8' }} />
+              <h3 className="text-[17px] font-black mb-2 text-center" style={{ color: '#202125' }}>מחק את כל השיחות?</h3>
+              <p className="text-[13px] text-center mb-5" style={{ color: '#757575' }}>פעולה זו לא ניתנת לביטול. כל השיחות ימחקו לצמיתות.</p>
+              <div className="flex gap-3">
+                <button onClick={() => setShowDeleteAllConvs(false)}
+                  className="flex-1 py-3 rounded-2xl text-[14px] font-bold"
+                  style={{ background: '#f0f0f0', color: '#555' }}>
+                  ביטול
+                </button>
+                <button onClick={() => {
+                  conversations.forEach(c => deleteConversation(c.id));
+                  loadConvs();
+                  setShowDeleteAllConvs(false);
+                  toast.success('כל השיחות נמחקו');
+                }}
+                  className="flex-1 py-3 rounded-2xl text-[14px] font-bold text-white"
+                  style={{ background: '#E23437' }}>
+                  מחק הכל
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -703,7 +950,7 @@ const BusinessChat: React.FC = () => {
             ← חזרה
           </button>
           <div className="flex-1">
-            <p className="text-[14px] font-black" style={{ color: '#061b31' }}>🎧 מוקד שירות</p>
+            <p className="text-[14px] font-black flex items-center gap-1" style={{ color: '#061b31' }}><Gear size={14} /> מוקד שירות</p>
             <p className="text-[10px]" style={{ color: '#10b981' }}>● צוות אשדוד-שליח</p>
           </div>
         </div>
@@ -712,7 +959,7 @@ const BusinessChat: React.FC = () => {
           {supportMessages.length === 0 && (
             <div className="text-center mt-14">
               <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-3" style={{ background: '#eef2ff' }}>
-                <span className="text-3xl">🎧</span>
+                <Gear size={28} style={{ color: '#533afd' }} />
               </div>
               <p className="font-bold text-[14px] mb-1" style={{ color: '#061b31' }}>יש שאלה? אנחנו כאן</p>
               <p className="text-[12px]" style={{ color: '#8898aa' }}>שלח הודעה ונחזור אליך בהקדם</p>
@@ -720,11 +967,13 @@ const BusinessChat: React.FC = () => {
           )}
           {supportMessages.map((m) => {
             const isMine = m.senderType === 'user';
+            const mediaEl = renderMediaMessage(m.content, isMine, m.id);
+            if (mediaEl) return mediaEl;
             return (
               <div key={m.id} className={`flex ${isMine ? 'justify-start' : 'justify-end'}`}>
                 <div className="max-w-[80%]">
                   {!isMine && (
-                    <p className="text-[10px] mb-1 font-bold text-right" style={{ color: '#533afd' }}>🎧 תמיכה</p>
+                    <p className="text-[10px] mb-1 font-bold text-right flex items-center justify-end gap-1" style={{ color: '#533afd' }}><Gear size={10} /> תמיכה</p>
                   )}
                   <div
                     className="px-3.5 py-2.5 rounded-2xl text-[13px]"
@@ -749,6 +998,16 @@ const BusinessChat: React.FC = () => {
         </div>
         {/* Input */}
         <div className="flex items-center gap-2 px-4 py-3" style={{ background: '#fff', borderTop: '1px solid #e8ecf0' }}>
+          {/* Hidden file inputs — support */}
+          <input ref={suppImageInputRef}  type="file" accept="image/*"               className="hidden" onChange={async (e) => { const f = e.target.files?.[0]; if (f) await handleSuppImageFile(f); e.target.value = ''; }} />
+          <input ref={suppCameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={async (e) => { const f = e.target.files?.[0]; if (f) await handleSuppImageFile(f); e.target.value = ''; }} />
+          <input ref={suppDocInputRef}    type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleSuppDocFile(f); e.target.value = ''; }} />
+          <AttachmentMenu
+            onImage={() => suppImageInputRef.current?.click()}
+            onCamera={() => suppCameraInputRef.current?.click()}
+            onVoice={() => setShowSupportVoiceModal(true)}
+            onDocument={() => suppDocInputRef.current?.click()}
+          />
           <input
             className="flex-1 rounded-2xl px-4 py-2.5 text-[13px] outline-none"
             style={{ background: '#f6f9fc', border: '1px solid #e8ecf0', color: '#061b31', direction: 'rtl' }}
@@ -766,6 +1025,9 @@ const BusinessChat: React.FC = () => {
             <PaperAirplaneIcon className="w-4 h-4 text-white" style={{ transform: 'rotate(180deg)' }} />
           </button>
         </div>
+        {showSupportVoiceModal && (
+          <VoiceRecorderModal onSend={handleSuppVoiceSend} onClose={() => setShowSupportVoiceModal(false)} />
+        )}
       </div>
     );
   }
@@ -781,13 +1043,22 @@ const BusinessChat: React.FC = () => {
         <button onClick={() => setSelectedConvId(null)} className="text-[13px] font-semibold" style={{ color: '#533afd' }}>
           ← חזרה
         </button>
+        {selectedConv?.courierId !== 'admin' && selectedCourier && (
+          selectedCourier.photo ? (
+            <img src={selectedCourier.photo} className="w-9 h-9 rounded-full object-cover flex-shrink-0 border border-gray-100" alt={selectedCourier.name} />
+          ) : (
+            <div className="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-[13px] flex-shrink-0" style={{ background: 'linear-gradient(135deg, #061b31, #1c1e54)' }}>
+              {(selectedCourier.name || 'ש')[0]}
+            </div>
+          )
+        )}
         <div className="flex-1">
           <button
             className="text-right"
             onClick={() => selectedConv?.courierId !== 'admin' && selectedCourier && setShowCourierProfile(true)}
           >
             <p className="text-[14px] font-bold hover:underline" style={{ color: '#061b31' }}>
-              {selectedConv?.courierId === 'admin' ? '🔧 מנהל האתר' : (selectedConv?.courierName ?? 'שליח')}
+              {selectedConv?.courierId === 'admin' ? <span className="flex items-center gap-1"><Gear size={13} /> מנהל האתר</span> : (selectedConv?.courierName ?? 'שליח')}
             </p>
             <p className="text-[10px]" style={{ color: '#10b981' }}>● מחובר בזמן אמת</p>
           </button>
@@ -803,7 +1074,7 @@ const BusinessChat: React.FC = () => {
               style={{ background: '#f0fdf4', color: '#10b981', border: '1px solid #bbf7d0' }}
               title={`עדכון: ${new Date(courierLocation.updatedAt).toLocaleTimeString('he-IL')}`}
             >
-              📍 מיקום
+              <PhosphorMapPin size={11} /> מיקום
             </a>
           )}
           {/* Mute toggle */}
@@ -820,6 +1091,16 @@ const BusinessChat: React.FC = () => {
       {/* Delivery banner */}
       {activeDelivery && <DeliveryBanner delivery={activeDelivery} />}
 
+      {/* Courier unavailable indicator */}
+      {selectedCourier && selectedCourier.isAvailable === false && (
+        <div className="flex items-center gap-2 px-4 py-2" style={{ background: '#FFF5F5', borderBottom: '1px solid #E2343720' }} dir="rtl">
+          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: '#E23437' }} />
+          <p className="text-[12px] font-medium" style={{ color: '#E23437' }}>
+            {selectedCourier.name} אינו זמין כרגע — ייתכן שההודעות לא יתקבלו מיד
+          </p>
+        </div>
+      )}
+
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3" style={{ background: '#f6f9fc' }}>
         {messages.length === 0 && (
@@ -835,7 +1116,7 @@ const BusinessChat: React.FC = () => {
             return (
               <div key={m.id} className="mx-0 my-1">
                 <div className="rounded-2xl p-3 space-y-2" style={{ background: '#EAF7FD', border: `1px solid ${BLUE}30` }}>
-                  <p className="text-[11px] font-black uppercase" style={{ color: BLUE }}>📦 פרטי משלוח</p>
+                  <p className="text-[11px] font-black uppercase flex items-center gap-1" style={{ color: BLUE }}><Package size={11} /> פרטי משלוח</p>
                   {info.pickupAddress && <p className="text-[12px]" style={{ color: TEXT }}><span style={{ color: '#1BA672' }}>⬆ </span>{info.pickupAddress}</p>}
                   {info.dropAddress && <p className="text-[12px]" style={{ color: TEXT }}><span style={{ color: '#E23437' }}>⬇ </span>{info.dropAddress}</p>}
                   {info.price && <p className="text-[13px] font-black" style={{ color: BLUE }}>₪{info.price} · {info.paymentMethod === 'cash' ? 'מזומן' : 'ביט'}</p>}
@@ -845,18 +1126,63 @@ const BusinessChat: React.FC = () => {
             );
           }
 
-          // Proof message
-          if (m.messageType === 'proof') {
-            let info: { note?: string; hasPhoto?: boolean; photo?: string } = {};
+          // Media messages — image / voice / document
+          if (m.messageType === 'image' || m.messageType === 'voice' || m.messageType === 'document') {
+            const el = renderMediaMessage(m.content, m.senderType === 'business', m.id);
+            if (el) return el;
+          }
+
+          // System message — review notification
+          if (m.messageType === 'system') {
+            let info: { type?: string; reviewerName?: string; reviewerType?: string; rating?: number; comment?: string | null } = {};
             try { info = JSON.parse(m.content); } catch { /* ignore */ }
+            if (info.type === 'review') {
+              const stars = info.rating ?? 0;
+              return (
+                <div key={m.id} className="flex justify-center my-2">
+                  <div className="rounded-2xl px-4 py-3 max-w-[85%] text-center" style={{ background: '#FFF8EC', border: '1px solid #F58F1F30' }}>
+                    <p className="text-[11px] font-black mb-1" style={{ color: '#F58F1F' }}>⭐ ביקורת חדשה</p>
+                    <p className="text-[12px] font-semibold mb-1.5" style={{ color: '#202125' }}>
+                      {info.reviewerName} {info.reviewerType === 'business' ? '(עסק)' : '(שליח)'} כתב ביקורת
+                    </p>
+                    <div className="flex justify-center gap-0.5 mb-1">
+                      {[1,2,3,4,5].map(i => (
+                        <span key={i} style={{ fontSize: 18, color: i <= stars ? '#F58F1F' : '#E8E8E8' }}>★</span>
+                      ))}
+                    </div>
+                    {info.comment && (
+                      <p className="text-[11px] mt-1" style={{ color: '#757575' }}>"{info.comment}"</p>
+                    )}
+                  </div>
+                </div>
+              );
+            }
+            return null;
+          }
+
+          // Proof message — photo is stored in delivery.proofPhotoUrl, NOT in message content
+          if (m.messageType === 'proof') {
+            let info: { note?: string; hasPhoto?: boolean; deliveryId?: string; photo?: string } = {};
+            try { info = JSON.parse(m.content); } catch { /* ignore */ }
+            // Load photo from delivery record (avoids base64-in-message issues)
+            const proofDeliveryId = info.deliveryId ?? m.deliveryId;
+            const proofDelivery = proofDeliveryId
+              ? getDeliveries().find(d => d.id === proofDeliveryId)
+              : null;
+            // Fall back to old-style inline photo for backward compatibility
+            const proofPhoto = proofDelivery?.proofPhotoUrl ?? info.photo;
+            const proofNote  = proofDelivery?.proofNote   ?? info.note;
             return (
               <div key={m.id} className="mx-0 my-1 flex justify-end">
                 <div className="rounded-2xl p-3 max-w-[85%]" style={{ background: '#E8F8F0', border: '1px solid #1BA67230' }}>
-                  <p className="text-[11px] font-black mb-2" style={{ color: '#1BA672' }}>✅ אישור מסירה</p>
-                  {info.hasPhoto && info.photo && (
-                    <img src={info.photo} alt="proof" className="rounded-xl mb-2 max-h-40 object-cover w-full" />
+                  <p className="text-[11px] font-black mb-2 flex items-center gap-1" style={{ color: '#1BA672' }}><CheckCircle size={11} /> אישור מסירה</p>
+                  {info.hasPhoto && proofPhoto && (
+                    <img src={proofPhoto} alt="proof" className="rounded-xl mb-2 max-h-48 object-cover w-full" />
                   )}
-                  {info.note && <p className="text-[12px]" style={{ color: TEXT }}>{info.note}</p>}
+                  {proofNote && <p className="text-[12px]" style={{ color: TEXT }}>{proofNote}</p>}
+                  {!proofPhoto && !proofNote && (
+                    <p className="text-[11px] flex items-center gap-1" style={{ color: '#6B7280' }}><CheckCircle size={11} /> המשלוח אושר</p>
+                  )}
                 </div>
               </div>
             );
@@ -888,6 +1214,16 @@ const BusinessChat: React.FC = () => {
         className="flex items-center gap-2 px-4 py-3"
         style={{ background: '#fff', borderTop: '1px solid #e8ecf0' }}
       >
+        {/* Hidden file inputs */}
+        <input ref={imageInputRef}  type="file" accept="image/*"               className="hidden" onChange={async (e) => { const f = e.target.files?.[0]; if (f) await handleImageFile(f); e.target.value = ''; }} />
+        <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={async (e) => { const f = e.target.files?.[0]; if (f) await handleImageFile(f); e.target.value = ''; }} />
+        <input ref={docInputRef}    type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleDocFile(f); e.target.value = ''; }} />
+        <AttachmentMenu
+          onImage={() => imageInputRef.current?.click()}
+          onCamera={() => cameraInputRef.current?.click()}
+          onVoice={() => setShowVoiceModal(true)}
+          onDocument={() => docInputRef.current?.click()}
+        />
         <input
           className="flex-1 rounded-2xl px-4 py-2.5 text-[13px] outline-none"
           style={{ background: '#f6f9fc', border: '1px solid #e8ecf0', color: '#061b31', direction: 'rtl' }}
@@ -906,9 +1242,14 @@ const BusinessChat: React.FC = () => {
         </button>
       </div>
 
+      {/* Voice recorder modal */}
+      {showVoiceModal && (
+        <VoiceRecorderModal onSend={handleVoiceSend} onClose={() => setShowVoiceModal(false)} />
+      )}
+
       {/* Courier profile modal */}
       {showCourierProfile && selectedCourier && (
-        <CourierProfileModal courier={selectedCourier} onClose={() => setShowCourierProfile(false)} />
+        <CourierProfileModal courier={selectedCourier} businessId={businessId} onClose={() => setShowCourierProfile(false)} />
       )}
 
       {/* Business completion modal */}

@@ -7,6 +7,7 @@ import {
   ExclamationTriangleIcon,
   ArrowPathIcon,
 } from '@heroicons/react/24/outline';
+import { Flask, Rocket, Package, Money, DeviceMobile } from '@phosphor-icons/react';
 import { StatCard } from '../components/ui/StatCard';
 import { RevenueChart } from '../components/charts/RevenueChart';
 import { DeliveryChart } from '../components/charts/DeliveryChart';
@@ -254,7 +255,7 @@ const Dashboard: React.FC = () => {
                 onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(234,34,97,0.5)'; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(234,34,97,0.35)'; }}
               >
-                🧪 שלח התראת בדיקה לשליחים
+                <Flask size={14} /> שלח התראת בדיקה לשליחים
               </button>
             </div>
           </div>
@@ -464,7 +465,7 @@ const Dashboard: React.FC = () => {
             dir="rtl"
           >
             <div className="flex items-center justify-between mb-1">
-              <h2 className="text-[17px] font-black" style={{ color: '#061b31' }}>🧪 שליחת התראת בדיקה</h2>
+              <h2 className="text-[17px] font-black flex items-center gap-1" style={{ color: '#061b31' }}><Flask size={16} /> שליחת התראת בדיקה</h2>
               <button onClick={() => setShowTestModal(false)} className="text-gray-400 hover:text-gray-600 text-xl font-bold">✕</button>
             </div>
 
@@ -528,7 +529,7 @@ const Dashboard: React.FC = () => {
                       color: testPayment === pm ? '#533afd' : '#8898aa',
                     }}
                   >
-                    {pm === 'cash' ? '💵 מזומן' : '📱 ביט'}
+                    {pm === 'cash' ? <><Money size={13} /> מזומן</> : <><DeviceMobile size={13} /> ביט</>}
                   </button>
                 ))}
               </div>
@@ -548,14 +549,14 @@ const Dashboard: React.FC = () => {
                   requiredVehicle: testVehicle || undefined,
                   paymentMethod: testPayment,
                 });
-                toast.success('📦 התראת בדיקה נשלחה לשליחים!');
+                toast.success('התראת בדיקה נשלחה לשליחים!');
                 setShowTestModal(false);
                 setTestPickup(''); setTestDrop(''); setTestDesc(''); setTestPrice('35'); setTestVehicle('');
               }}
               className="w-full py-3 rounded-xl text-white font-black text-[14px] transition-all active:scale-95"
               style={{ background: 'linear-gradient(135deg, #ea2261, #533afd)' }}
             >
-              🚀 שלח התראה לשליחים
+              <span className="flex items-center justify-center gap-1.5"><Rocket size={15} /> שלח התראה לשליחים</span>
             </button>
           </div>
         </div>

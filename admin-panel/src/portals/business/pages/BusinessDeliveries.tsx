@@ -1,11 +1,15 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { Calendar, Truck, CheckCircle, Package, MapPin as PhosphorMapPin, User as PhosphorUser, Megaphone } from '@phosphor-icons/react';
 import { useNavigate } from 'react-router-dom';
+import DeliveryMap from '../../../components/DeliveryMap';
 import {
   getDeliveriesByBusiness,
   getBusiness,
   addDeliveryNotification,
   updateDelivery,
   deleteDelivery,
+  republishDelivery,
+  formatOrderNumber,
   type StoredDelivery,
 } from '../../../services/storage.service';
 import { syncDeliveriesDown } from '../../../services/sync.service';
@@ -24,6 +28,9 @@ import {
   BoltIcon,
   MapPinIcon,
   BanknotesIcon,
+  UserIcon,
+  CreditCardIcon,
+  BellIcon,
 } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 
@@ -33,12 +40,12 @@ const RED   = '#E23437';
 
 type Tab = 'pending_approval' | 'active' | 'scheduled' | 'completed' | 'archived' | 'all';
 
-const statusLabel: Record<StoredDelivery['status'], string> = {
-  scheduled: '📅 מתוזמן',
+const statusLabel: Record<StoredDelivery['status'], React.ReactNode> = {
+  scheduled: <span className="flex items-center gap-1"><Calendar size={10} /> מתוזמן</span>,
   pending:   'ממתין לשליח',
-  accepted:  'שליח בדרך לאיסוף',
+  accepted:  <span className="flex items-center gap-1"><Truck size={10} /> שליח בדרך לאיסוף</span>,
   picked_up: 'בדרך ללקוח',
-  delivered: 'נמסר ✓',
+  delivered: <span className="flex items-center gap-1"><CheckCircle size={10} /> נמסר</span>,
   cancelled: 'בוטל',
 };
 
@@ -226,7 +233,7 @@ const EditSheet: React.FC<EditSheetProps> = ({ delivery, onClose, onSave }) => {
                     color:      paymentMethod === m ? '#fff' : '#757575',
                   }}
                 >
-                  {m === 'cash' ? '💵 מזומן' : '📱 ביט'}
+                  {m === 'cash' ? 'מזומן' : 'ביט'}
                 </button>
               ))}
             </div>
@@ -507,6 +514,151 @@ const ScheduledCard: React.FC<{
   );
 };
 
+// ─── Business Delivery Tracking Sheet ────────────────────────────────────────
+const BIZ_STEPS = [
+  { key: 'accepted',  label: 'שליח קיבל הזמנה', Icon: TruckIcon,      color: '#009DE0' },
+  { key: 'picked_up', label: 'חבילה נאספה',       Icon: ArchiveBoxIcon, color: '#F58F1F' },
+  { key: 'delivered', label: 'נמסר ללקוח',         Icon: CheckIcon,      color: '#1BA672' },
+] as const;
+
+const BIZ_STATUS_ORDER = ['accepted', 'picked_up', 'delivered'] as const;
+
+const BusinessDeliveryTrackingSheet: React.FC<{
+  delivery: StoredDelivery;
+  onClose: () => void;
+}> = ({ delivery, onClose }) => {
+  const d = delivery;
+  const isActive = d.status === 'accepted' || d.status === 'picked_up';
+  const isDone = d.status === 'delivered' || d.status === 'cancelled';
+
+  function fmtTime(iso?: string) {
+    if (!iso) return null;
+    return new Date(iso).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+  }
+  function bizStepDone(delStatus: StoredDelivery['status'], stepKey: string) {
+    const di = BIZ_STATUS_ORDER.indexOf(delStatus as typeof BIZ_STATUS_ORDER[number]);
+    const si = BIZ_STATUS_ORDER.indexOf(stepKey as typeof BIZ_STATUS_ORDER[number]);
+    return si !== -1 && di >= si;
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 z-50" style={{ background: 'rgba(0,0,0,0.45)' }} onClick={onClose} />
+      <div dir="rtl" className="fixed bottom-0 right-0 left-0 z-50 rounded-t-3xl overflow-y-auto" style={{ background: '#fff', boxShadow: '0 -4px 30px rgba(0,0,0,0.18)', animation: 'slideUp 0.28s ease', maxHeight: '92vh' }}>
+        {/* Handle + close */}
+        <div className="sticky top-0 bg-white pt-4 px-5 pb-2 z-10">
+          <div className="flex justify-center mb-3">
+            <div className="w-10 h-1 rounded-full" style={{ background: '#E8E8E8' }} />
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <p className="text-[16px] font-black" style={{ color: '#202125' }}>מעקב משלוח</p>
+              {d.courierName && (
+                <p className="text-[12px] mt-0.5" style={{ color: '#757575' }}>
+                  שליח: <span className="font-bold" style={{ color: '#202125' }}>{d.courierName}</span>
+                </p>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: isDone ? '#1BA67218' : '#009DE018', color: isDone ? '#1BA672' : '#009DE0' }}>
+                {d.status === 'accepted' ? 'בדרך לאיסוף' : d.status === 'picked_up' ? 'בדרך ללקוח' : d.status === 'delivered' ? 'נמסר ✓' : 'בוטל'}
+              </span>
+              <button onClick={onClose} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: '#F4F4F4' }}>
+                <XMarkIcon className="w-5 h-5" style={{ color: '#757575' }} />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-5 pb-8 space-y-3">
+          {/* Timeline */}
+          <div className="rounded-2xl p-3" style={{ background: '#F8F8F8', border: '1px solid #E8E8E8' }}>
+            {/* Created */}
+            <div className="flex items-center gap-2.5 mb-0.5">
+              <div className="flex flex-col items-center">
+                <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: '#E8F8F0' }}>
+                  <BellIcon className="w-4 h-4" style={{ color: '#1BA672' }} />
+                </div>
+                <div className="w-0.5 my-1" style={{ height: 16, background: '#1BA672' }} />
+              </div>
+              <div className="flex-1 flex items-center justify-between">
+                <p className="text-[12px] font-semibold" style={{ color: '#202125' }}>הזמנה נוצרה</p>
+                <p className="text-[11px] font-bold" style={{ color: '#1BA672' }}>
+                  {new Date(d.createdAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
+                </p>
+              </div>
+            </div>
+            {BIZ_STEPS.map((step, idx) => {
+              const done = bizStepDone(d.status, step.key);
+              const current = d.status === step.key;
+              const { Icon, color, label } = step;
+              const ts = step.key === 'accepted' ? fmtTime(d.acceptedAt) : step.key === 'picked_up' ? fmtTime(d.pickedUpAt) : fmtTime(d.deliveredAt);
+              return (
+                <div key={step.key} className="flex items-center gap-2.5">
+                  <div className="flex flex-col items-center">
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-all"
+                      style={{ background: done ? color : '#E8E8E8', boxShadow: current ? `0 0 0 4px ${color}30` : undefined }}>
+                      <Icon className="w-4 h-4" style={{ color: done ? '#fff' : '#AAAAAA' }} />
+                    </div>
+                    {idx < BIZ_STEPS.length - 1 && (
+                      <div className="w-0.5 my-1" style={{ height: 16, background: done && !current ? color : '#E8E8E8' }} />
+                    )}
+                  </div>
+                  <div className="flex-1 flex items-center justify-between">
+                    <p className="text-[12px] font-semibold" style={{ color: done ? '#202125' : '#757575' }}>{label}</p>
+                    {done && ts && <p className="text-[11px] font-bold" style={{ color }}>{ts}</p>}
+                    {current && !ts && <span className="text-[10px] px-2 py-0.5 rounded-full font-bold animate-pulse" style={{ background: `${color}20`, color }}> עכשיו</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Info card */}
+          <div className="rounded-2xl p-3 space-y-2.5" style={{ background: '#F8F8F8', border: '1px solid #E8E8E8' }}>
+            <div className="flex items-start gap-2.5">
+              <MapPinIcon className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: '#1BA672' }} />
+              <div>
+                <p className="text-[10px] font-semibold" style={{ color: '#757575' }}>איסוף</p>
+                <p className="text-[12px] font-medium" style={{ color: '#202125' }}>{d.pickupAddress}</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-2.5">
+              <MapPinIcon className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: '#E23437' }} />
+              <div>
+                <p className="text-[10px] font-semibold" style={{ color: '#757575' }}>מסירה</p>
+                <p className="text-[12px] font-medium" style={{ color: '#202125' }}>{d.dropAddress}</p>
+              </div>
+            </div>
+            {d.customerName && (
+              <div className="flex items-center gap-2.5">
+                <UserIcon className="w-4 h-4 flex-shrink-0" style={{ color: '#757575' }} />
+                <p className="text-[12px]" style={{ color: '#202125' }}>{d.customerName}</p>
+              </div>
+            )}
+            <div className="flex items-center gap-2.5">
+              <CreditCardIcon className="w-4 h-4 flex-shrink-0" style={{ color: '#757575' }} />
+              <p className="text-[12px] font-medium" style={{ color: '#202125' }}>
+                ₪{d.price} · {d.paymentMethod === 'bit' ? 'ביט' : 'מזומן'}
+                {' · '}
+                <span style={{ color: d.customerPaid ? '#1BA672' : '#E23437' }}>
+                  {d.customerPaid ? 'שולם' : 'לא שולם'}
+                </span>
+              </p>
+            </div>
+          </div>
+
+          {/* Map */}
+          {isActive && (
+            <DeliveryMap pickupAddress={d.pickupAddress} dropAddress={d.dropAddress} height={200} />
+          )}
+        </div>
+      </div>
+      <style>{`@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }`}</style>
+    </>
+  );
+};
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 const BusinessDeliveries: React.FC = () => {
   const navigate  = useNavigate();
@@ -518,15 +670,20 @@ const BusinessDeliveries: React.FC = () => {
   const [resending,  setResending]  = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<StoredDelivery | null>(null);
   const [delTarget,  setDelTarget]  = useState<StoredDelivery | null>(null);
+  const [trackingSheet, setTrackingSheet] = useState<StoredDelivery | null>(null);
 
   const load = async () => {
     if (!businessId) return;
     // Always await so state is updated AFTER Supabase sync (fixes race condition
     // where background sync completed after setDeliveries was called with stale data)
     await syncDeliveriesDown().catch(() => {});
-    setDeliveries(
-      getDeliveriesByBusiness(businessId).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    );
+    const freshDeliveries = getDeliveriesByBusiness(businessId).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    setDeliveries(freshDeliveries);
+    setTrackingSheet(prev => {
+      if (!prev) return null;
+      const fresh = freshDeliveries.find(x => x.id === prev.id);
+      return fresh ?? prev;
+    });
   };
 
   useEffect(() => {
@@ -664,9 +821,19 @@ const BusinessDeliveries: React.FC = () => {
     { id: 'all',       label: 'הכל'      },
   ];
 
-  const canEdit   = (d: StoredDelivery) => ['pending', 'scheduled'].includes(d.status) && !d.archived;
-  const canDelete = (d: StoredDelivery) => ['pending', 'scheduled', 'cancelled'].includes(d.status);
-  const canResend = (d: StoredDelivery) => ['pending', 'scheduled'].includes(d.status);
+  const handleRepublish = (d: StoredDelivery) => {
+    republishDelivery(d.id);
+    toast.success('המשלוח פורסם מחדש לכל השליחים הרלוונטיים!');
+    load();
+  };
+
+  const canEdit      = (d: StoredDelivery) => ['pending', 'scheduled'].includes(d.status) && !d.archived;
+  const canDelete    = (d: StoredDelivery) => ['pending', 'scheduled', 'cancelled'].includes(d.status);
+  const canResend    = (d: StoredDelivery) => ['pending', 'scheduled'].includes(d.status);
+  // Republish: delivery was previously taken by a courier but is now cancelled/reset
+  const canRepublish = (d: StoredDelivery) =>
+    (['accepted', 'cancelled'].includes(d.status) || (d.status === 'pending' && !!d.cancelledBy)) &&
+    !d.archived;
 
   return (
     <div className="max-w-lg mx-auto px-4 py-5" style={{ background: '#F4F4F4', minHeight: '100vh' }}>
@@ -842,20 +1009,30 @@ const BusinessDeliveries: React.FC = () => {
           {filtered.map(d => {
             const color = statusColor[d.status];
 
+            const isActiveDelivery = ['accepted', 'picked_up'].includes(d.status);
             const card = (
               <div
                 className="rounded-2xl p-4"
-                style={{ background: '#FFFFFF', border: '1px solid #E8E8E8', boxShadow: '0 1px 6px rgba(0,0,0,0.05)' }}
+                style={{ background: '#FFFFFF', border: '1px solid #E8E8E8', boxShadow: '0 1px 6px rgba(0,0,0,0.05)', cursor: isActiveDelivery ? 'pointer' : undefined }}
+                onClick={() => isActiveDelivery && setTrackingSheet(d)}
               >
-                {/* Status + time */}
-                <div className="flex items-center justify-between mb-3">
+                {/* Header: order number (right) + date (left) */}
+                <div className="flex items-center justify-between mb-2">
+                  {d.orderNumber ? (
+                    <span style={{ fontSize: 18, fontWeight: 900, color: '#061b31', letterSpacing: '-0.5px' }}>
+                      {formatOrderNumber(d.orderNumber)}
+                    </span>
+                  ) : <div />}
+                  <span className="text-[11px]" style={{ color: '#9CA3AF' }}>{formatDate(d.createdAt)}</span>
+                </div>
+                {/* Status badge */}
+                <div className="mb-3">
                   <span
-                    className="text-[11px] font-bold px-2.5 py-1 rounded-full"
+                    className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full"
                     style={{ background: color + '18', color }}
                   >
                     {statusLabel[d.status]}
                   </span>
-                  <span className="text-[11px]" style={{ color: '#757575' }}>{formatDate(d.createdAt)}</span>
                 </div>
 
                 {/* Addresses */}
@@ -881,7 +1058,7 @@ const BusinessDeliveries: React.FC = () => {
                 <div className="flex flex-wrap gap-1.5 mb-3">
                   {d.paymentMethod && (
                     <span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{ background: '#F4F4F4', color: '#757575' }}>
-                      {d.paymentMethod === 'cash' ? '💵 מזומן' : '📱 ביט'}
+                      {d.paymentMethod === 'cash' ? 'מזומן' : 'ביט'}
                     </span>
                   )}
                   {d.customerPaid !== undefined && (
@@ -896,20 +1073,20 @@ const BusinessDeliveries: React.FC = () => {
                     </span>
                   )}
                   {d.requiredVehicle && (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{ background: '#E6F6FC', color: BLUE }}>
-                      {d.requiredVehicle === 'motorcycle' ? '🏍️' : d.requiredVehicle === 'bicycle' ? '🚲' : d.requiredVehicle === 'scooter' ? '🛵' : '🚗'}
+                    <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-bold" style={{ background: '#E6F6FC', color: BLUE }}>
+                      <Truck size={9} /> {d.requiredVehicle === 'motorcycle' ? 'אופנוע' : d.requiredVehicle === 'bicycle' ? 'אופניים' : d.requiredVehicle === 'scooter' ? 'קטנוע' : 'רכב'}
                     </span>
                   )}
                   {d.courierName && (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{ background: '#F4F4F4', color: '#757575' }}>
-                      🧑‍✈️ {d.courierName}
+                    <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-bold" style={{ background: '#F4F4F4', color: '#757575' }}>
+                      <PhosphorUser size={9} weight="fill" />{d.courierName}
                     </span>
                   )}
                 </div>
 
                 {d.scheduledAt && d.status === 'scheduled' && (
                   <p className="text-[11px] font-bold mb-3" style={{ color: BLUE }}>
-                    📅 {new Date(d.scheduledAt).toLocaleString('he-IL', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                    <span className="flex items-center gap-1"><Calendar size={11} /> {new Date(d.scheduledAt).toLocaleString('he-IL', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
                   </p>
                 )}
 
@@ -918,6 +1095,18 @@ const BusinessDeliveries: React.FC = () => {
                   <span className="text-[15px] font-black" style={{ color: BLUE }}>₪{d.price}</span>
 
                   <div className="flex items-center gap-2">
+                    {/* Republish — resets delivery and broadcasts to all couriers */}
+                    {canRepublish(d) && (
+                      <button
+                        onClick={() => handleRepublish(d)}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-black transition-all active:scale-95"
+                        style={{ background: '#FFF4E5', color: '#F58F1F', border: '1px solid #F58F1F30' }}
+                        title="פרסם שוב לכל השליחים"
+                      >
+                        <ArrowPathIcon className="w-3.5 h-3.5" />
+                        פרסם מחדש
+                      </button>
+                    )}
                     {/* Resend */}
                     {canResend(d) && (
                       <button
@@ -996,6 +1185,14 @@ const BusinessDeliveries: React.FC = () => {
         onClose={() => setDelTarget(null)}
         onConfirm={handleDelete}
       />
+
+      {/* Tracking sheet */}
+      {trackingSheet && (
+        <BusinessDeliveryTrackingSheet
+          delivery={trackingSheet}
+          onClose={() => setTrackingSheet(null)}
+        />
+      )}
     </div>
   );
 };

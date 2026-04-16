@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { Users, Buildings, Truck, Megaphone } from '@phosphor-icons/react';
 import {
   getSupportTickets,
   getSupportMessages,
@@ -23,6 +24,14 @@ import {
   XMarkIcon,
 } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
+import {
+  compressImage,
+  encodeVoiceContent,
+  encodeDocContent,
+  renderMediaMessage,
+  AttachmentMenu,
+  VoiceRecorderModal,
+} from '../components/ChatMedia';
 
 const statusLabel: Record<SupportTicket['status'], string> = {
   open: 'פתוח',
@@ -46,6 +55,10 @@ const AdminSupport: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const prevMsgCount = useRef(0);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [showVoiceModal, setShowVoiceModal] = useState(false);
+  const imageInputRef  = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const docInputRef    = useRef<HTMLInputElement>(null);
 
   // ── Broadcast state ──
   const [showBroadcast, setShowBroadcast] = useState(false);
@@ -112,6 +125,39 @@ const AdminSupport: React.FC = () => {
     toast.success('תשובה נשלחה');
   };
 
+  const refreshMessages = () => {
+    if (!selected) return;
+    const fresh = getSupportMessages(selected.id);
+    setMessages(fresh);
+    prevMsgCount.current = fresh.length;
+    setTickets(getSupportTickets());
+  };
+  const handleAdminImageFile = async (file: File) => {
+    if (!selected) return;
+    try {
+      const compressed = await compressImage(file);
+      addSupportMessage(selected.id, 'admin', 'תמיכה', compressed);
+      refreshMessages(); toast.success('תמונה נשלחה');
+    } catch { toast.error('שגיאה בשליחת התמונה'); }
+  };
+  const handleAdminVoiceSend = (audioBase64: string, duration: number) => {
+    if (!selected) return;
+    setShowVoiceModal(false);
+    addSupportMessage(selected.id, 'admin', 'תמיכה', encodeVoiceContent(audioBase64, duration));
+    refreshMessages(); toast.success('הודעה קולית נשלחה');
+  };
+  const handleAdminDocFile = (file: File) => {
+    if (!selected) return;
+    if (file.size > 5 * 1024 * 1024) { toast.error('מסמך גדול מדי — מקסימום 5MB'); return; }
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      addSupportMessage(selected!.id, 'admin', 'תמיכה',
+        encodeDocContent(reader.result as string, file.name, file.size));
+      refreshMessages(); toast.success('מסמך נשלח');
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleClose = (ticketId: string) => {
     updateSupportTicket(ticketId, { status: 'closed' });
     setTickets(getSupportTickets());
@@ -152,7 +198,7 @@ const AdminSupport: React.FC = () => {
       ];
       sendBroadcastEmail(allRecipients, broadcastText.trim()).catch(() => {});
 
-      toast.success(`✅ ההודעה נשלחה ל-${count} משתמשים!`);
+      toast.success(`ההודעה נשלחה ל-${count} משתמשים!`);
       setBroadcastText('');
       setShowBroadcast(false);
       loadTickets();
@@ -320,6 +366,8 @@ const AdminSupport: React.FC = () => {
               )}
               {messages.map((m) => {
                 const isAdmin = m.senderType === 'admin';
+                const mediaEl = renderMediaMessage(m.content, isAdmin, m.id);
+                if (mediaEl) return mediaEl;
                 return (
                   <div key={m.id} className={`flex ${isAdmin ? 'justify-start' : 'justify-end'}`}>
                     <div className="max-w-[80%]">
@@ -350,9 +398,20 @@ const AdminSupport: React.FC = () => {
 
             {/* Reply input */}
             <div
-              className="flex items-center gap-3 px-4 py-3 flex-shrink-0"
+              className="flex items-center gap-2 px-4 py-3 flex-shrink-0"
               style={{ background: '#fff', borderTop: '1px solid #e8ecf0' }}
             >
+              {/* Hidden file inputs */}
+              <input ref={imageInputRef}  type="file" accept="image/*"               className="hidden" onChange={async (e) => { const f = e.target.files?.[0]; if (f) await handleAdminImageFile(f); e.target.value = ''; }} />
+              <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={async (e) => { const f = e.target.files?.[0]; if (f) await handleAdminImageFile(f); e.target.value = ''; }} />
+              <input ref={docInputRef}    type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleAdminDocFile(f); e.target.value = ''; }} />
+              <AttachmentMenu
+                disabled={selected.status === 'closed'}
+                onImage={() => imageInputRef.current?.click()}
+                onCamera={() => cameraInputRef.current?.click()}
+                onVoice={() => setShowVoiceModal(true)}
+                onDocument={() => docInputRef.current?.click()}
+              />
               <input
                 className="flex-1 rounded-2xl px-4 py-2.5 text-[13px] outline-none min-w-0"
                 style={{ background: '#f6f9fc', border: '1px solid #e8ecf0', color: '#061b31', direction: 'rtl' }}
@@ -371,6 +430,9 @@ const AdminSupport: React.FC = () => {
                 <PaperAirplaneIcon className="w-4 h-4 text-white" style={{ transform: 'rotate(180deg)' }} />
               </button>
             </div>
+            {showVoiceModal && (
+              <VoiceRecorderModal onSend={handleAdminVoiceSend} onClose={() => setShowVoiceModal(false)} />
+            )}
           </>
         )}
       </div>
@@ -402,9 +464,9 @@ const AdminSupport: React.FC = () => {
               <p className="text-[12px] font-bold mb-2" style={{ color: '#8898aa' }}>קהל יעד</p>
               <div className="flex gap-2">
                 {[
-                  { key: 'all',        label: 'כולם 👥' },
-                  { key: 'businesses', label: 'עסקים 🏪' },
-                  { key: 'couriers',   label: 'שליחים 🛵' },
+                  { key: 'all',        label: <span className="flex items-center justify-center gap-1"><Users size={13} /> כולם</span> },
+                  { key: 'businesses', label: <span className="flex items-center justify-center gap-1"><Buildings size={13} /> עסקים</span> },
+                  { key: 'couriers',   label: <span className="flex items-center justify-center gap-1"><Truck size={13} /> שליחים</span> },
                 ].map(({ key, label }) => (
                   <button
                     key={key}
@@ -451,7 +513,7 @@ const AdminSupport: React.FC = () => {
                 className="flex-1 py-3 rounded-xl font-bold text-[14px] text-white transition-all disabled:opacity-50"
                 style={{ background: 'linear-gradient(135deg, #533afd, #ea2261)' }}
               >
-                {broadcasting ? 'שולח...' : '📢 שלח לכולם'}
+                {broadcasting ? 'שולח...' : <span className="flex items-center justify-center gap-1"><Megaphone size={14} /> שלח לכולם</span>}
               </button>
             </div>
           </div>

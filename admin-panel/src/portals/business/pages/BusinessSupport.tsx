@@ -11,6 +11,7 @@ import { syncSupportMessagesDown } from '../../../services/sync.service';
 import { playNewMessage, playSupportReply } from '../../../utils/sounds';
 import { PaperAirplaneIcon, LifebuoyIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
+import { Headphones } from '@phosphor-icons/react';
 
 const BusinessSupport: React.FC = () => {
   const token = localStorage.getItem('admin_token') ?? '';
@@ -42,7 +43,7 @@ const BusinessSupport: React.FC = () => {
         const newest = fresh[fresh.length - 1];
         if (newest.senderType === 'admin') {
           playSupportReply();
-          toast.success('תגובה חדשה מהתמיכה!', { icon: '🎧' });
+          toast.success('תגובה חדשה מהתמיכה!');
         }
         prevCountRef.current = fresh.length;
         setMessages(fresh);
@@ -123,8 +124,8 @@ const BusinessSupport: React.FC = () => {
             <div key={m.id} className={`flex ${isMine ? 'justify-start' : 'justify-end'}`}>
               <div>
                 {!isMine && (
-                  <p className="text-[10px] mb-1 text-right font-bold" style={{ color: '#533afd' }}>
-                    🎧 תמיכה
+                  <p className="text-[10px] mb-1 text-right font-bold flex items-center justify-end gap-1" style={{ color: '#533afd' }}>
+                    <Headphones size={10} /> תמיכה
                   </p>
                 )}
                 <div

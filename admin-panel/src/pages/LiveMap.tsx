@@ -136,9 +136,9 @@ const LiveMap: React.FC = () => {
   const offlineCount = couriers.filter((c) => c.status === 'offline').length;
 
   return (
-    <div className="flex flex-col lg:flex-row gap-4 h-[calc(100vh-10rem)]" dir="rtl">
+    <div className="flex flex-col lg:flex-row gap-4" style={{ height: 'calc(100vh - 140px)', minHeight: 600 }} dir="rtl">
       {/* Map */}
-      <div className="flex-1 rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 shadow-sm min-h-[400px]">
+      <div className="flex-1 rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 shadow-sm" style={{ minHeight: 300 }}>
         <MapContainer
           center={ASHDOD_CENTER}
           zoom={13}
@@ -214,7 +214,7 @@ const LiveMap: React.FC = () => {
       </div>
 
       {/* Side panel */}
-      <div className="lg:w-72 flex flex-col gap-4 overflow-y-auto">
+      <div className="lg:w-72 flex flex-col gap-4 overflow-y-auto lg:max-h-full max-h-[50vh]">
         {/* Stats */}
         <Card>
           <div className="flex items-center justify-between mb-3">

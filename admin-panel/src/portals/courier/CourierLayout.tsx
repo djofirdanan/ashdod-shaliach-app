@@ -3,9 +3,9 @@ import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import type { RootState, AppDispatch } from '../../store';
 import { logoutUser } from '../../store/authSlice';
-import { getPendingNotifications, getCourier, updateCourier, updateCourierLocation, getDeliveriesByCourier, getDeliveries, getOrCreateConversation, updateDelivery, getUnreadCount, getOrCreateSupportTicket, getSupportMessages, getConversations, formatOrderNumber, type StoredDelivery } from '../../services/storage.service';
+import { getPendingNotifications, getCourier, updateCourier, updateCourierLocation, getDeliveriesByCourier, getDeliveries, getOrCreateConversation, updateDelivery, getUnreadCount, getOrCreateSupportTicket, getSupportMessages, getConversations, getBusinesses, formatOrderNumber, type StoredDelivery } from '../../services/storage.service';
 import { playNewMessage } from '../../utils/sounds';
-import { pingCandidateHeartbeat, getCandidacyStatus, withdrawFromQueue, syncConversationsDown, syncSupportMessagesDown } from '../../services/sync.service';
+import { pingCandidateHeartbeat, getCandidacyStatus, withdrawFromQueue, syncConversationsDown, syncSupportMessagesDown, syncCourierDeliveriesDown } from '../../services/sync.service';
 import { supabase } from '../../lib/supabase';
 import { DeliveryNotificationOverlay } from '../../components/DeliveryNotificationOverlay';
 import {
@@ -44,11 +44,13 @@ const CourierLayout: React.FC = () => {
   const token = localStorage.getItem('admin_token') ?? '';
   const courierId = token.startsWith('courier-') ? token.replace('courier-', '') : '';
 
+  const [activeBizCount,    setActiveBizCount]    = useState(0);
   const [pendingCount,      setPendingCount]      = useState(0);
   const [chatUnread,        setChatUnread]        = useState(0);
   const [isAvailable,       setIsAvailable]       = useState(true);
   const [showAvailConfirm,  setShowAvailConfirm]  = useState(false);
   const [courierName,       setCourierName]       = useState('');
+  const [courierPhoto,      setCourierPhoto]      = useState<string | null>(null);
 
   // ── Pending candidacy banner ────────────────────────────────────
   interface CandidacyBanner { deliveryId: string; notifId: string; dropAddress: string; price: number; joinedAt: string; }
@@ -72,19 +74,71 @@ const CourierLayout: React.FC = () => {
     const c = getCourier(courierId);
     setIsAvailable(c?.isAvailable ?? true);
     if (c?.name) setCourierName(c.name);
+    setCourierPhoto(c?.photo ?? null);
   }, [courierId]);
 
-  // ── Poll for active delivery to power the persistent strip ──────
+  // Count active businesses (for header display)
   useEffect(() => {
-    const check = () => {
-      if (!courierId) return;
+    const count = () => {
+      const bizList = getBusinesses().filter(b => b.isActive && !b.isBlocked);
+      setActiveBizCount(bizList.length);
+    };
+    count();
+    const id = setInterval(count, 10_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // ── Poll for active delivery — sync from Supabase every tick ──────
+  const prevActiveIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!courierId) return;
+    const check = async () => {
+      // Always pull fresh data from Supabase so courier sees their delivery immediately
+      await syncCourierDeliveriesDown(courierId).catch(() => {});
       const mine = getDeliveriesByCourier(courierId);
       const active = mine.find(d => d.status === 'accepted' || d.status === 'picked_up') ?? null;
       setActiveDelivery(active);
+      // Toast when a new active delivery appears (e.g. just approved by business)
+      if (active && active.id !== prevActiveIdRef.current) {
+        if (prevActiveIdRef.current !== null) {
+          toast.success(`✅ ${active.businessName} אישר אותך! המשלוח שלך מוכן`, {
+            duration: 6000,
+            style: { background: '#1BA672', color: '#fff', fontWeight: 700, borderRadius: 14, direction: 'rtl' },
+          });
+        }
+        prevActiveIdRef.current = active.id;
+      } else if (!active) {
+        prevActiveIdRef.current = null;
+      }
     };
     check();
-    const id = setInterval(check, 3_000);
+    const id = setInterval(check, 4_000);
     return () => clearInterval(id);
+  }, [courierId]);
+
+  // ── Realtime: instant update when courier's delivery status changes ──
+  useEffect(() => {
+    if (!courierId) return;
+    const channel = supabase
+      .channel(`layout_courier_del_${courierId}`)
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'deliveries',
+        filter: `courier_id=eq.${courierId}`,
+      }, async () => {
+        await syncCourierDeliveriesDown(courierId).catch(() => {});
+        const mine = getDeliveriesByCourier(courierId);
+        const active = mine.find(d => d.status === 'accepted' || d.status === 'picked_up') ?? null;
+        setActiveDelivery(active);
+        if (active && active.id !== prevActiveIdRef.current) {
+          toast.success(`✅ ${active.businessName} אישר אותך! המשלוח שלך מוכן`, {
+            duration: 6000,
+            style: { background: '#1BA672', color: '#fff', fontWeight: 700, borderRadius: 14, direction: 'rtl' },
+          });
+          prevActiveIdRef.current = active.id;
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, [courierId]);
 
   useEffect(() => {
@@ -364,14 +418,23 @@ const CourierLayout: React.FC = () => {
         className="portal-header flex items-center justify-between px-4 sticky top-0 z-40"
         style={{ height: 60 }}
       >
-        {/* Right: logo + name */}
+        {/* Right: avatar + name */}
         <div className="flex items-center gap-3">
-          <div
-            className="w-9 h-9 rounded-2xl flex items-center justify-center"
-            style={{ background: 'rgba(255,255,255,0.2)', border: '1.5px solid rgba(255,255,255,0.3)' }}
-          >
-            <TruckIcon className="w-5 h-5 text-white" />
-          </div>
+          {courierPhoto ? (
+            <img
+              src={courierPhoto}
+              alt=""
+              className="w-9 h-9 rounded-2xl object-cover flex-shrink-0"
+              style={{ border: '1.5px solid rgba(255,255,255,0.4)' }}
+            />
+          ) : (
+            <div
+              className="w-9 h-9 rounded-2xl flex items-center justify-center flex-shrink-0"
+              style={{ background: 'rgba(255,255,255,0.2)', border: '1.5px solid rgba(255,255,255,0.3)' }}
+            >
+              <TruckIcon className="w-5 h-5 text-white" />
+            </div>
+          )}
           <div>
             <p className="font-black text-[15px] leading-tight text-white">
               {courierName || user?.name || 'אשדוד-שליח'}
@@ -397,13 +460,15 @@ const CourierLayout: React.FC = () => {
             />
             {isAvailable ? 'זמין' : 'לא זמין'}
           </button>
-          <button
-            onClick={handleLogout}
-            className="text-[13px] font-bold px-3 py-1.5 rounded-2xl transition-all active:scale-95"
-            style={{ color: 'rgba(255,255,255,0.9)', background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)' }}
+          <div
+            className="flex items-center gap-1 px-2 py-1 rounded-full"
+            style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)' }}
           >
-            יציאה
-          </button>
+            <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: '#4ade80' }} />
+            <span className="text-[10px] font-bold" style={{ color: 'rgba(255,255,255,0.9)' }}>
+              {activeBizCount} עסקים
+            </span>
+          </div>
         </div>
       </header>
 

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Buildings, Truck } from '@phosphor-icons/react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
@@ -154,10 +155,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, mobileOpe
 
       <aside
         className={clsx(
-          'flex flex-col h-screen transition-all duration-300 flex-shrink-0 relative z-30',
-          // Desktop: normal collapsed behavior
+          // NOTE: no bare `relative` here — on mobile we need `fixed` to win.
+          // `md:relative` below handles desktop (the collapse-toggle button uses absolute positioning).
+          'flex flex-col h-screen transition-all duration-300 flex-shrink-0 z-30',
+          // Desktop: in-flow, relative so the toggle button can use absolute positioning
           'md:relative md:translate-x-0',
-          // Mobile: fixed, slides in/out from right (RTL)
+          // Mobile: fixed overlay, slides in/out from right (RTL)
           'fixed md:static inset-y-0 right-0',
           mobileOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0',
           collapsed ? 'w-[64px]' : 'w-[240px]'
@@ -215,7 +218,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, mobileOpe
             {!collapsed && (
               <div className="px-3 pt-2.5 pb-1">
                 <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: 'rgba(255,150,180,0.8)' }}>
-                  {currentPortalUser.type === 'business' ? '🏪 עסק' : '🛵 שליח'}
+                  {currentPortalUser.type === 'business' ? <span className="flex items-center gap-1"><Buildings size={10} /> עסק</span> : <span className="flex items-center gap-1"><Truck size={10} /> שליח</span>}
                 </p>
                 <p className="text-[12px] font-bold text-white truncate mt-0.5">{currentPortalUser.name}</p>
               </div>

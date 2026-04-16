@@ -130,7 +130,7 @@ const ResetPassword: React.FC = () => {
               <CheckCircleIcon className="w-9 h-9" style={{ color: '#1db954' }} />
             </div>
             <h2 className="text-[1.4rem] font-black mb-2" style={{ color: '#061b31' }}>
-              סיסמה עודכנה! ✅
+              סיסמה עודכנה!
             </h2>
             <p className="text-[14px] mb-4" style={{ color: '#6b7c93' }}>
               עוברים לדף הכניסה...
@@ -206,7 +206,7 @@ const ResetPassword: React.FC = () => {
                     })}
                   </div>
                   <p className="text-[11px]" style={{ color: '#8898aa' }}>
-                    {password.length < 6 ? 'קצרה מדי' : password.length < 9 ? 'סיסמה סבירה' : 'סיסמה חזקה ✓'}
+                    {password.length < 6 ? 'קצרה מדי' : password.length < 9 ? 'סיסמה סבירה' : 'סיסמה חזקה'}
                   </p>
                 </div>
               )}

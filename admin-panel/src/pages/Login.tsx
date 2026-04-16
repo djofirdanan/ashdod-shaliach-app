@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { Lightning, MapTrifold, ChatCircle, ChartBar } from '@phosphor-icons/react';
 import { loginUser } from '../store/authSlice';
 import { syncDown } from '../services/sync.service';
 import {
@@ -26,7 +27,7 @@ function detectDevice(): 'ios' | 'android' | 'desktop' {
 // ─── Official Store Badge Components ─────────────────────────────────────────
 const AppStoreBadge: React.FC<{ size?: 'sm' | 'md' }> = ({ size = 'md' }) => (
   <button
-    onClick={() => toast('בקרוב ב-App Store! 🍎')}
+    onClick={() => toast('בקרוב ב-App Store!')}
     className="transition-all hover:opacity-80 active:scale-95 flex-shrink-0"
     style={{ lineHeight: 0 }}
   >
@@ -40,7 +41,7 @@ const AppStoreBadge: React.FC<{ size?: 'sm' | 'md' }> = ({ size = 'md' }) => (
 
 const GooglePlayBadge: React.FC<{ size?: 'sm' | 'md' }> = ({ size = 'md' }) => (
   <button
-    onClick={() => toast('בקרוב ב-Google Play! 🤖')}
+    onClick={() => toast('בקרוב ב-Google Play!')}
     className="transition-all hover:opacity-80 active:scale-95 flex-shrink-0"
     style={{ lineHeight: 0 }}
   >
@@ -151,11 +152,11 @@ const RoleCard: React.FC<RoleCardProps> = ({ role, selected, onSelect }) => {
 };
 
 // ─── Feature bullets (left panel) ────────────────────────────────────────────
-const features = [
-  { icon: '⚡', title: 'ניהול בזמן אמת', desc: 'עקוב אחר כל משלוח בזמן אמת' },
-  { icon: '🗺️', title: 'מפה חיה', desc: 'מיקום השליחים על מפה אינטראקטיבית' },
-  { icon: '💬', title: 'צ׳אט מובנה', desc: 'תקשורת ישירה בין עסקים לשליחים' },
-  { icon: '📊', title: 'דוחות ובונוסים', desc: 'נתוני ביצועים וחוקי תגמול גמישים' },
+const features: { icon: React.ReactNode; title: string; desc: string }[] = [
+  { icon: <Lightning size={20} weight="fill" style={{ color: '#facc15' }} />, title: 'ניהול בזמן אמת', desc: 'עקוב אחר כל משלוח בזמן אמת' },
+  { icon: <MapTrifold size={20} weight="fill" style={{ color: '#34d399' }} />, title: 'מפה חיה', desc: 'מיקום השליחים על מפה אינטראקטיבית' },
+  { icon: <ChatCircle size={20} weight="fill" style={{ color: '#818cf8' }} />, title: 'צ׳אט מובנה', desc: 'תקשורת ישירה בין עסקים לשליחים' },
+  { icon: <ChartBar size={20} weight="fill" style={{ color: '#f472b6' }} />, title: 'דוחות ובונוסים', desc: 'נתוני ביצועים וחוקי תגמול גמישים' },
 ];
 
 // ─── Login page ──────────────────────────────────────────────────────────────
@@ -261,7 +262,7 @@ const Login: React.FC = () => {
           <div className="space-y-4">
             {features.map((f, i) => (
               <div key={i} className="flex items-start gap-3">
-                <span className="text-xl leading-none mt-0.5">{f.icon}</span>
+                <span className="leading-none mt-0.5 flex-shrink-0">{f.icon}</span>
                 <div>
                   <p className="text-white text-[13px] font-semibold">{f.title}</p>
                   <p className="text-white/45 text-[12px] mt-0.5">{f.desc}</p>

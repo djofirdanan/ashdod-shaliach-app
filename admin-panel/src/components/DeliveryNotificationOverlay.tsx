@@ -8,6 +8,7 @@ import {
   CheckIcon,
   InformationCircleIcon,
 } from '@heroicons/react/24/outline';
+import { Siren, Hand } from '@phosphor-icons/react';
 import type { RootState } from '../store';
 import * as storageService from '../services/storage.service';
 import type { DeliveryNotification } from '../services/storage.service';
@@ -95,7 +96,7 @@ const NotifCard: React.FC<{
                   style={{ background: 'rgba(83,58,253,0.3)', color: '#a89bff', border: '1px solid rgba(83,58,253,0.4)' }}
                 >
                   <span className="w-2 h-2 rounded-full bg-[#533afd] animate-pulse inline-block" />
-                  🚨 משלוח חדש!
+                  <Siren size={12} weight="fill" /> משלוח חדש!
                 </span>
                 <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.25)' }}>
                   {age < 60 ? `לפני ${age}ש׳` : 'עכשיו'}
@@ -162,7 +163,7 @@ const NotifCard: React.FC<{
             }}
           >
             <CheckIcon className="w-5 h-5" />
-            אני מגיע! ✋
+            אני מגיע! <Hand size={16} weight="regular" />
           </button>
           <button
             onClick={onDetails}
@@ -202,7 +203,7 @@ const DetailModal: React.FC<{
           className="px-5 py-2 rounded-lg text-sm font-bold text-white transition-all"
           style={{ background: 'linear-gradient(135deg, #533afd, #ea2261)' }}
         >
-          ✋ אני מגיע!
+          <Hand size={14} weight="regular" /> אני מגיע!
         </button>
       </>
     }
@@ -268,6 +269,13 @@ export const DeliveryNotificationOverlay: React.FC = () => {
 
   const refresh = useCallback(async () => {
     if (!courierId) return;
+    // Courier in "unavailable" mode → flight mode, no notifications
+    const courierInfo = storageService.getCourier(courierId);
+    if (courierInfo?.isAvailable === false) {
+      setNotifications([]);
+      prevCountRef.current = 0;
+      return;
+    }
     await syncNotificationsDown();
     const pending = storageService.getPendingNotifications(courierId);
     // Play sound when NEW notifications arrive (not on first load)
@@ -341,7 +349,7 @@ export const DeliveryNotificationOverlay: React.FC = () => {
         notifId: notif.id,
         joinedAt: new Date().toISOString(),
       }));
-      toast.success('אישרת! ממתין לאישור העסק 🕐');
+      toast.success('אישרת! ממתין לאישור העסק');
     } else {
       toast.error('המשלוח כבר לא זמין');
     }
@@ -360,7 +368,8 @@ export const DeliveryNotificationOverlay: React.FC = () => {
     setNotifications((prev) => prev.filter((n) => n.id !== notifId));
   };
 
-  if (!isCourier || notifications.length === 0) return null;
+  const courierData = courierId ? storageService.getCourier(courierId) : null;
+  if (!isCourier || notifications.length === 0 || courierData?.isAvailable === false) return null;
 
   return (
     <>

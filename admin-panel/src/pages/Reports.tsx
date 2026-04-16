@@ -216,12 +216,12 @@ const Reports: React.FC = () => {
       {!loading && !error && reportData && (
         <>
           {/* Tabs */}
-          <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700 overflow-x-auto scrollbar-none">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex-shrink-0 ${
                   activeTab === tab.id
                     ? 'border-primary text-primary'
                     : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'

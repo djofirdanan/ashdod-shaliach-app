@@ -64,7 +64,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <header
-      className="h-[60px] flex items-center justify-between px-6 gap-4 flex-shrink-0 bg-white"
+      className="h-[60px] flex items-center justify-between px-3 md:px-6 gap-2 md:gap-4 flex-shrink-0 bg-white"
       style={{
         borderBottom: '1px solid #e8ecf0',
         boxShadow: '0 1px 3px rgba(50,50,93,0.05)',

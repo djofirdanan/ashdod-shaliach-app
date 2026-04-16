@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { Calendar, CheckCircle, XCircle, Truck, Package, MagnifyingGlass, Trash, MapPin as PhosphorMapPin, Money } from '@phosphor-icons/react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../../../store';
@@ -9,6 +10,9 @@ import {
   getOrCreateConversation,
   updateDelivery,
   addDeliveryNotification,
+  addMessage,
+  getReviewsByTarget,
+  getCouriers,
   type StoredDelivery,
 } from '../../../services/storage.service';
 import { syncDeliveriesDown, getCandidates, rejectCandidate, acceptCandidate, getCandidateStats, type DeliveryCandidate } from '../../../services/sync.service';
@@ -26,13 +30,13 @@ const BLUE   = '#009DE0';
 const GREEN  = '#1BA672';
 const ORANGE = '#F58F1F';
 
-const STATUS_LABEL: Record<StoredDelivery['status'], string> = {
-  scheduled: '📅 מתוזמן',
+const STATUS_LABEL: Record<StoredDelivery['status'], React.ReactNode> = {
+  scheduled: <span className="flex items-center gap-1"><Calendar size={10} /> מתוזמן</span>,
   pending:   'ממתין לשליח',
-  accepted:  'שליח בדרך לאיסוף',
+  accepted:  <span className="flex items-center gap-1"><Truck size={10} /> שליח בדרך לאיסוף</span>,
   picked_up: 'בדרך ללקוח',
-  delivered: 'נמסר ✓',
-  cancelled: 'בוטל',
+  delivered: <span className="flex items-center gap-1"><CheckCircle size={10} /> נמסר</span>,
+  cancelled: <span className="flex items-center gap-1"><XCircle size={10} /> בוטל</span>,
 };
 
 const STATUS_COLOR: Record<StoredDelivery['status'], { bg: string; text: string }> = {
@@ -61,6 +65,13 @@ function fmtDateTime(iso?: string): string | null {
   const isToday = d.toDateString() === today.toDateString();
   if (isToday) return d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
   return d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+function getGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return 'בוקר טוב';
+  if (h < 17) return 'צהריים טובים';
+  return 'ערב טוב';
 }
 
 // ─── Candidate review sheet ───────────────────────────────────────────────────
@@ -112,14 +123,36 @@ const CandidateReviewSheet: React.FC<{
   const handleAccept = async () => {
     if (!top) return;
     setLoading(true);
+
+    // 1. Mark candidate as accepted in Supabase (also rejects all others)
     await acceptCandidate(deliveryId, top.courierId);
+
+    // 2. Update the delivery with the chosen courier — writes to localStorage AND Supabase
     updateDelivery(deliveryId, {
       status: 'accepted',
       courierId: top.courierId,
       courierName: top.courierName,
       acceptedAt: new Date().toISOString(),
     });
+
+    // 3. Clear pending_candidacy for this courier so their UI reacts immediately
+    //    (also done client-side in courier portal, but clearing here guarantees it)
+    //    We can't directly clear the courier's localStorage (different browser),
+    //    but the Supabase realtime subscription in CourierDeliveries will fire.
+
+    // 4. Send a system message in the shared conversation so the courier gets
+    //    an in-app notification and the chat shows the approval event.
     const conv = getOrCreateConversation(businessId, top.courierId);
+    const biz  = getBusiness(businessId);
+    addMessage(conv.id, {
+      senderId:    'system',
+      senderName:  'מערכת',
+      senderType:  'business',
+      content:     `✅ ${biz?.businessName ?? 'העסק'} אישר אותך למשלוח! פרטים בכרטיסיית "פעילים".`,
+      messageType: 'system',
+      deliveryId,
+    });
+
     setLoading(false);
     onAccepted();
     navigate(`/business/chat?convId=${conv.id}&deliveryId=${deliveryId}`);
@@ -326,10 +359,10 @@ const STEPS: Array<{
 const STEP_ORDER: StoredDelivery['status'][] = ['pending', 'accepted', 'picked_up', 'delivered'];
 
 const NOTIFY_MSGS: Partial<Record<StoredDelivery['status'], string>> = {
-  accepted:  '🛵 שליח קיבל את ההזמנה — בדרך לאיסוף',
-  picked_up: '📦 החבילה נאספה — השליח בדרך אליך!',
-  delivered: '✅ המשלוח נמסר בהצלחה!',
-  cancelled: '❌ המשלוח בוטל',
+  accepted:  'שליח קיבל את ההזמנה — בדרך לאיסוף',
+  picked_up: 'החבילה נאספה — השליח בדרך אליך!',
+  delivered: 'המשלוח נמסר בהצלחה!',
+  cancelled: 'המשלוח בוטל',
 };
 
 const TrackingSheet: React.FC<{
@@ -576,7 +609,7 @@ const TrackingSheet: React.FC<{
                 className="w-full py-3.5 rounded-2xl font-bold text-[14px] flex items-center justify-center gap-2"
                 style={{ background: '#EAF7FD', color: BLUE, border: `1.5px solid ${BLUE}30` }}
               >
-                🔍 חפש שליח אחר
+                <MagnifyingGlass size={15} /> חפש שליח אחר
               </button>
               <button
                 onClick={() => {
@@ -588,7 +621,7 @@ const TrackingSheet: React.FC<{
                 className="w-full py-3.5 rounded-2xl font-bold text-[14px] flex items-center justify-center gap-2"
                 style={{ background: '#FFF0F0', color: '#E23437', border: '1.5px solid #E2343730' }}
               >
-                🗑️ בטל ומחק את המשלוח
+                <Trash size={15} /> בטל ומחק את המשלוח
               </button>
               <button onClick={() => setShowCancelModal(false)} className="w-full py-3 rounded-2xl text-[13px] font-semibold" style={{ background: '#F4F4F4', color: '#757575' }}>
                 חזור
@@ -615,6 +648,12 @@ const BusinessDashboard: React.FC = () => {
   const [deliveries, setDeliveries] = useState<StoredDelivery[]>([]);
   const [balance,    setBalance]    = useState(0);
   const [bizName,    setBizName]    = useState('');
+  const [availableCourierCount, setAvailableCourierCount] = useState(0);
+  const [reviews,    setReviews]    = useState<{rating:number}[]>([]);
+  const [todayCount, setTodayCount] = useState(0);
+  const [monthCount, setMonthCount] = useState(0);
+  const [yearCount,  setYearCount]  = useState(0);
+  const [dismissedFromDash, setDismissedFromDash] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!businessId) return;
@@ -625,6 +664,18 @@ const BusinessDashboard: React.FC = () => {
       setDeliveries(d);
       setBalance(biz?.balance ?? 0);
       if (biz?.businessName) setBizName(biz.businessName);
+      // Delivery counts by period
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      const yearStart  = new Date(now.getFullYear(), 0, 1).toISOString();
+      setTodayCount(d.filter(x => x.status === 'delivered' && (x.deliveredAt ?? x.createdAt) >= todayStart).length);
+      setMonthCount(d.filter(x => x.status === 'delivered' && (x.deliveredAt ?? x.createdAt) >= monthStart).length);
+      setYearCount(d.filter(x => x.status === 'delivered' && (x.deliveredAt ?? x.createdAt) >= yearStart).length);
+      // Reviews
+      setReviews(getReviewsByTarget(businessId).map(r => ({ rating: r.rating })));
+      // Available couriers
+      setAvailableCourierCount(getCouriers().filter(c => c.isActive && !c.isBlocked && c.isAvailable !== false).length);
 
       // ── On mount: check if any pending delivery already has waiting candidates
       //    (handles the case where the courier joined before the page loaded) ──
@@ -659,6 +710,15 @@ const BusinessDashboard: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [businessId]);
 
+  // ── Refresh available couriers count every 8s ──────────────────────────────
+  useEffect(() => {
+    const count = () => {
+      setAvailableCourierCount(getCouriers().filter(c => c.isActive && !c.isBlocked && c.isAvailable !== false).length);
+    };
+    const id = setInterval(count, 8_000);
+    return () => clearInterval(id);
+  }, []);
+
   // ── Realtime: when a courier joins queue for ANY of our pending deliveries,
   //    auto-open the CandidateReviewSheet for that delivery ──────────────────
   useEffect(() => {
@@ -680,7 +740,7 @@ const BusinessDashboard: React.FC = () => {
           const deliveryId = (payload.new as { delivery_id?: string }).delivery_id;
           if (!deliveryId) return;
           handleNewCandidate(deliveryId);
-          toast.success('שליח הצטרף לתור! 🛵');
+          toast.success('שליח הצטרף לתור!');
         }
       )
       .on(
@@ -695,7 +755,7 @@ const BusinessDashboard: React.FC = () => {
           const currentTracking = new URLSearchParams(window.location.search).get('tracking');
           if (currentTracking === deliveryId) return; // already showing
           handleNewCandidate(deliveryId);
-          toast.success('שליח אישר את המשלוח! 🛵');
+          toast.success('שליח אישר את המשלוח!');
         }
       )
       .subscribe();
@@ -725,7 +785,7 @@ const BusinessDashboard: React.FC = () => {
           paymentMethod: d.paymentMethod,
           customerPaid: d.customerPaid,
         });
-        toast.success(`📅 משלוח מתוזמן שוחרר — מחפש שליח`, { duration: 5000 });
+        toast.success(`משלוח מתוזמן שוחרר — מחפש שליח`, { duration: 5000 });
       }
       if (ready.length > 0) setDeliveries(getDeliveriesByBusiness(businessId));
     };
@@ -735,80 +795,127 @@ const BusinessDashboard: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [businessId]);
 
-  const activeCount = deliveries.filter(d => ['pending','accepted','picked_up'].includes(d.status)).length;
-  const doneCount   = deliveries.filter(d => d.status === 'delivered').length;
-  const recent      = [...deliveries].sort((a,b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 6);
   const activeDeliveryBanner = getActiveDeliveryForBusiness(businessId);
-
   const displayName = bizName || user?.name || 'עסק';
+  const greeting = getGreeting();
+  const pendingCount = deliveries.filter(d => d.status === 'pending').length;
+  const scheduledCount = deliveries.filter(d => d.status === 'scheduled').length;
+  const activeCount = deliveries.filter(d => ['pending','accepted','picked_up'].includes(d.status)).length;
+  const doneCount = deliveries.filter(d => d.status === 'delivered').length;
+  const todayDeliveries = deliveries
+    .filter(d => {
+      const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+      return new Date(d.createdAt) >= todayStart;
+    })
+    .sort((a,b) => b.createdAt.localeCompare(a.createdAt));
 
   return (
-    <div className="max-w-lg mx-auto" dir="rtl">
+    <div className="w-full max-w-lg mx-auto" dir="rtl">
 
-      {/* ── Hero greeting banner ── */}
+      {/* ── Compact Hero ── */}
       <div
-        className="px-5 pt-6 pb-10 relative overflow-hidden"
+        className="px-5 pt-5 pb-6 relative overflow-hidden"
         style={{ background: 'linear-gradient(135deg, #1E3A8A 0%, #2563EB 55%, #009DE0 100%)' }}
       >
-        {/* decorative circles */}
-        <div className="absolute -left-8 -top-8 w-44 h-44 rounded-full" style={{ background: 'rgba(255,255,255,0.05)' }} />
-        <div className="absolute left-16 -bottom-12 w-32 h-32 rounded-full" style={{ background: 'rgba(255,255,255,0.04)' }} />
-        <p className="text-white/75 text-[13px] font-medium mb-1 relative z-10">שלום,</p>
-        <h1 className="text-white text-[24px] font-black mb-5 relative z-10">{displayName} 👋</h1>
+        <div className="absolute -left-6 -top-6 w-32 h-32 rounded-full" style={{ background: 'rgba(255,255,255,0.05)' }} />
 
-        {/* Quick-action card */}
+        {/* Greeting row */}
+        <div className="relative z-10 mb-3">
+          <p className="text-white/70 text-[12px] font-medium">{greeting},</p>
+          <h1 className="text-white text-[20px] font-black leading-tight">{displayName}</h1>
+        </div>
+
+        {/* Stats row */}
+        <div className="flex items-center gap-3 mb-3 relative z-10">
+          <span className="text-white/75 text-[11px]">היום <strong className="text-white">{todayCount}</strong></span>
+          <span className="text-white/30">·</span>
+          <span className="text-white/75 text-[11px]">חודש <strong className="text-white">{monthCount}</strong></span>
+          <span className="text-white/30">·</span>
+          <span className="text-white/75 text-[11px]">שנה <strong className="text-white">{yearCount}</strong></span>
+        </div>
+
+        {/* Quick status chips row */}
+        <div className="flex gap-2 mb-3 relative z-10">
+          {[
+            { label: 'פעילים',  count: activeCount,    color: '#F97316', bg: 'rgba(249,115,22,0.2)',   path: '/business/deliveries?filter=active' },
+            { label: 'המתנה',   count: pendingCount,   color: '#009DE0', bg: 'rgba(0,157,224,0.2)',    path: '/business/deliveries?filter=pending' },
+            { label: 'מתוזמן',  count: scheduledCount, color: '#A78BFA', bg: 'rgba(167,139,250,0.2)', path: '/business/deliveries?filter=scheduled' },
+          ].map(chip => (
+            <button
+              key={chip.label}
+              onClick={() => navigate(chip.path)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold transition-all active:scale-95"
+              style={{ background: chip.bg, border: `1px solid ${chip.color}40`, color: '#fff' }}
+            >
+              <span className="font-black text-[13px]">{chip.count}</span>
+              {chip.label}
+            </button>
+          ))}
+        </div>
+
+        {/* New delivery CTA */}
         <button
           onClick={() => navigate('/business/new-delivery')}
-          className="w-full flex items-center gap-4 p-4 rounded-2xl transition-all active:scale-[0.98] relative z-10"
-          style={{ background: 'rgba(255,255,255,0.18)', border: '1.5px solid rgba(255,255,255,0.30)', backdropFilter: 'blur(8px)' }}
+          className="w-full flex items-center gap-3 p-3.5 rounded-2xl transition-all active:scale-[0.98] relative z-10"
+          style={{ background: 'rgba(255,255,255,0.15)', border: '1.5px solid rgba(255,255,255,0.28)' }}
         >
           <div
-            className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
-            style={{ background: 'linear-gradient(135deg,#F97316,#EA580C)', boxShadow: '0 4px 12px rgba(249,115,22,0.4)' }}
+            className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+            style={{ background: 'linear-gradient(135deg,#F97316,#EA580C)', boxShadow: '0 4px 10px rgba(249,115,22,0.4)' }}
           >
-            <PlusIcon className="w-6 h-6 text-white" />
+            <PlusIcon className="w-5 h-5 text-white" />
           </div>
           <div className="flex-1 text-right">
-            <p className="text-white font-black text-[16px]">בקש משלוח חדש</p>
-            <p className="text-white/70 text-[12px]">שליח יאסוף תוך דקות</p>
+            <p className="text-white font-black text-[15px] leading-tight">הקמת משלוח חדש</p>
+            <p className="text-white/65 text-[11px]">
+              {availableCourierCount > 0
+                ? `${availableCourierCount} שליחים זמינים באיזורך`
+                : 'שליח יאסוף תוך דקות'}
+            </p>
           </div>
-          <ChevronLeftIcon className="w-5 h-5 text-white/60" />
+          <ChevronLeftIcon className="w-4 h-4 text-white/60 flex-shrink-0" />
+        </button>
+
+        {/* Support chat */}
+        <button
+          onClick={() => navigate('/business/chat?support=1')}
+          className="mt-2.5 flex items-center gap-2 px-3 py-1.5 rounded-full text-[11px] font-bold relative z-10 transition-all active:scale-95"
+          style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.9)' }}
+        >
+          <ChatBubbleLeftRightIcon className="w-3.5 h-3.5" />
+          צ׳אט תמיכה
         </button>
       </div>
 
-      {/* ── Stats row ── */}
-      <div className="px-4 -mt-5">
+      <div className="px-4 space-y-3 py-4">
+
+        {/* ── Stats row (compact) ── */}
         <div
-          className="grid grid-cols-3 gap-2 rounded-2xl p-4"
-          style={{
-            background: '#FFFFFF',
-            boxShadow: '0 4px 24px rgba(37,99,235,0.12)',
-            border: '1px solid rgba(37,99,235,0.07)',
-          }}
+          className="grid grid-cols-3 gap-2 rounded-2xl p-3"
+          style={{ background: '#FFFFFF', border: '1px solid #E8E8E8', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}
         >
           {[
-            { label: 'סה"כ',   value: deliveries.length, bg: '#EFF6FF', color: '#1E40AF' },
-            { label: 'פעילים', value: activeCount,        bg: '#FFF7ED', color: '#F97316' },
-            { label: 'הושלמו', value: doneCount,          bg: '#ECFDF5', color: '#059669' },
+            { label: 'סה"כ',   value: deliveries.length, color: '#1E40AF', bg: '#EFF6FF', path: '/business/deliveries' },
+            { label: 'פעילים', value: activeCount,        color: '#F97316', bg: '#FFF7ED', path: '/business/deliveries?filter=active' },
+            { label: 'הושלמו', value: doneCount,          color: '#059669', bg: '#ECFDF5', path: '/business/deliveries?filter=delivered' },
           ].map(s => (
-            <div key={s.label} className="text-center rounded-xl py-2.5" style={{ background: s.bg }}>
-              <p className="text-[22px] font-black leading-tight" style={{ color: s.color }}>{s.value}</p>
+            <button
+              key={s.label}
+              onClick={() => navigate(s.path)}
+              className="text-center rounded-xl py-2.5 transition-all active:scale-95"
+              style={{ background: s.bg }}
+            >
+              <p className="text-[20px] font-black leading-tight" style={{ color: s.color }}>{s.value}</p>
               <p className="text-[10px] font-semibold mt-0.5" style={{ color: s.color + 'BB' }}>{s.label}</p>
-            </div>
+            </button>
           ))}
         </div>
-      </div>
 
-      {/* ── Active delivery banner ── */}
-      {activeDeliveryBanner && (
-        <div className="px-4 mt-3">
+        {/* ── Active delivery banner ── */}
+        {activeDeliveryBanner && (
           <div
-            className="rounded-2xl p-3 flex items-center gap-3 cursor-pointer"
-            style={{
-              background: 'linear-gradient(135deg,#EFF6FF,#DBEAFE)',
-              border: '1.5px solid rgba(37,99,235,0.18)',
-              boxShadow: '0 2px 12px rgba(37,99,235,0.10)',
-            }}
+            className="rounded-2xl p-3 flex items-center gap-3 cursor-pointer transition-all active:scale-[0.98]"
+            style={{ background: 'linear-gradient(135deg,#EFF6FF,#DBEAFE)', border: '1.5px solid rgba(37,99,235,0.18)' }}
             onClick={() => {
               if (activeDeliveryBanner.courierId) {
                 const conv = getOrCreateConversation(businessId, activeDeliveryBanner.courierId);
@@ -816,133 +923,90 @@ const BusinessDashboard: React.FC = () => {
               }
             }}
           >
-            <div className="status-live flex-shrink-0" style={{ background: activeDeliveryBanner.status === 'picked_up' ? '#F97316' : undefined }} />
+            <div className="w-2.5 h-2.5 rounded-full animate-pulse flex-shrink-0" style={{ background: activeDeliveryBanner.status === 'picked_up' ? '#F97316' : '#2563EB' }} />
             <div className="flex-1 min-w-0">
               <p className="text-[12px] font-black" style={{ color: '#1E40AF' }}>
-                {activeDeliveryBanner.status === 'accepted' ? '🛵 שליח בדרך לאיסוף' : '📦 החבילה בדרך אליך'}
+                {activeDeliveryBanner.status === 'accepted' ? 'שליח בדרך לאיסוף' : 'החבילה בדרך'}
               </p>
               <p className="text-[11px] truncate" style={{ color: '#6B7280' }}>{activeDeliveryBanner.courierName} · {activeDeliveryBanner.dropAddress}</p>
             </div>
-            <span className="text-[11px] font-bold" style={{ color: '#2563EB' }}>פתח צ׳אט ›</span>
+            <span className="text-[11px] font-bold flex-shrink-0" style={{ color: '#2563EB' }}>פתח צ׳אט ›</span>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* ── Balance chip ── */}
-      {balance !== 0 && (
-        <div className="px-4 mt-3">
-          <div
-            className="flex items-center justify-between px-4 py-3 rounded-2xl"
-            style={{ background: '#FFFFFF', border: '1px solid #E8E8E8' }}
-          >
-            <p className="text-[13px] font-semibold" style={{ color: '#757575' }}>יתרת חשבון</p>
-            <p
-              className="text-[18px] font-black"
-              style={{ color: balance >= 0 ? '#1BA672' : '#E23437' }}
-            >
-              ₪{balance.toFixed(0)}
-            </p>
+        {/* ── Today's deliveries ── */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-[15px] font-black" style={{ color: '#202125' }}>משלוחים היום</h2>
+            {deliveries.length > 0 && (
+              <button onClick={() => navigate('/business/deliveries')} className="text-[12px] font-bold" style={{ color: '#2563EB' }}>הכל ›</button>
+            )}
           </div>
-        </div>
-      )}
 
-      {/* ── Recent deliveries ── */}
-      <div className="px-4 mt-4 pb-6">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-[16px] font-black" style={{ color: '#1E3A8A' }}>משלוחים אחרונים</h2>
-          {deliveries.length > 0 && (
-            <button
-              onClick={() => navigate('/business/deliveries')}
-              className="text-[12px] font-bold px-3 py-1 rounded-full flex items-center gap-0.5"
-              style={{ color: '#2563EB', background: '#EFF6FF' }}
+          {todayDeliveries.filter(d => !dismissedFromDash.has(d.id)).length === 0 ? (
+            <div
+              className="rounded-2xl p-8 flex flex-col items-center gap-3 text-center"
+              style={{ background: '#FFFFFF', border: '1px solid #E8E8E8' }}
             >
-              הכל
-              <ChevronLeftIcon className="w-3.5 h-3.5" />
-            </button>
+              <div className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ background: '#EFF6FF' }}>
+                <TruckIcon className="w-6 h-6" style={{ color: '#2563EB' }} />
+              </div>
+              <p className="font-bold text-[14px]" style={{ color: '#202125' }}>אין משלוחים עדיין</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {todayDeliveries
+                .filter(d => !dismissedFromDash.has(d.id))
+                .map(d => {
+                  const sc = STATUS_COLOR[d.status];
+                  const isTrackable = ['pending','accepted','picked_up'].includes(d.status);
+                  return (
+                    <div
+                      key={d.id}
+                      className="rounded-2xl p-3 transition-all"
+                      style={{ background: '#FFFFFF', border: `1.5px solid ${isTrackable ? '#2563EB20' : '#E8E8E8'}` }}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: sc.bg, color: sc.text }}>
+                          {STATUS_LABEL[d.status]}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-black" style={{ color: '#F97316' }}>₪{d.price}</span>
+                          <span className="text-[10px]" style={{ color: '#9CA3AF' }}>
+                            {new Date(d.createdAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                          <button
+                            onClick={() => setDismissedFromDash(prev => new Set([...prev, d.id]))}
+                            className="p-1 rounded-lg transition-all active:scale-95"
+                            style={{ color: '#9CA3AF' }}
+                          >
+                            <XMarkIcon className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                      <p className="text-[12px] font-semibold truncate" style={{ color: '#202125' }}>{d.dropAddress}</p>
+                      {d.courierName && (
+                        <p className="text-[11px] mt-0.5" style={{ color: '#6B7280' }}>שליח: {d.courierName}</p>
+                      )}
+                      {isTrackable && (
+                        <button
+                          onClick={() => setSearchParams({ tracking: d.id })}
+                          className="mt-2 w-full py-1.5 rounded-xl text-[12px] font-bold transition-all active:scale-95"
+                          style={{ background: sc.bg, color: sc.text }}
+                        >
+                          עקוב ›
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+            </div>
           )}
         </div>
 
-        {deliveries.length === 0 ? (
-          /* Empty state */
-          <div
-            className="rounded-2xl p-8 flex flex-col items-center gap-4 text-center"
-            style={{
-              background: 'linear-gradient(135deg,#EFF6FF,#DBEAFE)',
-              border: '1px solid rgba(37,99,235,0.12)',
-            }}
-          >
-            <div
-              className="w-16 h-16 rounded-2xl flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg,#2563EB,#009DE0)', boxShadow: '0 4px 16px rgba(37,99,235,0.3)' }}
-            >
-              <TruckIcon className="w-8 h-8 text-white" />
-            </div>
-            <div>
-              <p className="font-black text-[16px]" style={{ color: '#1E3A8A' }}>אין משלוחים עדיין</p>
-              <p className="text-[13px] mt-1" style={{ color: '#6B7280' }}>הזמן את המשלוח הראשון שלך</p>
-            </div>
-            <button
-              onClick={() => navigate('/business/new-delivery')}
-              className="btn-cta-orange px-6 py-3 font-bold text-[14px] transition-all active:scale-95"
-            >
-              בקש משלוח ראשון
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {recent.map(d => {
-              const sc = STATUS_COLOR[d.status];
-              const isTrackable = ['pending', 'accepted', 'picked_up'].includes(d.status);
-              return (
-                <div
-                  key={d.id}
-                  onClick={() => isTrackable && setSearchParams({ tracking: d.id })}
-                  className="delivery-card rounded-2xl p-4 transition-all active:scale-[0.99]"
-                  style={{
-                    cursor: isTrackable ? 'pointer' : 'default',
-                    borderRight: isTrackable ? '3px solid #2563EB' : undefined,
-                  }}
-                >
-                  {/* Row 1: status + time */}
-                  <div className="flex items-center justify-between mb-2.5">
-                    <span
-                      className="text-[11px] font-bold px-2.5 py-1 rounded-full"
-                      style={{ background: sc.bg, color: sc.text }}
-                    >
-                      {STATUS_LABEL[d.status]}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      {isTrackable && (
-                        <span className="text-[11px] font-semibold" style={{ color: '#2563EB' }}>עקוב ›</span>
-                      )}
-                      <span className="text-[11px]" style={{ color: '#9CA3AF' }}>
-                        {formatDate(d.createdAt)} • {formatTime(d.createdAt)}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Row 2: address */}
-                  <p className="text-[14px] font-semibold" style={{ color: '#1E3A8A' }}>
-                    {d.dropAddress}
-                  </p>
-
-                  {/* Row 3: courier + price */}
-                  <div className="flex items-center justify-between mt-2">
-                    <p className="text-[12px]" style={{ color: '#6B7280' }}>
-                      {d.courierName ? `שליח: ${d.courierName}` : 'ממתין לשליח'}
-                    </p>
-                    <p className="text-[15px] font-black" style={{ color: '#F97316' }}>
-                      ₪{d.price}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
       </div>
 
-      {/* ── Live delivery tracking / candidate review sheet ── */}
+      {/* ── Live tracking / candidate review sheet ── */}
       {trackingId && businessId && (() => {
         const d = deliveries.find(x => x.id === trackingId);
         if (!d) return null;

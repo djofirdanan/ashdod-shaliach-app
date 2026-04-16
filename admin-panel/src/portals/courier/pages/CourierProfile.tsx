@@ -15,6 +15,7 @@ import {
   hashPassword,
   cleanupOldConversations,
   cleanupCompletedDeliveryConvs,
+  deleteAllConversations,
   type StoredCourier,
   type StoredBusiness,
   type StoredReview,
@@ -32,6 +33,8 @@ import {
   ArrowPathIcon,
 } from '@heroicons/react/24/outline';
 import { HeartIcon as HeartSolid } from '@heroicons/react/24/solid';
+import { Headphones, MapTrifold, MapPin as PhosphorMapPin, AppleLogo, Warning } from '@phosphor-icons/react';
+import CityMultiSelect from '../../../components/CityMultiSelect';
 import toast from 'react-hot-toast';
 
 /* ─── Design tokens ───────────────────────────── */
@@ -253,6 +256,7 @@ const ChatCleanupSection: React.FC<{ userId: string; userType: 'business' | 'cou
   const storageKey = `chat_cleanup_${userType}_${userId}`;
   const [period, setPeriod] = useState<CleanupPeriod>(() => (localStorage.getItem(storageKey) as CleanupPeriod) ?? 'manual');
   const [cleaning, setCleaning] = useState(false);
+  const [showDeleteAll, setShowDeleteAll] = useState(false);
 
   const savePeriod = (p: CleanupPeriod) => {
     setPeriod(p);
@@ -262,17 +266,20 @@ const ChatCleanupSection: React.FC<{ userId: string; userType: 'business' | 'cou
     else if (p !== 'manual') cleanupOldConversations(userId, userType, DAYS_MAP[p]);
   };
   const handleManualClean = () => {
+    if (!showDeleteAll) { setShowDeleteAll(true); return; }
     setCleaning(true);
     if (period === 'on_complete') cleanupCompletedDeliveryConvs(userId, userType);
-    else cleanupOldConversations(userId, userType, period === 'manual' ? 30 : DAYS_MAP[period]);
+    else if (period !== 'manual') cleanupOldConversations(userId, userType, DAYS_MAP[period]);
+    else deleteAllConversations(userId, userType);
     setCleaning(false);
-    toast.success('צ\'אטים ישנים נוקו');
+    setShowDeleteAll(false);
+    toast.success('הצ\'אטים נוקו');
   };
   return (
     <div className="rounded-2xl overflow-hidden" style={{ background: CARD_BG, border: `1px solid ${BORDER}` }}>
       <div className="px-4 pt-4 pb-3" style={{ borderBottom: `1px solid ${BORDER}` }}>
         <p className="text-[10px] font-semibold uppercase tracking-widest mb-0.5" style={{ color: '#757575' }}>ניהול פרטיות</p>
-        <h2 className="text-[14px] font-black" style={{ color: TEXT }}>ניקוי צ׳אטים אוטומטי</h2>
+        <h2 className="text-[14px] font-black" style={{ color: TEXT }}>ניקוי צ׳אטים</h2>
       </div>
       <div className="p-4 space-y-3">
         <p className="text-[12px]" style={{ color: '#757575' }}>בחר מתי למחוק שיחות ישנות אוטומטית</p>
@@ -282,7 +289,8 @@ const ChatCleanupSection: React.FC<{ userId: string; userType: 'business' | 'cou
               className="w-full flex items-center gap-3 p-3 rounded-xl text-right transition-all"
               style={{ background: period === opt.value ? `${BLUE}12` : BG, border: `1.5px solid ${period === opt.value ? BLUE : BORDER}` }}
             >
-              <div className="w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center" style={{ borderColor: period === opt.value ? BLUE : BORDER }}>
+              <div className="w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center"
+                style={{ borderColor: period === opt.value ? BLUE : BORDER }}>
                 {period === opt.value && <div className="w-2 h-2 rounded-full" style={{ background: BLUE }} />}
               </div>
               <div className="flex-1 min-w-0">
@@ -292,12 +300,31 @@ const ChatCleanupSection: React.FC<{ userId: string; userType: 'business' | 'cou
             </button>
           ))}
         </div>
-        <button onClick={handleManualClean} disabled={cleaning}
-          className="w-full py-2.5 rounded-xl text-[13px] font-bold transition-all active:scale-95 disabled:opacity-60"
-          style={{ background: BG, border: `1px solid ${BORDER}`, color: '#757575' }}
-        >
-          {cleaning ? 'מנקה...' : 'נקה עכשיו'}
-        </button>
+        {/* Delete now button */}
+        {!showDeleteAll ? (
+          <button onClick={() => setShowDeleteAll(true)} disabled={cleaning}
+            className="w-full py-2.5 rounded-xl text-[13px] font-bold transition-all active:scale-95 disabled:opacity-60"
+            style={{ background: BG, border: `1px solid ${BORDER}`, color: '#757575' }}
+          >
+            {cleaning ? 'מנקה...' : 'נקה עכשיו'}
+          </button>
+        ) : (
+          <div className="rounded-xl p-3 space-y-2" style={{ background: '#FFF5F5', border: '1px solid #E2343740' }}>
+            <p className="text-[12px] font-bold text-center flex items-center justify-center gap-1" style={{ color: ERROR }}><Warning size={13} /> פעולה זו תמחק את כל השיחות. לא ניתן לשחזר.</p>
+            <div className="flex gap-2">
+              <button onClick={() => setShowDeleteAll(false)}
+                className="flex-1 py-2 rounded-xl text-[13px] font-bold"
+                style={{ background: BG, color: TEXT2, border: `1px solid ${BORDER}` }}>
+                ביטול
+              </button>
+              <button onClick={handleManualClean} disabled={cleaning}
+                className="flex-1 py-2 rounded-xl text-[13px] font-bold text-white"
+                style={{ background: ERROR }}>
+                {cleaning ? 'מוחק...' : 'מחק הכל'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -324,6 +351,7 @@ const CourierProfile: React.FC = () => {
   const [editPlate, setEditPlate] = useState('');
   const [editBitPhone, setEditBitPhone] = useState('');
   const [editNavPref, setEditNavPref] = useState<'waze' | 'google' | 'apple'>('waze');
+  const [editServiceCities, setEditServiceCities] = useState<string[]>([]);
 
   // Password change
   const [pwMode, setPwMode] = useState(false);
@@ -347,6 +375,7 @@ const CourierProfile: React.FC = () => {
       setEditPlate(c.vehiclePlate ?? '');
       setEditBitPhone(c.bitPhone ?? '');
       setEditNavPref(c.navPreference ?? 'waze');
+      setEditServiceCities(c.serviceCities ?? []);
     }
 
     const deliveries = getDeliveriesByCourier(courierId).filter(d => d.status === 'delivered');
@@ -398,6 +427,7 @@ const CourierProfile: React.FC = () => {
         vehiclePlate: editPlate.trim() || undefined,
         bitPhone: editBitPhone.trim() || undefined,
         navPreference: editNavPref,
+        serviceCities: editServiceCities,
       });
       setCourier(updated);
       setEditMode(false);
@@ -446,7 +476,7 @@ const CourierProfile: React.FC = () => {
     const updated = updateCourier(courierId, { isAvailable: next });
     setCourier(updated);
     setShowAvailConfirm(false);
-    toast.success(next ? '🟢 אתה זמין לקבל משלוחים' : '🔴 סימנת את עצמך כלא זמין');
+    toast.success(next ? 'אתה זמין לקבל משלוחים' : 'סימנת את עצמך כלא זמין');
   };
 
   /* Toggle favorite business */
@@ -466,141 +496,87 @@ const CourierProfile: React.FC = () => {
   const isAvailable = courier?.isAvailable ?? true;
 
   return (
-    <div className="max-w-lg mx-auto px-4 py-5 space-y-4" style={{ background: BG, minHeight: '100vh' }}>
+    <div className="w-full max-w-[1200px] mx-auto px-4 py-5" style={{ background: BG, minHeight: '100vh' }} dir="rtl">
 
-      {/* Profile header card */}
-      <div
-        className="rounded-2xl p-6 flex flex-col items-center text-center"
-        style={{ background: CARD_BG, border: `1px solid ${BORDER}` }}
-      >
-        <div className="relative mb-4">
-          {courier?.photo ? (
-            <img
-              src={courier.photo}
-              alt="פרופיל"
-              className="w-20 h-20 rounded-full object-cover"
-              style={{ border: `3px solid ${BLUE}` }}
-            />
-          ) : (
-            <div
-              className="w-20 h-20 rounded-full flex items-center justify-center text-white text-[28px] font-black"
-              style={{ background: BLUE }}
-            >
-              {courier?.name?.[0] ?? '?'}
-            </div>
-          )}
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="absolute -bottom-1 -left-1 w-7 h-7 rounded-full flex items-center justify-center shadow"
-            style={{ background: CARD_BG, border: `1px solid ${BORDER}` }}
-          >
-            <CameraIcon className="w-4 h-4" style={{ color: BLUE }} />
-          </button>
-          <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
-        </div>
+      {/* ── Desktop 2-column layout ── */}
+      <div className="lg:grid lg:grid-cols-[280px_1fr] lg:gap-6 lg:items-start space-y-4 lg:space-y-0">
 
-        <h1 className="text-[20px] font-black" style={{ color: TEXT }}>{courier?.name ?? 'שליח'}</h1>
-        <p className="text-[13px] mt-1" style={{ color: TEXT2 }}>
-          {courier ? vehicleLabel[courier.vehicle] : ''}
-          {courier?.vehiclePlate ? ` · ${courier.vehiclePlate}` : ''}
-        </p>
+        {/* ── LEFT COLUMN: Profile header + stats + tabs ── */}
+        <div className="space-y-4">
 
-        {/* Rating stars */}
-        <div className="flex gap-0.5 mt-2">
-          {[1,2,3,4,5].map(i => (
-            <span key={i} style={{ color: i <= Math.round(courier?.rating ?? 5) ? WARNING : BORDER, fontSize: 18 }}>★</span>
-          ))}
-        </div>
-
-        {/* Availability toggle */}
-        <button
-          onClick={toggleAvailability}
-          className="mt-4 px-5 py-2 rounded-full font-bold text-[13px] flex items-center gap-2 transition-all active:scale-95"
-          style={{
-            background: isAvailable ? `${SUCCESS}18` : `${ERROR}18`,
-            border: `1px solid ${isAvailable ? SUCCESS : ERROR}40`,
-            color: isAvailable ? SUCCESS : ERROR,
-          }}
-        >
-          <span
-            className="w-2.5 h-2.5 rounded-full"
-            style={{ background: isAvailable ? SUCCESS : ERROR }}
-          />
-          {isAvailable ? 'זמין לקבל משלוחים' : 'לא זמין כרגע'}
-        </button>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-2xl p-4 text-center" style={{ background: CARD_BG, border: `1px solid ${BORDER}` }}>
-          <p className="text-[22px] font-black" style={{ color: BLUE }}>{courier?.totalDeliveries ?? 0}</p>
-          <p className="text-[11px] mt-1" style={{ color: TEXT2 }}>משלוחים הושלמו</p>
-        </div>
-        <div className="rounded-2xl p-4 text-center" style={{ background: CARD_BG, border: `1px solid ${BORDER}` }}>
-          <p className="text-[22px] font-black" style={{ color: SUCCESS }}>₪{courier?.earnings.total ?? 0}</p>
-          <p className="text-[11px] mt-1" style={{ color: TEXT2 }}>סה"כ הכנסות</p>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-1 p-1 rounded-2xl" style={{ background: BORDER }}>
-        {(['info', 'businesses'] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setActiveTab(t)}
-            className="flex-1 py-2 rounded-xl text-[13px] font-bold transition-all"
-            style={{
-              background: activeTab === t ? CARD_BG : 'transparent',
-              color: activeTab === t ? BLUE : TEXT2,
-              boxShadow: activeTab === t ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
-            }}
-          >
-            {t === 'info' ? 'פרטים' : `עסקים (${pastBusinesses.length})`}
-          </button>
-        ))}
-      </div>
-
-      {activeTab === 'info' && (
-        <>
-          {/* Email notifications */}
-          <Section label="הגדרות" title="התראות מייל">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[13px] font-bold" style={{ color: TEXT }}>משלוח חדש זמין</p>
-                  <p className="text-[11px]" style={{ color: TEXT2 }}>קבל מייל כשמשלוח חדש מתפרסם</p>
+          {/* Profile header card */}
+          <div className="rounded-2xl p-6 flex flex-col items-center text-center" style={{ background: CARD_BG, border: `1px solid ${BORDER}` }}>
+            <div className="relative mb-4">
+              {courier?.photo ? (
+                <img src={courier.photo} alt="פרופיל" className="w-24 h-24 rounded-full object-cover" style={{ border: `3px solid ${BLUE}` }} />
+              ) : (
+                <div className="w-24 h-24 rounded-full flex items-center justify-center text-white text-[32px] font-black" style={{ background: BLUE }}>
+                  {courier?.name?.[0] ?? '?'}
                 </div>
-                <button
-                  onClick={() => {
-                    if (!courier) return;
-                    const next = !courier.emailOnNewDelivery;
-                    const updated = updateCourier(courierId, { emailOnNewDelivery: next });
-                    setCourier(updated);
-                    toast.success(next ? 'התראות מייל הופעלו' : 'התראות מייל כובו');
-                  }}
-                  className="relative w-12 h-6 rounded-full transition-colors flex-shrink-0"
-                  style={{ background: courier?.emailOnNewDelivery ? BLUE : BORDER }}
-                >
-                  <span
-                    className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all"
-                    style={{ left: courier?.emailOnNewDelivery ? '26px' : '2px' }}
-                  />
-                </button>
-              </div>
-              <p className="text-[10px]" style={{ color: '#C0C0C0' }}>
-                * דורש הגדרת שירות מייל (EmailJS / SMTP) בהגדרות האדמין
-              </p>
+              )}
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute -bottom-1 -left-1 w-8 h-8 rounded-full flex items-center justify-center shadow cursor-pointer"
+                style={{ background: CARD_BG, border: `1px solid ${BORDER}` }}
+              >
+                <CameraIcon className="w-4 h-4" style={{ color: BLUE }} />
+              </button>
+              <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
             </div>
-          </Section>
+            <h1 className="text-[20px] font-black" style={{ color: TEXT }}>{courier?.name ?? 'שליח'}</h1>
+            <p className="text-[13px] mt-1" style={{ color: TEXT2 }}>
+              {courier ? vehicleLabel[courier.vehicle] : ''}
+              {courier?.vehiclePlate ? ` · ${courier.vehiclePlate}` : ''}
+            </p>
+            <div className="flex gap-0.5 mt-2">
+              {[1,2,3,4,5].map(i => (
+                <span key={i} style={{ color: i <= Math.round(courier?.rating ?? 5) ? WARNING : BORDER, fontSize: 18 }}>★</span>
+              ))}
+            </div>
+            <button
+              onClick={toggleAvailability}
+              className="mt-4 px-5 py-2 rounded-full font-bold text-[13px] flex items-center gap-2 transition-all active:scale-95 cursor-pointer"
+              style={{ background: isAvailable ? `${SUCCESS}18` : `${ERROR}18`, border: `1px solid ${isAvailable ? SUCCESS : ERROR}40`, color: isAvailable ? SUCCESS : ERROR }}
+            >
+              <span className="w-2.5 h-2.5 rounded-full" style={{ background: isAvailable ? SUCCESS : ERROR }} />
+              {isAvailable ? 'זמין לקבל משלוחים' : 'לא זמין כרגע'}
+            </button>
+          </div>
 
-          {/* Support — opens directly in the chat messages area */}
+          {/* Stats */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-2xl p-4 text-center" style={{ background: CARD_BG, border: `1px solid ${BORDER}` }}>
+              <p className="text-[22px] font-black" style={{ color: BLUE }}>{courier?.totalDeliveries ?? 0}</p>
+              <p className="text-[11px] mt-1" style={{ color: TEXT2 }}>משלוחים הושלמו</p>
+            </div>
+            <div className="rounded-2xl p-4 text-center" style={{ background: CARD_BG, border: `1px solid ${BORDER}` }}>
+              <p className="text-[22px] font-black" style={{ color: SUCCESS }}>₪{courier?.earnings.total ?? 0}</p>
+              <p className="text-[11px] mt-1" style={{ color: TEXT2 }}>סה"כ הכנסות</p>
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <div className="flex gap-1 p-1 rounded-2xl" style={{ background: BORDER }}>
+            {(['info', 'businesses'] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setActiveTab(t)}
+                className="flex-1 py-2 rounded-xl text-[13px] font-bold transition-all cursor-pointer"
+                style={{ background: activeTab === t ? CARD_BG : 'transparent', color: activeTab === t ? BLUE : TEXT2, boxShadow: activeTab === t ? '0 1px 4px rgba(0,0,0,0.08)' : 'none' }}
+              >
+                {t === 'info' ? 'פרטים' : `עסקים (${pastBusinesses.length})`}
+              </button>
+            ))}
+          </div>
+
+          {/* Support */}
           <div
             className="rounded-2xl p-4 flex items-center gap-3 cursor-pointer transition-all hover:shadow-md"
             style={{ background: CARD_BG, border: `1px solid ${BORDER}` }}
             onClick={() => navigate('/courier/chat?support=1')}
           >
             <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: `${BLUE}15` }}>
-              <span className="text-[18px]">🎧</span>
+              <Headphones size={20} style={{ color: BLUE }} />
             </div>
             <div className="flex-1">
               <p className="text-[14px] font-black" style={{ color: TEXT }}>צור קשר / תמיכה</p>
@@ -609,210 +585,275 @@ const CourierProfile: React.FC = () => {
             <span style={{ color: TEXT2 }}>{'<'}</span>
           </div>
 
-          {/* Edit details */}
-          <Section label="פרופיל" title="פרטים אישיים">
-            {!editMode ? (
-              <>
-                {[
-                  { label: 'שם מלא', value: courier?.name },
-                  { label: 'אימייל', value: courier?.email },
-                  { label: 'טלפון', value: courier?.phone },
-                  { label: 'רכב', value: courier ? vehicleLabel[courier.vehicle] : '' },
-                  { label: 'מספר רכב', value: courier?.vehiclePlate },
-                  { label: '💙 Bit', value: courier?.bitPhone },
-                  { label: '🗺️ ניווט', value: courier?.navPreference === 'waze' ? 'Waze' : courier?.navPreference === 'apple' ? 'Apple Maps' : courier?.navPreference === 'google' ? 'Google Maps' : 'Waze (ברירת מחדל)' },
-                ].map(({ label, value }) => (
-                  <div key={label} className="flex items-center justify-between py-2.5" style={{ borderBottom: `1px solid ${BG}` }}>
-                    <span className="text-[11px] font-semibold" style={{ color: TEXT2 }}>{label}</span>
-                    <span className="text-[13px] font-bold" style={{ color: TEXT }}>{value || '—'}</span>
-                  </div>
-                ))}
-                <button
-                  onClick={() => setEditMode(true)}
-                  className="mt-3 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-[13px] transition-all active:scale-95"
-                  style={{ background: BG, color: BLUE, border: `1px solid ${BORDER}` }}
-                >
-                  <PencilIcon className="w-4 h-4" />
-                  ערוך פרטים
-                </button>
-              </>
-            ) : (
-              <div className="space-y-3">
-                {[
-                  { label: 'שם מלא', value: editName, setter: setEditName },
-                  { label: 'טלפון', value: editPhone, setter: setEditPhone },
-                  { label: 'מספר רכב', value: editPlate, setter: setEditPlate },
-                  { label: '💙 טלפון לתשלום Bit', value: editBitPhone, setter: setEditBitPhone },
-                ].map(({ label, value, setter }) => (
-                  <div key={label}>
-                    <label className="text-[11px] font-semibold block mb-1" style={{ color: TEXT2 }}>{label}</label>
-                    <input
-                      className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none"
-                      style={{ background: BG, border: `1px solid ${BORDER}`, color: TEXT, direction: 'rtl' }}
-                      value={value}
-                      onChange={(e) => setter(e.target.value)}
-                    />
-                  </div>
-                ))}
-                <div>
-                  <label className="text-[11px] font-semibold block mb-1" style={{ color: TEXT2 }}>סוג רכב</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {vehicleOptions.map(opt => (
-                      <button
-                        key={opt.value}
-                        onClick={() => setEditVehicle(opt.value)}
-                        className="py-2 rounded-xl text-[12px] font-bold transition-all"
-                        style={{
-                          background: editVehicle === opt.value ? BLUE : BG,
-                          color: editVehicle === opt.value ? '#fff' : TEXT2,
-                          border: `1px solid ${editVehicle === opt.value ? BLUE : BORDER}`,
-                        }}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label className="text-[11px] font-semibold block mb-1" style={{ color: TEXT2 }}>🗺️ אפליקציית ניווט מועדפת</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {([
-                      { value: 'waze', label: '🗺️ Waze' },
-                      { value: 'google', label: '📍 גוגל' },
-                      { value: 'apple', label: '🍎 Apple' },
-                    ] as const).map(opt => (
-                      <button
-                        key={opt.value}
-                        onClick={() => setEditNavPref(opt.value)}
-                        className="py-2 rounded-xl text-[11px] font-bold transition-all"
-                        style={{
-                          background: editNavPref === opt.value ? BLUE : BG,
-                          color: editNavPref === opt.value ? '#fff' : TEXT2,
-                          border: `1px solid ${editNavPref === opt.value ? BLUE : BORDER}`,
-                        }}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="flex gap-2 pt-1">
-                  <button
-                    onClick={handleSaveDetails}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-2xl text-white font-bold text-[13px] transition-all active:scale-95"
-                    style={{ background: BLUE }}
-                  >
-                    <CheckIcon className="w-4 h-4" />
-                    שמור
-                  </button>
-                  <button
-                    onClick={() => setEditMode(false)}
-                    className="px-4 py-2.5 rounded-xl font-bold text-[13px]"
-                    style={{ background: BG, color: TEXT2, border: `1px solid ${BORDER}` }}
-                  >
-                    <XMarkIcon className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            )}
-          </Section>
-
-          {/* Password change */}
-          <Section label="אבטחה" title="שינוי סיסמה">
-            {!pwMode ? (
-              <button
-                onClick={() => setPwMode(true)}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-[13px] transition-all active:scale-95"
-                style={{ background: BG, color: BLUE, border: `1px solid ${BORDER}` }}
-              >
-                <KeyIcon className="w-4 h-4" />
-                שנה סיסמה
-              </button>
-            ) : (
-              <div className="space-y-3">
-                {[
-                  { label: 'סיסמה נוכחית', value: oldPw, setter: setOldPw },
-                  { label: 'סיסמה חדשה', value: newPw, setter: setNewPw },
-                  { label: 'אשר סיסמה חדשה', value: confirmPw, setter: setConfirmPw },
-                ].map(({ label, value, setter }) => (
-                  <div key={label}>
-                    <label className="text-[11px] font-semibold block mb-1" style={{ color: TEXT2 }}>{label}</label>
-                    <input
-                      type="password"
-                      className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none"
-                      style={{ background: BG, border: `1px solid ${BORDER}`, color: TEXT, direction: 'rtl' }}
-                      value={value}
-                      onChange={(e) => setter(e.target.value)}
-                    />
-                  </div>
-                ))}
-                {pwError && (
-                  <p className="text-[12px] font-semibold" style={{ color: ERROR }}>{pwError}</p>
-                )}
-                <div className="flex gap-2">
-                  <button
-                    onClick={handlePasswordChange}
-                    className="flex-1 py-2.5 rounded-2xl text-white font-bold text-[13px] transition-all active:scale-95"
-                    style={{ background: BLUE }}
-                  >
-                    שמור
-                  </button>
-                  <button
-                    onClick={() => { setPwMode(false); setPwError(''); setOldPw(''); setNewPw(''); setConfirmPw(''); }}
-                    className="px-4 py-2.5 rounded-xl font-bold text-[13px]"
-                    style={{ background: BG, color: TEXT2, border: `1px solid ${BORDER}` }}
-                  >
-                    ביטול
-                  </button>
-                </div>
-              </div>
-            )}
-          </Section>
-        </>
-      )}
-
-      {activeTab === 'businesses' && (
-        <div className="space-y-3">
-          {pastBusinesses.length === 0 ? (
-            <div
-              className="rounded-2xl p-10 flex flex-col items-center gap-3 text-center"
-              style={{ background: CARD_BG, border: `1px solid ${BORDER}` }}
-            >
-              <BuildingStorefrontIcon className="w-10 h-10" style={{ color: BORDER }} />
-              <p className="font-bold text-[14px]" style={{ color: TEXT2 }}>עדיין לא עבדת עם עסקים</p>
-              <p className="text-[12px]" style={{ color: TEXT2 }}>לאחר שתמסור משלוח, העסק יופיע כאן</p>
-            </div>
-          ) : (
-            pastBusinesses.map(({ business, deliveryId }) => (
-              <PastBusinessCard
-                key={business.id}
-                business={business}
-                deliveryId={deliveryId}
-                courierId={courierId}
-                isFavorite={(courier?.favoriteBusinesses ?? []).includes(business.id)}
-                onToggleFavorite={() => toggleFavorite(business.id)}
-                existingReview={reviews.find(r => r.targetId === business.id && r.deliveryId === deliveryId)}
-                onReviewSaved={loadData}
-              />
-            ))
-          )}
+          {/* Logout */}
+          <button
+            onClick={handleLogout}
+            className="w-full py-4 rounded-2xl font-black text-[15px] transition-all active:scale-95 cursor-pointer"
+            style={{ background: CARD_BG, border: `1px solid ${ERROR}40`, color: ERROR }}
+          >
+            התנתקות
+          </button>
         </div>
-      )}
 
-      {/* ── Chat Cleanup Settings ── */}
-      <ChatCleanupSection userId={courierId} userType="courier" />
+        {/* ── RIGHT COLUMN: Settings / forms ── */}
+        <div className="space-y-4">
+
+          {activeTab === 'info' && (
+            <>
+              {/* Edit details */}
+              <Section label="פרופיל" title="פרטים אישיים">
+                {!editMode ? (
+                  <>
+                    <div className="lg:grid lg:grid-cols-2 lg:gap-x-6">
+                      {[
+                        { label: 'שם מלא', value: courier?.name },
+                        { label: 'אימייל', value: courier?.email },
+                        { label: 'טלפון', value: courier?.phone },
+                        { label: 'רכב', value: courier ? vehicleLabel[courier.vehicle] : '' },
+                        { label: 'מספר רכב', value: courier?.vehiclePlate },
+                        { label: 'Bit', value: courier?.bitPhone },
+                        { label: 'ניווט', value: courier?.navPreference === 'waze' ? 'Waze' : courier?.navPreference === 'apple' ? 'Apple Maps' : courier?.navPreference === 'google' ? 'Google Maps' : 'Waze (ברירת מחדל)' },
+                      ].map(({ label, value }) => (
+                        <div key={label} className="flex items-center justify-between py-2.5" style={{ borderBottom: `1px solid ${BG}` }}>
+                          <span className="text-[11px] font-semibold" style={{ color: TEXT2 }}>{label}</span>
+                          <span className="text-[13px] font-bold" style={{ color: TEXT }}>{value || '—'}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {/* Service cities in view mode */}
+                    {(courier?.serviceCities ?? []).length > 0 && (
+                      <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${BG}` }}>
+                        <p className="text-[11px] font-semibold mb-2" style={{ color: TEXT2 }}>ערים פעיל בהן</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {(courier?.serviceCities ?? []).map((city) => (
+                            <span
+                              key={city}
+                              className="inline-flex items-center px-2.5 py-1 rounded-full text-[12px] font-semibold"
+                              style={{ background: '#EEF8FF', color: BLUE }}
+                            >
+                              {city}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <button
+                      onClick={() => setEditMode(true)}
+                      className="mt-3 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-[13px] transition-all active:scale-95 cursor-pointer"
+                      style={{ background: BG, color: BLUE, border: `1px solid ${BORDER}` }}
+                    >
+                      <PencilIcon className="w-4 h-4" />
+                      ערוך פרטים
+                    </button>
+                  </>
+                ) : (
+                  <div className="space-y-3 lg:grid lg:grid-cols-2 lg:gap-4 lg:space-y-0">
+                    {[
+                      { label: 'שם מלא', value: editName, setter: setEditName },
+                      { label: 'טלפון', value: editPhone, setter: setEditPhone },
+                      { label: 'מספר רכב', value: editPlate, setter: setEditPlate },
+                      { label: 'טלפון לתשלום Bit', value: editBitPhone, setter: setEditBitPhone },
+                    ].map(({ label, value, setter }) => (
+                      <div key={label}>
+                        <label className="text-[11px] font-semibold block mb-1" style={{ color: TEXT2 }}>{label}</label>
+                        <input
+                          className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none"
+                          style={{ background: BG, border: `1px solid ${BORDER}`, color: TEXT, direction: 'rtl' }}
+                          value={value}
+                          onChange={(e) => setter(e.target.value)}
+                        />
+                      </div>
+                    ))}
+                    <div>
+                      <label className="text-[11px] font-semibold block mb-1" style={{ color: TEXT2 }}>סוג רכב</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {vehicleOptions.map(opt => (
+                          <button
+                            key={opt.value}
+                            onClick={() => setEditVehicle(opt.value)}
+                            className="py-2 rounded-xl text-[12px] font-bold transition-all cursor-pointer"
+                            style={{ background: editVehicle === opt.value ? BLUE : BG, color: editVehicle === opt.value ? '#fff' : TEXT2, border: `1px solid ${editVehicle === opt.value ? BLUE : BORDER}` }}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-semibold block mb-1" style={{ color: TEXT2 }}>אפליקציית ניווט מועדפת</label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {([
+                          { value: 'waze', label: 'Waze', icon: <MapTrifold size={12} /> },
+                          { value: 'google', label: 'גוגל', icon: <PhosphorMapPin size={12} /> },
+                          { value: 'apple', label: 'Apple', icon: <AppleLogo size={12} /> },
+                        ] as const).map(opt => (
+                          <button
+                            key={opt.value}
+                            onClick={() => setEditNavPref(opt.value)}
+                            className="py-2 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1 cursor-pointer"
+                            style={{ background: editNavPref === opt.value ? BLUE : BG, color: editNavPref === opt.value ? '#fff' : TEXT2, border: `1px solid ${editNavPref === opt.value ? BLUE : BORDER}` }}
+                          >
+                            {opt.icon} {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {/* Service cities in edit mode */}
+                    <div className="lg:col-span-2">
+                      <label className="text-[11px] font-semibold block mb-1" style={{ color: TEXT2 }}>ערים שאני פעיל בהן</label>
+                      <CityMultiSelect
+                        selected={editServiceCities}
+                        onChange={setEditServiceCities}
+                      />
+                    </div>
+
+                    <div className="lg:col-span-2 flex gap-2 pt-1">
+                      <button
+                        onClick={handleSaveDetails}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-2xl text-white font-bold text-[13px] transition-all active:scale-95 cursor-pointer"
+                        style={{ background: BLUE }}
+                      >
+                        <CheckIcon className="w-4 h-4" />
+                        שמור
+                      </button>
+                      <button
+                        onClick={() => setEditMode(false)}
+                        className="px-4 py-2.5 rounded-xl font-bold text-[13px] cursor-pointer"
+                        style={{ background: BG, color: TEXT2, border: `1px solid ${BORDER}` }}
+                      >
+                        <XMarkIcon className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </Section>
+
+              {/* Password change */}
+              <Section label="אבטחה" title="שינוי סיסמה">
+                {!pwMode ? (
+                  <button
+                    onClick={() => setPwMode(true)}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-[13px] transition-all active:scale-95 cursor-pointer"
+                    style={{ background: BG, color: BLUE, border: `1px solid ${BORDER}` }}
+                  >
+                    <KeyIcon className="w-4 h-4" />
+                    שנה סיסמה
+                  </button>
+                ) : (
+                  <div className="space-y-3 lg:grid lg:grid-cols-3 lg:gap-4 lg:space-y-0">
+                    {[
+                      { label: 'סיסמה נוכחית', value: oldPw, setter: setOldPw },
+                      { label: 'סיסמה חדשה', value: newPw, setter: setNewPw },
+                      { label: 'אשר סיסמה חדשה', value: confirmPw, setter: setConfirmPw },
+                    ].map(({ label, value, setter }) => (
+                      <div key={label}>
+                        <label className="text-[11px] font-semibold block mb-1" style={{ color: TEXT2 }}>{label}</label>
+                        <input
+                          type="password"
+                          className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none"
+                          style={{ background: BG, border: `1px solid ${BORDER}`, color: TEXT, direction: 'rtl' }}
+                          value={value}
+                          onChange={(e) => setter(e.target.value)}
+                        />
+                      </div>
+                    ))}
+                    {pwError && <p className="text-[12px] font-semibold lg:col-span-3" style={{ color: ERROR }}>{pwError}</p>}
+                    <div className="flex gap-2 lg:col-span-3">
+                      <button
+                        onClick={handlePasswordChange}
+                        className="flex-1 py-2.5 rounded-2xl text-white font-bold text-[13px] transition-all active:scale-95 cursor-pointer"
+                        style={{ background: BLUE }}
+                      >
+                        שמור
+                      </button>
+                      <button
+                        onClick={() => { setPwMode(false); setPwError(''); setOldPw(''); setNewPw(''); setConfirmPw(''); }}
+                        className="px-4 py-2.5 rounded-xl font-bold text-[13px] cursor-pointer"
+                        style={{ background: BG, color: TEXT2, border: `1px solid ${BORDER}` }}
+                      >
+                        ביטול
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </Section>
+
+              {/* Email notifications */}
+              <Section label="הגדרות" title="התראות מייל">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-[13px] font-bold" style={{ color: TEXT }}>משלוח חדש זמין</p>
+                      <p className="text-[11px]" style={{ color: TEXT2 }}>קבל מייל כשמשלוח חדש מתפרסם</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (!courier) return;
+                        const next = !courier.emailOnNewDelivery;
+                        const updated = updateCourier(courierId, { emailOnNewDelivery: next });
+                        setCourier(updated);
+                        toast.success(next ? 'התראות מייל הופעלו' : 'התראות מייל כובו');
+                      }}
+                      className="relative w-12 h-6 rounded-full transition-colors flex-shrink-0 cursor-pointer"
+                      style={{ background: courier?.emailOnNewDelivery ? BLUE : BORDER }}
+                    >
+                      <span className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all" style={{ left: courier?.emailOnNewDelivery ? '26px' : '2px' }} />
+                    </button>
+                  </div>
+                  <p className="text-[10px]" style={{ color: '#C0C0C0' }}>
+                    * דורש הגדרת שירות מייל (EmailJS / SMTP) בהגדרות האדמין
+                  </p>
+                </div>
+              </Section>
+            </>
+          )}
+
+          {activeTab === 'businesses' && (
+            <div className="space-y-3">
+              {pastBusinesses.length === 0 ? (
+                <div className="rounded-2xl p-10 flex flex-col items-center gap-3 text-center" style={{ background: CARD_BG, border: `1px solid ${BORDER}` }}>
+                  <BuildingStorefrontIcon className="w-10 h-10" style={{ color: BORDER }} />
+                  <p className="font-bold text-[14px]" style={{ color: TEXT2 }}>עדיין לא עבדת עם עסקים</p>
+                  <p className="text-[12px]" style={{ color: TEXT2 }}>לאחר שתמסור משלוח, העסק יופיע כאן</p>
+                </div>
+              ) : (
+                <div className="lg:grid lg:grid-cols-2 lg:gap-3 space-y-3 lg:space-y-0">
+                  {pastBusinesses.map(({ business, deliveryId }) => (
+                    <PastBusinessCard
+                      key={business.id}
+                      business={business}
+                      deliveryId={deliveryId}
+                      courierId={courierId}
+                      isFavorite={(courier?.favoriteBusinesses ?? []).includes(business.id)}
+                      onToggleFavorite={() => toggleFavorite(business.id)}
+                      existingReview={reviews.find(r => r.targetId === business.id && r.deliveryId === deliveryId)}
+                      onReviewSaved={loadData}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Chat Cleanup Settings */}
+          <ChatCleanupSection userId={courierId} userType="courier" />
+
+        </div>{/* end right column */}
+      </div>{/* end desktop grid */}
+
+      {/* Logout button */}
+      <div className="px-4 pb-8">
+        <button
+          onClick={handleLogout}
+          className="w-full py-4 rounded-2xl font-black text-[15px] transition-all active:scale-95"
+          style={{ background: '#FFFFFF', border: '1px solid #E2343740', color: '#E23437' }}
+        >
+          התנתקות
+        </button>
+      </div>
 
       {/* Clear cache */}
       <ClearCacheButton />
-
-      {/* Logout */}
-      <button
-        onClick={handleLogout}
-        className="w-full py-4 rounded-2xl font-black text-[15px] transition-all active:scale-95"
-        style={{ background: CARD_BG, border: `1px solid ${ERROR}40`, color: ERROR }}
-      >
-        התנתקות
-      </button>
 
       {/* Availability confirmation */}
       {showAvailConfirm && (
@@ -826,7 +867,9 @@ const CourierProfile: React.FC = () => {
             style={{ background: CARD_BG, boxShadow: '0 24px 60px rgba(0,0,0,0.15)' }}
             dir="rtl"
           >
-            <div className="text-[36px] mb-3">{isAvailable ? '🔴' : '🟢'}</div>
+            <div className="flex justify-center mb-3">
+              <span className="w-10 h-10 rounded-full" style={{ background: isAvailable ? ERROR : SUCCESS, display: 'inline-block' }} />
+            </div>
             <h3 className="text-[17px] font-black mb-2" style={{ color: TEXT }}>
               {isAvailable ? 'לסמן כלא זמין?' : 'לסמן כזמין?'}
             </h3>

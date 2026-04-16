@@ -15,6 +15,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { ScheduledDeliveryPicker } from '../../../components/ui/ScheduledDeliveryPicker';
 import { DEFAULT_PRICING_ZONES } from '../../../utils/constants';
+import { Truck, Motorcycle, Scooter, Bicycle, Car, MapPin as PhosphorMapPin, Money, DeviceMobile, CheckCircle, CreditCard as PhosphorCreditCard, User as PhosphorUser, Rocket, Calendar, Plus, Minus } from '@phosphor-icons/react';
 
 // ── Wolt design tokens ──────────────────────────────────────────────────────
 const BLUE    = '#009DE0';
@@ -26,12 +27,12 @@ const BORDER  = '#E8E8E8';
 const SUCCESS = '#1BA672';
 
 // Vehicle type options
-const VEHICLE_OPTIONS = [
-  { value: '', label: 'כל כלי רכב', icon: '🚗🛵🚲', desc: 'כל שליח יכול לקחת' },
-  { value: 'motorcycle', label: 'אופנוע', icon: '🏍️', desc: 'מהיר, לכל סוגי משלוחים' },
-  { value: 'scooter', label: 'קטנוע', icon: '🛵', desc: 'מהיר לטווח קצר-בינוני' },
-  { value: 'bicycle', label: 'אופניים', icon: '🚲', desc: 'אקולוגי, לטווח קצר' },
-  { value: 'car', label: 'רכב', icon: '🚗', desc: 'למשלוחים גדולים/כבדים' },
+const VEHICLE_OPTIONS: { value: string; label: string; icon: React.ReactNode; desc: string }[] = [
+  { value: '', label: 'כל כלי רכב', icon: <Truck size={20} />, desc: 'כל שליח יכול לקחת' },
+  { value: 'motorcycle', label: 'אופנוע', icon: <Motorcycle size={20} />, desc: 'מהיר, לכל סוגי משלוחים' },
+  { value: 'scooter', label: 'קטנוע', icon: <Scooter size={20} />, desc: 'מהיר לטווח קצר-בינוני' },
+  { value: 'bicycle', label: 'אופניים', icon: <Bicycle size={20} />, desc: 'אקולוגי, לטווח קצר' },
+  { value: 'car', label: 'רכב', icon: <Car size={20} />, desc: 'למשלוחים גדולים/כבדים' },
 ];
 
 // Price multiplier per vehicle type (relative to motorcycle=1.0)
@@ -89,6 +90,7 @@ const NewDelivery: React.FC = () => {
 
   // Delivery fields
   const [pickupAddress, setPickupAddress] = useState('');
+  const [pickupCity, setPickupCity] = useState('');
   const [dropAddress, setDropAddress] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -104,6 +106,8 @@ const NewDelivery: React.FC = () => {
   // Scheduled delivery
   const [isScheduled, setIsScheduled] = useState(false);
   const [scheduledAt, setScheduledAt] = useState<Date | null>(null);
+  // 'now' = notify couriers immediately (reserve a courier); 'on_time' = notify at scheduled time only
+  const [notifyMode, setNotifyMode] = useState<'now' | 'on_time'>('on_time');
 
   const [isLoading, setIsLoading] = useState(false);
   const zones = loadPricingZones();
@@ -114,6 +118,7 @@ const NewDelivery: React.FC = () => {
     if (biz) {
       const addr = [biz.address.street, biz.address.city].filter(Boolean).join(', ');
       setPickupAddress(addr);
+      if (biz.address.city) setPickupCity(biz.address.city);
     }
   }, [businessId]);
 
@@ -148,11 +153,15 @@ const NewDelivery: React.FC = () => {
       const priceNum = parseFloat(price) || 35;
       const isNow = !isScheduled;
 
+      // For "notify now" mode: mark notificationSent so the scheduler won't double-fire
+      const earlyNotify = isScheduled && notifyMode === 'now';
+
       // Add delivery record
       const newDelivery = addDelivery({
         businessId,
         businessName,
         pickupAddress: pickupAddress.trim(),
+        pickupCity: pickupCity || undefined,
         dropAddress: dropAddress.trim(),
         customerName: customerName.trim() || undefined,
         customerPhone: customerPhone.trim() || undefined,
@@ -163,15 +172,17 @@ const NewDelivery: React.FC = () => {
         requiredVehicle: requiredVehicle || undefined,
         paymentMethod,
         customerPaid,
+        notificationSent: earlyNotify, // mark sent so scheduler skips it
       });
 
-      // Send notification immediately only for non-scheduled deliveries
       if (isNow) {
+        // Regular delivery — notify couriers immediately
         addDeliveryNotification({
-          deliveryId: newDelivery.id,   // ← link notification to delivery ID
+          deliveryId: newDelivery.id,
           businessId,
           businessName,
           pickupAddress: pickupAddress.trim(),
+          pickupCity: pickupCity || undefined,
           dropAddress: dropAddress.trim(),
           description: description.trim() || undefined,
           price: priceNum,
@@ -179,10 +190,30 @@ const NewDelivery: React.FC = () => {
           paymentMethod,
           customerPaid,
         });
-      } else {
+      } else if (earlyNotify) {
+        // Scheduled but business chose to notify couriers NOW (to reserve a courier)
         const dt = new Date(scheduledAtISO!);
         const formatted = dt.toLocaleString('he-IL', { weekday: 'short', hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
-        toast.success(`המשלוח תוזמן ל-${formatted} ✅`);
+        addDeliveryNotification({
+          deliveryId: newDelivery.id,
+          businessId,
+          businessName,
+          pickupAddress: pickupAddress.trim(),
+          pickupCity: pickupCity || undefined,
+          dropAddress: dropAddress.trim(),
+          description: description.trim() || undefined,
+          price: priceNum,
+          requiredVehicle: requiredVehicle || undefined,
+          paymentMethod,
+          customerPaid,
+          scheduledAt: scheduledAtISO, // couriers will see the future time
+        });
+        toast.success(`ההודעה נשלחה לשליחים — משלוח מתוזמן ל-${formatted}`);
+      } else {
+        // Scheduled + notify at scheduled time only
+        const dt = new Date(scheduledAtISO!);
+        const formatted = dt.toLocaleString('he-IL', { weekday: 'short', hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
+        toast.success(`המשלוח תוזמן ל-${formatted} — ההודעה תישלח אז`);
       }
 
       // Navigate to dashboard with tracking param so the live-status sheet opens
@@ -227,7 +258,7 @@ const NewDelivery: React.FC = () => {
 
           {/* ── Addresses ── */}
           <div style={{ ...cardStyle }}>
-            <p style={{ fontSize: 13, fontWeight: 900, color: TEXT, margin: '0 0 16px' }}>📍 כתובות</p>
+            <p style={{ fontSize: 13, fontWeight: 900, color: TEXT, margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 6 }}><PhosphorMapPin size={14} /> כתובות</p>
             <div style={{ marginBottom: 12 }}>
               <label style={labelStyle}>כתובת איסוף *</label>
               <input style={inputStyle} placeholder="רחוב, עיר" value={pickupAddress} onChange={e => setPickupAddress(e.target.value)} required />
@@ -240,7 +271,7 @@ const NewDelivery: React.FC = () => {
 
           {/* ── Vehicle type ── */}
           <div style={{ ...cardStyle }}>
-            <p style={{ fontSize: 13, fontWeight: 900, color: TEXT, margin: '0 0 12px' }}>🛵 סוג כלי רכב נדרש</p>
+            <p style={{ fontSize: 13, fontWeight: 900, color: TEXT, margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 6 }}><Truck size={14} /> סוג כלי רכב נדרש</p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
               {VEHICLE_OPTIONS.map(opt => {
                 const selected = requiredVehicle === opt.value;
@@ -263,7 +294,7 @@ const NewDelivery: React.FC = () => {
                       transition: 'all 0.15s',
                     }}
                   >
-                    <span style={{ fontSize: 20 }}>{opt.icon}</span>
+                    <span style={{ display: 'flex', alignItems: 'center', color: selected ? BLUE : TEXT2 }}>{opt.icon}</span>
                     <span style={{ fontSize: 12, fontWeight: 700, color: selected ? BLUE : TEXT }}>{opt.label}</span>
                     <span style={{ fontSize: 10, color: TEXT2 }}>{opt.desc}</span>
                   </button>
@@ -274,7 +305,7 @@ const NewDelivery: React.FC = () => {
 
           {/* ── Zone + price ── */}
           <div style={{ ...cardStyle }}>
-            <p style={{ fontSize: 13, fontWeight: 900, color: TEXT, margin: '0 0 12px' }}>💰 תמחור</p>
+            <p style={{ fontSize: 13, fontWeight: 900, color: TEXT, margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 6 }}><Money size={14} /> תמחור</p>
             <div style={{ marginBottom: 12 }}>
               <label style={labelStyle}>בחר אזור משלוח</label>
               <select
@@ -290,40 +321,59 @@ const NewDelivery: React.FC = () => {
             </div>
             <div>
               <label style={labelStyle}>תשלום לשליח (₪) — ניתן לעריכה ידנית</label>
-              <div style={{ position: 'relative' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {/* − button */}
+                <button
+                  type="button"
+                  onClick={() => setPrice(p => String(Math.max(0, (parseInt(p) || 0) - 1)))}
+                  style={{
+                    width: 48, height: 48, borderRadius: 12, border: `1.5px solid ${BORDER}`,
+                    background: BG, cursor: 'pointer', flexShrink: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', color: TEXT2,
+                  }}
+                >
+                  <Minus size={18} />
+                </button>
+
+                {/* text input — no native spinners */}
                 <input
-                  style={{ ...inputStyle, direction: 'ltr', paddingRight: 36 }}
-                  type="number"
-                  min="0"
-                  step="1"
+                  style={{ ...inputStyle, textAlign: 'center', fontWeight: 700, fontSize: 18, flex: 1 }}
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   placeholder="35"
                   value={price}
-                  onChange={e => setPrice(e.target.value)}
+                  onChange={e => setPrice(e.target.value.replace(/[^0-9]/g, ''))}
                 />
-                {selectedZoneId && (
-                  <span
-                    style={{
-                      position: 'absolute',
-                      left: 12,
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      fontSize: 11,
-                      fontWeight: 700,
-                      color: BLUE,
-                    }}
-                  >
-                    חישוב אוטומטי
-                  </span>
-                )}
+
+                {/* + button */}
+                <button
+                  type="button"
+                  onClick={() => setPrice(p => String((parseInt(p) || 0) + 1))}
+                  style={{
+                    width: 48, height: 48, borderRadius: 12, border: `1.5px solid ${BORDER}`,
+                    background: BG, cursor: 'pointer', flexShrink: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', color: TEXT2,
+                  }}
+                >
+                  <Plus size={18} />
+                </button>
               </div>
+
+              {/* auto-calc badge */}
+              {selectedZoneId && (
+                <p style={{ margin: '5px 0 0', fontSize: 11, fontWeight: 700, color: BLUE, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <CheckCircle size={12} weight="fill" /> חישוב אוטומטי — ניתן לשנות ידנית
+                </p>
+              )}
               {requiredVehicle === 'bicycle' && (
-                <p style={{ fontSize: 11, marginTop: 4, color: TEXT2 }}>
-                  🚲 אופניים — הנחה של 20% על המחיר הבסיסי
+                <p style={{ fontSize: 11, marginTop: 4, color: TEXT2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <Bicycle size={11} /> אופניים — הנחה של 20% על המחיר הבסיסי
                 </p>
               )}
               {requiredVehicle === 'car' && (
-                <p style={{ fontSize: 11, marginTop: 4, color: TEXT2 }}>
-                  🚗 רכב — תוספת 25% על המחיר הבסיסי
+                <p style={{ fontSize: 11, marginTop: 4, color: TEXT2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <Car size={11} /> רכב — תוספת 25% על המחיר הבסיסי
                 </p>
               )}
             </div>
@@ -332,7 +382,7 @@ const NewDelivery: React.FC = () => {
           {/* ── Payment method ── */}
           <div style={{ ...cardStyle }}>
             <p style={{ fontSize: 13, fontWeight: 900, color: TEXT, margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <CreditCardIcon style={{ width: 16, height: 16, display: 'inline' }} />
+              <CreditCardIcon style={{ width: 16, height: 16, flexShrink: 0 }} />
               אופן תשלום לשליח
             </p>
             <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
@@ -356,7 +406,9 @@ const NewDelivery: React.FC = () => {
                       transition: 'all 0.15s',
                     }}
                   >
-                    {pm === 'cash' ? '💵 מזומן' : '📱 ביט'}
+                    <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                      {pm === 'cash' ? <><Money size={14} /><span>מזומן</span></> : <><DeviceMobile size={14} /><span>ביט</span></>}
+                    </span>
                   </button>
                 );
               })}
@@ -368,8 +420,8 @@ const NewDelivery: React.FC = () => {
               </p>
               <div style={{ display: 'flex', gap: 8 }}>
                 {[
-                  { value: true, label: '✅ הלקוח כבר שילם', desc: 'לא צריך לגבות' },
-                  { value: false, label: '💳 שליח גובה', desc: 'גביה בעת המסירה' },
+                  { value: true, label: 'הלקוח כבר שילם', icon: <CheckCircle size={13} />, desc: 'לא צריך לגבות' },
+                  { value: false, label: 'שליח גובה', icon: <PhosphorCreditCard size={13} />, desc: 'גביה בעת המסירה' },
                 ].map(opt => {
                   const selected = customerPaid === opt.value;
                   const selectedBg  = opt.value ? '#F0FDF4' : '#FFF7ED';
@@ -390,7 +442,7 @@ const NewDelivery: React.FC = () => {
                         transition: 'all 0.15s',
                       }}
                     >
-                      <p style={{ fontSize: 12, fontWeight: 700, color: TEXT, margin: 0 }}>{opt.label}</p>
+                      <p style={{ fontSize: 12, fontWeight: 700, color: TEXT, margin: 0, display: 'flex', alignItems: 'center', gap: 4 }}>{opt.icon} {opt.label}</p>
                       <p style={{ fontSize: 10, color: TEXT2, margin: '2px 0 0' }}>{opt.desc}</p>
                     </button>
                   );
@@ -401,7 +453,7 @@ const NewDelivery: React.FC = () => {
 
           {/* ── Customer info ── */}
           <div style={{ ...cardStyle }}>
-            <p style={{ fontSize: 13, fontWeight: 900, color: TEXT, margin: '0 0 12px' }}>👤 פרטי לקוח (אופציונלי)</p>
+            <p style={{ fontSize: 13, fontWeight: 900, color: TEXT, margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 6 }}><PhosphorUser size={14} /> פרטי לקוח (אופציונלי)</p>
             <div style={{ marginBottom: 12 }}>
               <label style={labelStyle}>שם הלקוח</label>
               <input style={inputStyle} placeholder="ישראל ישראלי" value={customerName} onChange={e => setCustomerName(e.target.value)} />
@@ -472,10 +524,81 @@ const NewDelivery: React.FC = () => {
             </div>
 
             {isScheduled ? (
-              <ScheduledDeliveryPicker
-                value={scheduledAt}
-                onChange={setScheduledAt}
-              />
+              <>
+                <ScheduledDeliveryPicker
+                  value={scheduledAt}
+                  onChange={setScheduledAt}
+                />
+
+                {/* ── Notify mode selector ── */}
+                <div style={{ marginTop: 14 }}>
+                  <p style={{ fontSize: 12, fontWeight: 700, color: TEXT, marginBottom: 8 }}>
+                    מתי לשלוח הודעה לשליחים?
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {/* Option A — notify at scheduled time */}
+                    <button
+                      type="button"
+                      onClick={() => setNotifyMode('on_time')}
+                      style={{
+                        display: 'flex', alignItems: 'flex-start', gap: 10,
+                        padding: '12px 14px', borderRadius: 12, textAlign: 'right',
+                        border: `1.5px solid ${notifyMode === 'on_time' ? BLUE : BORDER}`,
+                        background: notifyMode === 'on_time' ? '#EAF7FD' : BG,
+                        cursor: 'pointer', transition: 'all 0.15s',
+                      }}
+                    >
+                      {/* Radio dot */}
+                      <span style={{
+                        width: 18, height: 18, borderRadius: '50%', flexShrink: 0, marginTop: 1,
+                        border: `2px solid ${notifyMode === 'on_time' ? BLUE : BORDER}`,
+                        background: notifyMode === 'on_time' ? BLUE : 'transparent',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        {notifyMode === 'on_time' && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff' }} />}
+                      </span>
+                      <div>
+                        <p style={{ fontSize: 13, fontWeight: 700, color: notifyMode === 'on_time' ? BLUE : TEXT, margin: 0 }}>
+                          שלח בדיוק בזמן התזמון
+                        </p>
+                        <p style={{ fontSize: 11, color: TEXT2, margin: '2px 0 0' }}>
+                          ההודעה תישלח לשליחים רק כשיגיע הזמן שנקבע
+                        </p>
+                      </div>
+                    </button>
+
+                    {/* Option B — notify now to reserve */}
+                    <button
+                      type="button"
+                      onClick={() => setNotifyMode('now')}
+                      style={{
+                        display: 'flex', alignItems: 'flex-start', gap: 10,
+                        padding: '12px 14px', borderRadius: 12, textAlign: 'right',
+                        border: `1.5px solid ${notifyMode === 'now' ? '#F97316' : BORDER}`,
+                        background: notifyMode === 'now' ? '#FFF7ED' : BG,
+                        cursor: 'pointer', transition: 'all 0.15s',
+                      }}
+                    >
+                      <span style={{
+                        width: 18, height: 18, borderRadius: '50%', flexShrink: 0, marginTop: 1,
+                        border: `2px solid ${notifyMode === 'now' ? '#F97316' : BORDER}`,
+                        background: notifyMode === 'now' ? '#F97316' : 'transparent',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        {notifyMode === 'now' && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff' }} />}
+                      </span>
+                      <div>
+                        <p style={{ fontSize: 13, fontWeight: 700, color: notifyMode === 'now' ? '#F97316' : TEXT, margin: 0 }}>
+                          שלח הודעה עכשיו לשריין שליח
+                        </p>
+                        <p style={{ fontSize: 11, color: TEXT2, margin: '2px 0 0' }}>
+                          השליחים יראו את המשלוח עכשיו עם הזמן המתוזמן — יכולים להתחייב מראש
+                        </p>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              </>
             ) : (
               <p style={{ fontSize: 12, color: TEXT2, margin: 0 }}>
                 כבוי — המשלוח יישלח עכשיו מיד
@@ -497,11 +620,11 @@ const NewDelivery: React.FC = () => {
               }}
             >
               <div>
-                <p style={{ fontSize: 12, fontWeight: 600, color: BLUE, margin: 0 }}>
-                  {VEHICLE_OPTIONS.find(v => v.value === requiredVehicle)?.icon}{' '}
+                <p style={{ fontSize: 12, fontWeight: 600, color: BLUE, margin: 0, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                  <span style={{ display: 'flex', alignItems: 'center' }}>{VEHICLE_OPTIONS.find(v => v.value === requiredVehicle)?.icon}</span>
                   {VEHICLE_OPTIONS.find(v => v.value === requiredVehicle)?.label || 'כל כלי רכב'}
                   {' · '}
-                  {paymentMethod === 'cash' ? '💵 מזומן' : '📱 ביט'}
+                  {paymentMethod === 'cash' ? <><Money size={11} /> מזומן</> : <><DeviceMobile size={11} /> ביט</>}
                   {' · '}
                   {customerPaid ? 'שולם ע"י הלקוח' : 'גביה ע"י שליח'}
                 </p>
@@ -529,7 +652,10 @@ const NewDelivery: React.FC = () => {
               boxShadow: `0 6px 20px ${BLUE}44`,
             }}
           >
-            {isLoading ? 'שולח...' : isScheduled ? '📅 תזמן משלוח' : '🚀 שלח בקשת משלוח'}
+            {isLoading ? 'שולח...' : isScheduled
+              ? <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><Calendar size={16} /> תזמן משלוח</span>
+              : <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><Rocket size={16} /> שלח בקשת משלוח</span>
+            }
           </button>
 
           {/* ── Cancel ── */}

@@ -17,7 +17,6 @@ export const useToast = () => {
 
   const info = (message: string) => {
     toast(message, {
-      icon: 'ℹ️',
       style: { direction: 'rtl', fontFamily: 'inherit' },
       duration: 3000,
     });

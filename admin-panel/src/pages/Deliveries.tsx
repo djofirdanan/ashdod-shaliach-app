@@ -15,6 +15,7 @@ import toast from 'react-hot-toast';
 import type { Delivery, DeliveryStatus } from '../types';
 import { DELIVERY_STATUS_LABELS } from '../utils/constants';
 import { formatCurrency } from '../utils/formatters';
+import { getDeliveries, formatOrderNumber } from '../services/storage.service';
 import {
   fetchDeliveries,
   updateDeliveryStatus,
@@ -36,6 +37,15 @@ const Deliveries: React.FC = () => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
+
+  // Local storage deliveries (for order number display)
+  const [localDeliveries, setLocalDeliveries] = useState(getDeliveries());
+  useEffect(() => {
+    const refresh = () => setLocalDeliveries(getDeliveries());
+    refresh();
+    const id = setInterval(refresh, 5000);
+    return () => clearInterval(id);
+  }, []);
 
   // Filters
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -160,6 +170,31 @@ const Deliveries: React.FC = () => {
         ))}
       </div>
 
+      {/* Local deliveries — recent with order numbers */}
+      {localDeliveries.length > 0 && (
+        <div className="bg-white dark:bg-[#1E1F33] rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4">
+          <p className="text-xs font-bold text-gray-500 dark:text-gray-400 mb-3">משלוחים אחרונים (מקומי) — {localDeliveries.length} סה"כ</p>
+          <div className="flex flex-wrap gap-2">
+            {[...localDeliveries]
+              .sort((a, b) => (b.orderNumber ?? 0) - (a.orderNumber ?? 0))
+              .slice(0, 10)
+              .map(d => (
+                <span
+                  key={d.id}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold"
+                  style={{
+                    background: d.status === 'delivered' ? '#E8F8F2' : d.status === 'cancelled' ? '#FFF0F0' : '#E6F5FC',
+                    color: d.status === 'delivered' ? '#1BA672' : d.status === 'cancelled' ? '#E23437' : '#009DE0',
+                  }}
+                >
+                  <span className="font-black" style={{ color: '#061b31' }}>{formatOrderNumber(d.orderNumber)}</span>
+                  {d.businessName} · ₪{d.price}
+                </span>
+              ))}
+          </div>
+        </div>
+      )}
+
       {/* Filter bar */}
       <div className="bg-white dark:bg-[#1E1F33] rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4">
         <div className="flex flex-col gap-3">
@@ -201,8 +236,8 @@ const Deliveries: React.FC = () => {
           </div>
 
           {/* Row 2: Status + Dates */}
-          <div className="flex flex-wrap gap-3">
-            <div className="flex-1 min-w-[140px]">
+          <div className="flex flex-col sm:flex-row flex-wrap gap-3">
+            <div className="w-full sm:flex-1 sm:min-w-[140px]">
               <Select
                 options={statusOptions}
                 value={statusFilter}
@@ -213,13 +248,13 @@ const Deliveries: React.FC = () => {
               type="date"
               value={dateFrom}
               onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
-              className="flex-1 min-w-[120px] px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/30 focus:border-[#6C63FF] transition-all"
+              className="w-full sm:flex-1 sm:min-w-[120px] px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/30 focus:border-[#6C63FF] transition-all"
             />
             <input
               type="date"
               value={dateTo}
               onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
-              className="flex-1 min-w-[120px] px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/30 focus:border-[#6C63FF] transition-all"
+              className="w-full sm:flex-1 sm:min-w-[120px] px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/30 focus:border-[#6C63FF] transition-all"
             />
           </div>
         </div>

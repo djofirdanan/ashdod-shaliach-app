@@ -70,8 +70,8 @@ export const Layout: React.FC = () => {
 
   return (
     <div dir="rtl" className="flex h-screen overflow-hidden" style={{ background: '#F0F4FF' }}>
-      {/* Sidebar — hidden on mobile by default */}
-      <div className="hidden md:flex">
+      {/* Sidebar — desktop only (in-flow) */}
+      <div className="hidden md:flex flex-shrink-0">
         <Sidebar
           collapsed={sidebarCollapsed}
           onToggle={() => setSidebarCollapsed((c) => !c)}
@@ -79,17 +79,7 @@ export const Layout: React.FC = () => {
         />
       </div>
 
-      {/* Mobile sidebar */}
-      <div className="md:hidden">
-        <Sidebar
-          collapsed={false}
-          onToggle={() => {}}
-          mobileOpen={mobileSidebarOpen}
-          onMobileClose={() => setMobileSidebarOpen(false)}
-        />
-      </div>
-
-      {/* Main content */}
+      {/* Main content — flex-1 fills full width on mobile */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Header
           title={title}
@@ -146,6 +136,16 @@ export const Layout: React.FC = () => {
             );
           })}
         </nav>
+      </div>
+
+      {/* Mobile sidebar — rendered OUTSIDE the flex layout so it doesn't steal width */}
+      <div className="md:hidden">
+        <Sidebar
+          collapsed={false}
+          onToggle={() => {}}
+          mobileOpen={mobileSidebarOpen}
+          onMobileClose={() => setMobileSidebarOpen(false)}
+        />
       </div>
     </div>
   );

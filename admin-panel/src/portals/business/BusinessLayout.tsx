@@ -10,11 +10,20 @@ import {
   getOrCreateConversation,
   getOrCreateSupportTicket,
   getSupportMessages,
+  getCouriers,
 } from '../../services/storage.service';
 import { supabase } from '../../lib/supabase';
 import { getConversations } from '../../services/storage.service';
 import { syncConversationsDown, syncSupportMessagesDown } from '../../services/sync.service';
 import { playNewMessage } from '../../utils/sounds';
+import { formatMessagePreview } from '../../components/ChatMedia';
+import {
+  House,
+  Plus,
+  Truck as PhosphorTruck,
+  ChatCircle,
+  User,
+} from '@phosphor-icons/react';
 import {
   HomeIcon,
   PlusCircleIcon,
@@ -24,6 +33,7 @@ import {
   CheckIcon,
   MapPinIcon,
   BanknotesIcon,
+  BuildingStorefrontIcon,
 } from '@heroicons/react/24/outline';
 import {
   HomeIcon as HomeIconSolid,
@@ -34,11 +44,11 @@ import {
 } from '@heroicons/react/24/solid';
 
 const navItems = [
-  { label: 'ראשי',       path: '/business/dashboard',    icon: HomeIcon,                iconSolid: HomeIconSolid  },
-  { label: 'משלוח חדש', path: '/business/new-delivery', icon: PlusCircleIcon,          iconSolid: PlusIconSolid  },
-  { label: 'משלוחים',   path: '/business/deliveries',   icon: TruckIcon,              iconSolid: TruckIconSolid },
-  { label: 'צ׳אט',      path: '/business/chat',         icon: ChatBubbleLeftRightIcon, iconSolid: ChatIconSolid  },
-  { label: 'פרופיל',    path: '/business/profile',      icon: UserCircleIcon,          iconSolid: UserIconSolid  },
+  { label: 'ראשי',       path: '/business/dashboard',    icon: HomeIcon,                iconSolid: HomeIconSolid,  phosphorIcon: House        },
+  { label: 'משלוח חדש', path: '/business/new-delivery', icon: PlusCircleIcon,          iconSolid: PlusIconSolid,  phosphorIcon: Plus         },
+  { label: 'משלוחים',   path: '/business/deliveries',   icon: TruckIcon,              iconSolid: TruckIconSolid, phosphorIcon: PhosphorTruck },
+  { label: 'צ׳אט',      path: '/business/chat',         icon: ChatBubbleLeftRightIcon, iconSolid: ChatIconSolid,  phosphorIcon: ChatCircle   },
+  { label: 'פרופיל',    path: '/business/profile',      icon: UserCircleIcon,          iconSolid: UserIconSolid,  phosphorIcon: User         },
 ];
 
 const BLUE   = '#009DE0';
@@ -187,6 +197,8 @@ const BusinessLayout: React.FC = () => {
 
   const [unread,            setUnread]            = useState(0);
   const [bizName,           setBizName]           = useState('');
+  const [bizLogo,           setBizLogo]           = useState<string | null>(null);
+  const [onlineCouriers,    setOnlineCouriers]    = useState(0);
   const [waitingDelivery,   setWaitingDelivery]   = useState<{ id: string; dropAddress: string; candidateCount: number } | null>(null);
   const [statusPopup,       setStatusPopup]       = useState<StatusPopup | null>(null);
 
@@ -225,8 +237,14 @@ const BusinessLayout: React.FC = () => {
           setUnread(chatUnread);
         }
         const biz = getBusiness(businessId);
-        if (biz) setBizName(biz.businessName);
+        if (biz) {
+          setBizName(biz.businessName);
+          setBizLogo(biz.logo ?? null);
+        }
       }
+      // count available (online) couriers — regardless of businessId
+      const available = getCouriers().filter(c => c.isActive && !c.isBlocked && c.isAvailable !== false).length;
+      setOnlineCouriers(available);
     };
     refresh();
     const id = setInterval(refresh, 5000);
@@ -367,7 +385,7 @@ const BusinessLayout: React.FC = () => {
           showToast(
             `${convId}__${row.last_message_at ?? Date.now()}`,
             localConv?.courierName || 'שליח',
-            row.last_message || 'הודעה חדשה',
+            formatMessagePreview(row.last_message || '') || 'הודעה חדשה',
             `/business/chat?convId=${convId}`,
           );
         },
@@ -404,7 +422,7 @@ const BusinessLayout: React.FC = () => {
           showToast(
             `support__${row.created_at}`,
             'מוקד שירות',
-            row.content || 'הודעה חדשה',
+            formatMessagePreview(row.content || '') || 'הודעה חדשה',
             '/business/chat?support=1',
           );
         },
@@ -448,28 +466,44 @@ const BusinessLayout: React.FC = () => {
       >
         {/* Right: logo + name */}
         <div className="flex items-center gap-3">
-          <div
-            className="w-9 h-9 rounded-2xl flex items-center justify-center"
-            style={{ background: 'rgba(255,255,255,0.2)', border: '1.5px solid rgba(255,255,255,0.3)' }}
-          >
-            <TruckIcon className="w-5 h-5 text-white" />
-          </div>
+          {bizLogo ? (
+            <img
+              src={bizLogo}
+              alt=""
+              className="w-9 h-9 rounded-2xl object-cover flex-shrink-0"
+              style={{ border: '1.5px solid rgba(255,255,255,0.4)' }}
+            />
+          ) : (
+            <div
+              className="w-9 h-9 rounded-2xl flex items-center justify-center flex-shrink-0"
+              style={{ background: 'rgba(255,255,255,0.2)', border: '1.5px solid rgba(255,255,255,0.3)' }}
+            >
+              <BuildingStorefrontIcon className="w-5 h-5 text-white" />
+            </div>
+          )}
           <div>
             <p className="font-black text-[15px] leading-tight text-white">
               {bizName || user?.name || 'אשדוד-שליח'}
             </p>
-            <p className="text-[11px]" style={{ color: 'rgba(255,255,255,0.72)' }}>פורטל עסקים</p>
+            <div className="flex items-center gap-2 mt-0.5">
+              <p className="text-[11px]" style={{ color: 'rgba(255,255,255,0.72)' }}>פורטל עסקים</p>
+              {/* Online couriers chip */}
+              <div
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded-full"
+                style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)' }}
+              >
+                <span
+                  className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                  style={{ background: onlineCouriers > 0 ? '#4ade80' : '#9ca3af' }}
+                />
+                <span className="text-[10px] font-bold" style={{ color: 'rgba(255,255,255,0.85)' }}>
+                  {onlineCouriers} שליחים זמינים
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Left: logout */}
-        <button
-          onClick={handleLogout}
-          className="text-[13px] font-bold px-4 py-1.5 rounded-2xl transition-all active:scale-95"
-          style={{ color: 'rgba(255,255,255,0.9)', background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)' }}
-        >
-          יציאה
-        </button>
       </header>
 
       {/* ── New-message toasts ── */}
@@ -559,14 +593,88 @@ const BusinessLayout: React.FC = () => {
         </div>
       )}
 
-      {/* ── Page content ── */}
-      <main className="flex-1 overflow-y-auto pb-[72px]">
-        <Outlet />
-      </main>
+      {/* ── Body: sidebar (desktop) + main content ── */}
+      <div className="flex flex-1 overflow-hidden">
 
-      {/* ── Bottom navigation ── */}
+        {/* ── Desktop sidebar (lg+) ── */}
+        <aside
+          className="hidden lg:flex flex-col flex-shrink-0 sticky top-[60px] overflow-y-auto"
+          style={{
+            width: 220,
+            height: 'calc(100vh - 60px)',
+            background: '#FFFFFF',
+            borderLeft: '1px solid #E8E8E8',
+            boxShadow: '-2px 0 12px rgba(0,0,0,0.04)',
+          }}
+        >
+          {/* Nav items */}
+          <nav className="flex flex-col gap-1 p-3 flex-1">
+            {navItems.map(({ label, path, phosphorIcon: PhosphorIcon }) => {
+              const active = location.pathname === path ||
+                (path === '/business/dashboard' && location.pathname === '/business');
+              const isChat = path === '/business/chat';
+              const isNew  = path === '/business/new-delivery';
+              return (
+                <Link
+                  key={path}
+                  to={path}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-2xl transition-all duration-150 cursor-pointer"
+                  style={{
+                    background: active
+                      ? 'linear-gradient(135deg, #533afd, #ea2261)'
+                      : isNew
+                      ? 'linear-gradient(135deg, #F97316, #EA580C)'
+                      : 'transparent',
+                    color: active || isNew ? '#FFFFFF' : '#757575',
+                    fontWeight: active ? 800 : 600,
+                    transform: 'scale(1)',
+                  }}
+                  onMouseEnter={e => { if (!active && !isNew) (e.currentTarget as HTMLElement).style.background = '#F4F6FF'; }}
+                  onMouseLeave={e => { if (!active && !isNew) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                >
+                  <div className="relative flex-shrink-0">
+                    <PhosphorIcon size={20} weight={active ? 'fill' : 'regular'} />
+                    {isChat && unread > 0 && (
+                      <span
+                        className="absolute -top-1.5 -left-1.5 min-w-[16px] h-4 px-0.5 rounded-full flex items-center justify-center text-[9px] text-white font-bold"
+                        style={{ background: '#E23437' }}
+                      >
+                        {unread > 9 ? '9+' : unread}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[14px]">{label}</span>
+                </Link>
+              );
+            })}
+          </nav>
+
+          {/* Sidebar footer: online couriers indicator */}
+          <div className="p-3 border-t" style={{ borderColor: '#E8E8E8' }}>
+            <div
+              className="flex items-center gap-2 px-3 py-2 rounded-xl"
+              style={{ background: '#F4F6FF' }}
+            >
+              <span
+                className="w-2 h-2 rounded-full flex-shrink-0"
+                style={{ background: onlineCouriers > 0 ? '#4ade80' : '#9ca3af' }}
+              />
+              <span className="text-[12px] font-semibold" style={{ color: '#757575' }}>
+                {onlineCouriers} שליחים זמינים
+              </span>
+            </div>
+          </div>
+        </aside>
+
+        {/* ── Page content ── */}
+        <main className="flex-1 overflow-y-auto pb-[72px] lg:pb-4">
+          <Outlet />
+        </main>
+      </div>
+
+      {/* ── Bottom navigation (mobile only, hidden on lg+) ── */}
       <nav
-        className="nav-glass fixed bottom-0 right-0 left-0 z-40 flex items-center justify-around px-2"
+        className="nav-glass fixed bottom-0 right-0 left-0 z-40 flex items-center justify-around px-2 lg:hidden"
         style={{ height: 68 }}
       >
         {navItems.map(({ label, path, icon: Icon, iconSolid: IconSolid }) => {

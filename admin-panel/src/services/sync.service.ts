@@ -11,6 +11,59 @@
 import { supabase } from '../lib/supabase';
 import type { StoredBusiness, StoredCourier, StoredConversation, StoredMessage, DeliveryNotification, StoredDelivery, StoredReview, SupportTicket, SupportMessage, CourierLocation } from './storage.service';
 
+// ─── Safe localStorage writer ────────────────────────────────────
+/**
+ * Sets a localStorage key without throwing on QuotaExceededError.
+ * On quota errors it prunes bulky keys (messages, deliveries) then retries once.
+ */
+function safeSet(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch (err) {
+    const isQuota = err instanceof DOMException &&
+      (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED');
+    if (!isQuota) { console.warn('[sync] localStorage write failed:', key, err); return; }
+
+    // ── Prune then retry ───────────────────────────────────────────
+    try {
+      // Trim messages to 200 most recent
+      const msgRaw = localStorage.getItem('app_messages');
+      if (msgRaw) {
+        const msgs: { createdAt?: string }[] = JSON.parse(msgRaw);
+        if (msgs.length > 200) {
+          const trimmed = msgs
+            .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
+            .slice(0, 150);
+          localStorage.setItem('app_messages', JSON.stringify(trimmed));
+        }
+      }
+    } catch { /* ignore */ }
+
+    try {
+      // Trim deliveries: keep all active + 40 most-recent done
+      const delRaw = localStorage.getItem('app_deliveries');
+      if (delRaw) {
+        const dels: { status?: string; createdAt?: string }[] = JSON.parse(delRaw);
+        if (dels.length > 80) {
+          const active = dels.filter(d => ['pending','accepted','picked_up','scheduled'].includes(d.status ?? ''));
+          const done   = dels
+            .filter(d => ['delivered','cancelled'].includes(d.status ?? ''))
+            .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
+            .slice(0, 40);
+          localStorage.setItem('app_deliveries', JSON.stringify([...active, ...done]));
+        }
+      }
+    } catch { /* ignore */ }
+
+    // Retry the original write
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      console.warn('[sync] localStorage quota still exceeded after pruning — skipping write for key:', key);
+    }
+  }
+}
+
 // ─── Mappers: DB row → StoredXxx ─────────────────────────────────
 
 function dbToBusiness(row: Record<string, unknown>): StoredBusiness {
@@ -240,13 +293,13 @@ export async function syncNotificationsDown(): Promise<void> {
     const { data } = await supabase
       .from('delivery_notifications')
       .select('*')
-      .gte('created_at', new Date(Date.now() - 30 * 60 * 1000).toISOString())
+      .gte('created_at', new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString()) // 3h — deliveries resolve fast; avoid stale popups
       .order('created_at', { ascending: false });
 
     if (data) {
-      localStorage.setItem(LS_KEYS.notifications, JSON.stringify(data.map(dbToNotification)));
+      safeSet(LS_KEYS.notifications, JSON.stringify(data.map(dbToNotification)));
       // Trigger any cross-tab listeners
-      localStorage.setItem('app_notif_ping', Date.now().toString());
+      safeSet('app_notif_ping', Date.now().toString());
     }
   } catch (err) {
     console.warn('[sync] syncNotificationsDown failed:', err);
@@ -264,12 +317,38 @@ export async function syncDeliveriesDown(): Promise<void> {
       .limit(100);
 
     if (data) {
-      localStorage.setItem(LS_KEYS.deliveries, JSON.stringify(
+      safeSet(LS_KEYS.deliveries, JSON.stringify(
         data.map(d => dbToDelivery(d as Record<string, unknown>))
       ));
     }
   } catch (err) {
     console.warn('[sync] syncDeliveriesDown failed:', err);
+  }
+}
+
+/**
+ * Fetch deliveries assigned to a specific courier from Supabase and MERGE them
+ * into the local deliveries cache.
+ */
+export async function syncCourierDeliveriesDown(courierId: string): Promise<void> {
+  if (!courierId) return;
+  try {
+    const { data } = await supabase
+      .from('deliveries')
+      .select('*')
+      .eq('courier_id', courierId)
+      .order('created_at', { ascending: false });
+
+    if (data && data.length > 0) {
+      const raw = localStorage.getItem(LS_KEYS.deliveries);
+      const all: StoredDelivery[] = raw ? JSON.parse(raw) : [];
+      const freshIds = new Set(data.map(r => r.id as string));
+      const others = all.filter(d => !freshIds.has(d.id));
+      const fresh = data.map(d => dbToDelivery(d as Record<string, unknown>));
+      safeSet(LS_KEYS.deliveries, JSON.stringify([...others, ...fresh]));
+    }
+  } catch (err) {
+    console.warn('[sync] syncCourierDeliveriesDown failed:', err);
   }
 }
 
@@ -280,18 +359,19 @@ export async function syncDown(): Promise<void> {
     const [bizRes, courRes, convRes, msgRes, notifRes, delivRes] = await Promise.all([
       supabase.from('businesses').select('*'),
       supabase.from('couriers').select('*'),
+      // Limit messages to 300 most recent — prevents quota on busy systems
       supabase.from('conversations').select('*'),
-      supabase.from('messages').select('*').order('created_at', { ascending: true }),
+      supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(300),
       supabase.from('delivery_notifications').select('*').gte('created_at', new Date(Date.now() - 30 * 60 * 1000).toISOString()),
-      supabase.from('deliveries').select('*').order('created_at', { ascending: false }),
+      supabase.from('deliveries').select('*').order('created_at', { ascending: false }).limit(80),
     ]);
 
-    if (bizRes.data)    localStorage.setItem(LS_KEYS.businesses,     JSON.stringify(bizRes.data.map(dbToBusiness)));
-    if (courRes.data)   localStorage.setItem(LS_KEYS.couriers,        JSON.stringify(courRes.data.map(dbToCourier)));
-    if (convRes.data)   localStorage.setItem(LS_KEYS.conversations,   JSON.stringify(convRes.data.map(dbToConversation)));
-    if (msgRes.data)    localStorage.setItem(LS_KEYS.messages,        JSON.stringify(msgRes.data.map(dbToMessage)));
-    if (notifRes.data)  localStorage.setItem(LS_KEYS.notifications,   JSON.stringify(notifRes.data.map(dbToNotification)));
-    if (delivRes.data)  localStorage.setItem(LS_KEYS.deliveries,      JSON.stringify(delivRes.data.map(d => dbToDelivery(d as Record<string, unknown>))));
+    if (bizRes.data)    safeSet(LS_KEYS.businesses,     JSON.stringify(bizRes.data.map(dbToBusiness)));
+    if (courRes.data)   safeSet(LS_KEYS.couriers,        JSON.stringify(courRes.data.map(dbToCourier)));
+    if (convRes.data)   safeSet(LS_KEYS.conversations,   JSON.stringify(convRes.data.map(dbToConversation)));
+    if (msgRes.data)    safeSet(LS_KEYS.messages,        JSON.stringify(msgRes.data.map(dbToMessage)));
+    if (notifRes.data)  safeSet(LS_KEYS.notifications,   JSON.stringify(notifRes.data.map(dbToNotification)));
+    if (delivRes.data)  safeSet(LS_KEYS.deliveries,      JSON.stringify(delivRes.data.map(d => dbToDelivery(d as Record<string, unknown>))));
 
     // Populate businessName/courierName in conversations from local data
     if (convRes.data && bizRes.data && courRes.data) {
@@ -302,7 +382,7 @@ export async function syncDown(): Promise<void> {
         businessName: bizMap[row.business_id as string] || '',
         courierName: courMap[row.courier_id as string] || '',
       }));
-      localStorage.setItem(LS_KEYS.conversations, JSON.stringify(convs));
+      safeSet(LS_KEYS.conversations, JSON.stringify(convs));
     }
 
     console.log('[sync] ✅ synced from Supabase');
@@ -416,7 +496,7 @@ export async function syncMessagesDown(conversationId: string): Promise<void> {
       // Replace messages for this conversation with fresh data from DB
       const others = allMessages.filter((m) => m.conversationId !== conversationId);
       const fresh = data.map(dbToMessage);
-      localStorage.setItem(LS_KEYS.messages, JSON.stringify([...others, ...fresh]));
+      safeSet(LS_KEYS.messages, JSON.stringify([...others, ...fresh]));
     }
   } catch (err) {
     console.warn('[sync] syncMessagesDown failed:', err);
@@ -452,6 +532,41 @@ export async function syncConversationsDown(userId: string, role: 'business' | '
       if (courRaw) {
         (JSON.parse(courRaw) as Array<{ id: string; name: string }>).forEach(c => { courMap[c.id] = c.name; });
       }
+      // ── For business role: fetch courier profiles that are missing from local cache ──
+      // This ensures courierName + photo are always available even if app_couriers is empty/pruned
+      if (role === 'business' || role === 'admin') {
+        const missingCourierIds = data
+          .map(r => r.courier_id as string)
+          .filter(id => id && id !== 'admin' && !courMap[id]);
+
+        if (missingCourierIds.length > 0) {
+          try {
+            const { data: courierRows } = await supabase
+              .from('couriers')
+              .select('id, name, photo, rating, vehicle')
+              .in('id', missingCourierIds);
+
+            if (courierRows) {
+              courierRows.forEach((c: Record<string, unknown>) => {
+                courMap[c.id as string] = c.name as string;
+              });
+
+              // Merge into app_couriers so getCourier() works in the UI
+              const existing: StoredCourier[] = courRaw ? JSON.parse(courRaw) : [];
+              const existingIds = new Set(existing.map(c => c.id));
+              const toAdd = courierRows
+                .filter((c: Record<string, unknown>) => !existingIds.has(c.id as string))
+                .map((c: Record<string, unknown>) => dbToCourier(c));
+              const updated = existing.map(c => {
+                const fresh = courierRows.find((r: Record<string, unknown>) => r.id === c.id);
+                return fresh ? { ...c, name: fresh.name as string, photo: (fresh.photo as string | null) ?? c.photo } : c;
+              });
+              safeSet(LS_KEYS.couriers, JSON.stringify([...updated, ...toAdd]));
+            }
+          } catch { /* ignore — courierName stays empty */ }
+        }
+      }
+
       const fresh = data.map(row => {
         const conv = {
           ...dbToConversation(row as Record<string, unknown>),
@@ -471,7 +586,7 @@ export async function syncConversationsDown(userId: string, role: 'business' | '
         }
         return conv;
       });
-      localStorage.setItem(LS_KEYS.conversations, JSON.stringify([...others, ...fresh]));
+      safeSet(LS_KEYS.conversations, JSON.stringify([...others, ...fresh]));
     }
   } catch (err) {
     console.warn('[sync] syncConversationsDown failed:', err);
@@ -614,7 +729,7 @@ export async function syncSupportDown(): Promise<void> {
         createdAt: r.created_at as string,
         updatedAt: r.updated_at as string,
       }));
-      localStorage.setItem('app_support_tickets', JSON.stringify(tickets));
+      safeSet('app_support_tickets', JSON.stringify(tickets));
     }
     if (msgRes.data) {
       const msgs: SupportMessage[] = msgRes.data.map((r) => ({
@@ -625,7 +740,7 @@ export async function syncSupportDown(): Promise<void> {
         content: r.content as string,
         createdAt: r.created_at as string,
       }));
-      localStorage.setItem('app_support_messages', JSON.stringify(msgs));
+      safeSet('app_support_messages', JSON.stringify(msgs));
     }
   } catch (err) {
     console.warn('[sync] syncSupportDown failed:', err);
@@ -652,7 +767,7 @@ export async function syncSupportMessagesDown(ticketId: string): Promise<void> {
         content: r.content as string,
         createdAt: r.created_at as string,
       }));
-      localStorage.setItem('app_support_messages', JSON.stringify([...others, ...fresh]));
+      safeSet('app_support_messages', JSON.stringify([...others, ...fresh]));
     }
   } catch (err) {
     console.warn('[sync] syncSupportMessagesDown failed:', err);

@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { ChevronRightIcon, ChevronLeftIcon } from '@heroicons/react/24/outline';
+import { Calendar, CheckCircle, Warning } from '@phosphor-icons/react';
 
 // ── Design tokens (Wolt) ──────────────────────────────────────────────────────
 const BLUE    = '#009DE0';
@@ -563,7 +564,7 @@ export const ScheduledDeliveryPicker: React.FC<Props> = ({ value, onChange }) =>
               boxShadow: dateMode === 'custom' ? `0 2px 10px ${BLUE}25` : 'none',
             }}
           >
-            <span style={{ display: 'block', fontSize: 14 }}>📅 תאריך</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 14 }}><Calendar size={14} /> תאריך</span>
             <span style={{ fontSize: 10, fontWeight: 500, color: dateMode === 'custom' ? BLUE : TEXT2 }}>
               {dateMode === 'custom'
                 ? customDate.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })
@@ -646,13 +647,13 @@ export const ScheduledDeliveryPicker: React.FC<Props> = ({ value, onChange }) =>
         }}
       >
         {isValid ? (
-          <span style={{ fontSize: 14, fontWeight: 800, color: SUCCESS }}>
-            ✅ תוזמן ל: {summaryDateLabel},{' '}
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 14, fontWeight: 800, color: SUCCESS }}>
+            <CheckCircle size={14} /> תוזמן ל: {summaryDateLabel},{' '}
             {String(hour).padStart(2, '0')}:{String(minute).padStart(2, '0')}
           </span>
         ) : (
-          <span style={{ fontSize: 13, color: '#EA580C', fontWeight: 700 }}>
-            ⚠️ הזמן שנבחר הוא בעבר — בחר זמן עתידי
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, color: '#EA580C', fontWeight: 700 }}>
+            <Warning size={14} /> הזמן שנבחר הוא בעבר — בחר זמן עתידי
           </span>
         )}
       </div>

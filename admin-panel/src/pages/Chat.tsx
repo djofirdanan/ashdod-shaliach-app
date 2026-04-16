@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Buildings, Truck, MapPin as PhosphorMapPin, Calendar, CheckCircle, XCircle } from '@phosphor-icons/react';
 import {
   ChatBubbleLeftRightIcon,
   PaperAirplaneIcon,
@@ -15,6 +16,15 @@ import {
 import { StarIcon as StarSolid } from '@heroicons/react/24/solid';
 import toast from 'react-hot-toast';
 import * as storageService from '../services/storage.service';
+import {
+  compressImage,
+  encodeVoiceContent,
+  encodeDocContent,
+  renderMediaMessage,
+  AttachmentMenu,
+  VoiceRecorderModal,
+  formatMessagePreview,
+} from '../components/ChatMedia';
 import type { StoredConversation, StoredMessage, StoredBusiness, StoredCourier, StoredDelivery } from '../services/storage.service';
 import { syncMessagesDown, syncConversationsDown } from '../services/sync.service';
 import { Modal } from '../components/ui/Modal';
@@ -82,9 +92,13 @@ const Avatar: React.FC<{ name: string; type: 'business' | 'courier' | 'admin'; s
 const MessageBubble: React.FC<{ msg: StoredMessage }> = ({ msg }) => {
   const isAdmin = msg.senderType === 'admin';
   const isBusiness = msg.senderType === 'business';
+  const isMine = isAdmin; // admin sees their own messages as "mine"
+
+  // Media messages
+  const mediaEl = renderMediaMessage(msg.content, isMine, msg.id);
+  if (mediaEl) return mediaEl;
 
   if (isAdmin) {
-    // Admin messages — shown as own (right-aligned, purple gradient)
     return (
       <div className="flex items-end gap-2 mb-3 flex-row-reverse">
         <Avatar name="מנהל" type="admin" size="sm" />
@@ -163,7 +177,7 @@ const ConvItem: React.FC<{
               </p>
               {pt !== 'both' && (
                 <p className="text-[10px] text-gray-400 leading-tight">
-                  {pt === 'business' ? '🏪 עסק' : '🛵 שליח'}
+                  {pt === 'business' ? <><Buildings size={10} /> עסק</> : <><Truck size={10} /> שליח</>}
                 </p>
               )}
             </div>
@@ -180,7 +194,7 @@ const ConvItem: React.FC<{
             </div>
           </div>
           {conv.lastMessage && (
-            <p className="text-[11px] text-gray-400 truncate mt-0.5">{conv.lastMessage}</p>
+            <p className="text-[11px] text-gray-400 truncate mt-0.5">{formatMessagePreview(conv.lastMessage)}</p>
           )}
         </div>
       </div>
@@ -295,13 +309,13 @@ const Stars: React.FC<{ rating: number }> = ({ rating }) => (
 );
 
 // ─── Delivery status label ─────────────────────────────────────
-const dStatusLabel: Record<StoredDelivery['status'], string> = {
-  scheduled: '📅 מתוזמן',
+const dStatusLabel: Record<StoredDelivery['status'], React.ReactNode> = {
+  scheduled: <span className="flex items-center gap-1"><Calendar size={10} /> מתוזמן</span>,
   pending:   'ממתין לשליח',
   accepted:  'שליח בדרך',
   picked_up: 'בדרך ללקוח',
-  delivered: '✅ נמסר',
-  cancelled: '❌ בוטל',
+  delivered: <span className="flex items-center gap-1"><CheckCircle size={10} /> נמסר</span>,
+  cancelled: <span className="flex items-center gap-1"><XCircle size={10} /> בוטל</span>,
 };
 const dStatusColor: Record<StoredDelivery['status'], string> = {
   scheduled: '#6366f1', pending: '#8898aa', accepted: '#533afd',
@@ -350,7 +364,7 @@ const UserContextPanel: React.FC<{
         style={{ background: isBiz ? '#533afd12' : '#ea226112', borderBottom: '1px solid #e8ecf0' }}
       >
         <p className="text-[12px] font-bold" style={{ color: isBiz ? '#533afd' : '#ea2261' }}>
-          {isBiz ? '🏪 פרטי עסק' : '🛵 פרטי שליח'}
+          {isBiz ? <span className="flex items-center gap-1"><Buildings size={11} /> פרטי עסק</span> : <span className="flex items-center gap-1"><Truck size={11} /> פרטי שליח</span>}
         </p>
         <button onClick={onClose} className="p-1 rounded-lg hover:bg-black/5 transition-colors">
           <XMarkIcon className="w-4 h-4" style={{ color: '#9ca3af' }} />
@@ -408,7 +422,7 @@ const UserContextPanel: React.FC<{
             ) : courier ? (
               <div className="rounded-xl p-2.5 text-center" style={{ background: '#f8fafc', border: '1px solid #e8ecf0' }}>
                 <p className="text-[14px] font-black" style={{ color: '#061b31' }}>
-                  {courier.vehicle === 'motorcycle' ? '🏍️' : courier.vehicle === 'bicycle' ? '🚲' : courier.vehicle === 'scooter' ? '🛵' : '🚗'}
+                  <Truck size={14} />
                 </p>
                 <p className="text-[10px]" style={{ color: '#8898aa' }}>רכב</p>
               </div>
@@ -441,7 +455,7 @@ const UserContextPanel: React.FC<{
                     <span className="text-[11px] font-black" style={{ color: '#533afd' }}>₪{d.price}</span>
                   </div>
                   <p className="text-[11px] leading-snug truncate" style={{ color: '#3c4257' }}>
-                    📍 {d.dropAddress}
+                    <span className="flex items-center gap-1"><PhosphorMapPin size={11} /> {d.dropAddress}</span>
                   </p>
                   <p className="text-[10px] mt-0.5" style={{ color: '#c1cdd8' }}>
                     {new Date(d.createdAt).toLocaleDateString('he-IL', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}
@@ -468,6 +482,10 @@ const Chat: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const prevMsgCount = useRef(0);
+  const [showVoiceModal, setShowVoiceModal] = useState(false);
+  const imageInputRef  = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const docInputRef    = useRef<HTMLInputElement>(null);
 
   const activeConv = conversations.find((c) => c.id === activeConvId) ?? null;
 
@@ -549,13 +567,46 @@ const Chat: React.FC = () => {
     }
   };
 
+  const getAdminSender = () => {
+    const conv = activeConvId ? storageService.getConversations().find(c => c.id === activeConvId) : null;
+    return {
+      senderId: 'admin',
+      senderName: 'מנהל האתר',
+      senderType: 'admin' as const,
+    };
+  };
+  const handleAdminImageFile = async (file: File) => {
+    if (!activeConvId) return;
+    try {
+      const compressed = await compressImage(file);
+      storageService.addMessage(activeConvId, { ...getAdminSender(), content: compressed, messageType: 'image' });
+      setMessages(storageService.getMessages(activeConvId));
+    } catch { toast.error('שגיאה בשליחת התמונה'); }
+  };
+  const handleAdminVoiceSend = (audioBase64: string, duration: number) => {
+    if (!activeConvId) return;
+    setShowVoiceModal(false);
+    storageService.addMessage(activeConvId, { ...getAdminSender(), content: encodeVoiceContent(audioBase64, duration), messageType: 'voice' });
+    setMessages(storageService.getMessages(activeConvId));
+  };
+  const handleAdminDocFile = (file: File) => {
+    if (!activeConvId) return;
+    if (file.size > 5 * 1024 * 1024) { toast.error('מסמך גדול מדי — מקסימום 5MB'); return; }
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      storageService.addMessage(activeConvId!, { ...getAdminSender(), content: encodeDocContent(reader.result as string, file.name, file.size), messageType: 'document' });
+      setMessages(storageService.getMessages(activeConvId!));
+    };
+    reader.readAsDataURL(file);
+  };
+
   const totalUnread = conversations.reduce((s, c) => s + c.unreadBusiness + c.unreadCourier, 0);
 
   // Header label for active conversation
   const activeHeader = activeConv ? (() => {
     const t = convType(activeConv);
-    if (t === 'admin-business') return { title: activeConv.businessName, sub: '🏪 שיחה עם עסק' };
-    if (t === 'admin-courier')  return { title: activeConv.courierName,  sub: '🛵 שיחה עם שליח' };
+    if (t === 'admin-business') return { title: activeConv.businessName, sub: 'שיחה עם עסק' };
+    if (t === 'admin-courier')  return { title: activeConv.courierName,  sub: 'שיחה עם שליח' };
     return { title: `${activeConv.businessName} ↔ ${activeConv.courierName}`, sub: 'שיחה בין עסק לשליח' };
   })() : null;
 
@@ -683,7 +734,17 @@ const Chat: React.FC = () => {
 
               {/* Input area */}
               <div className="p-3 border-t border-gray-100 flex-shrink-0" style={{ background: 'white' }}>
+                {/* Hidden file inputs */}
+                <input ref={imageInputRef}  type="file" accept="image/*"               className="hidden" onChange={async (e) => { const f = e.target.files?.[0]; if (f) await handleAdminImageFile(f); e.target.value = ''; }} />
+                <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={async (e) => { const f = e.target.files?.[0]; if (f) await handleAdminImageFile(f); e.target.value = ''; }} />
+                <input ref={docInputRef}    type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleAdminDocFile(f); e.target.value = ''; }} />
                 <div className="flex items-end gap-2">
+                  <AttachmentMenu
+                    onImage={() => imageInputRef.current?.click()}
+                    onCamera={() => cameraInputRef.current?.click()}
+                    onVoice={() => setShowVoiceModal(true)}
+                    onDocument={() => docInputRef.current?.click()}
+                  />
                   <textarea
                     ref={inputRef}
                     value={inputText}
@@ -715,6 +776,9 @@ const Chat: React.FC = () => {
                   </button>
                 </div>
               </div>
+              {showVoiceModal && (
+                <VoiceRecorderModal onSend={handleAdminVoiceSend} onClose={() => setShowVoiceModal(false)} />
+              )}
             </>
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-center p-8">

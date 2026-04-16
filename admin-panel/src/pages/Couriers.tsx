@@ -209,7 +209,7 @@ const Couriers: React.FC = () => {
         activeDeliveries: 0,
         earnings: { today: 0, thisWeek: 0, thisMonth: 0, total: 0 },
       });
-      toast.success('שליח נוסף בהצלחה ✅');
+      toast.success('שליח נוסף בהצלחה');
       setAddModal(false);
       setAddForm(emptyCourForm());
       load();
@@ -253,7 +253,7 @@ const Couriers: React.FC = () => {
       // Send approval email when admin activates a previously inactive courier
       if (wasInactive && nowActive) {
         sendAccountApproved(editForm.email, editForm.name).catch(() => {});
-        toast.success('✅ השליח אושר ומייל אישור נשלח!');
+        toast.success('השליח אושר ומייל אישור נשלח!');
       } else {
         toast.success('שליח עודכן בהצלחה');
       }
@@ -312,7 +312,7 @@ const Couriers: React.FC = () => {
     dispatch(setPortalUser({ id: courier.id, type: 'courier', name: courier.name }));
 
     navigate('/');
-    toast.success(`👤 כניסה בשם: ${courier.name}`);
+    toast.success(`כניסה בשם: ${courier.name}`);
   };
 
   return (
@@ -606,7 +606,7 @@ const Couriers: React.FC = () => {
                 </button>
               </div>
             </div>
-            <p className="text-[11px] text-gray-400 text-center">לשינוי פרטים — לחץ על כפתור העריכה ✏️</p>
+            <p className="text-[11px] text-gray-400 text-center">לשינוי פרטים — לחץ על כפתור העריכה</p>
           </div>
         )}
       </Modal>

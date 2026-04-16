@@ -1,5 +1,6 @@
 import React from 'react';
 import clsx from 'clsx';
+import { Envelope } from '@phosphor-icons/react';
 
 interface Column<T> {
   key: string;
@@ -69,7 +70,7 @@ export function Table<T>({
                 >
                   <div className="flex flex-col items-center gap-2">
                     <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-2xl">
-                      📭
+                      <Envelope size={24} style={{ color: '#9ca3af' }} />
                     </div>
                     <span>{emptyMessage}</span>
                   </div>

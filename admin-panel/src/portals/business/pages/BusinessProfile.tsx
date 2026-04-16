@@ -15,6 +15,7 @@ import {
   hashPassword,
   cleanupOldConversations,
   cleanupCompletedDeliveryConvs,
+  deleteAllConversations,
   type StoredBusiness,
   type StoredCourier,
   type StoredReview,
@@ -32,7 +33,9 @@ import {
   ArrowPathIcon,
 } from '@heroicons/react/24/outline';
 import { HeartIcon as HeartSolid, StarIcon as StarSolid } from '@heroicons/react/24/solid';
+import { Headphones, Warning } from '@phosphor-icons/react';
 import toast from 'react-hot-toast';
+import AddressAutocomplete from '../../../components/AddressAutocomplete';
 
 /* ─── Design tokens ───────────────────────────── */
 const BLUE = '#009DE0';
@@ -236,6 +239,7 @@ const ChatCleanupSection: React.FC<{ userId: string; userType: 'business' | 'cou
     return (localStorage.getItem(storageKey) as CleanupPeriod) ?? 'manual';
   });
   const [cleaning, setCleaning] = useState(false);
+  const [showDeleteAll, setShowDeleteAll] = useState(false);
 
   const savePeriod = (p: CleanupPeriod) => {
     setPeriod(p);
@@ -250,58 +254,66 @@ const ChatCleanupSection: React.FC<{ userId: string; userType: 'business' | 'cou
   };
 
   const handleManualClean = () => {
+    if (!showDeleteAll) { setShowDeleteAll(true); return; }
     setCleaning(true);
-    if (period === 'on_complete') {
-      cleanupCompletedDeliveryConvs(userId, userType);
-    } else if (period !== 'manual') {
-      cleanupOldConversations(userId, userType, DAYS_MAP[period]);
-    } else {
-      cleanupOldConversations(userId, userType, 30); // default: 30 days
-    }
+    if (period === 'on_complete') cleanupCompletedDeliveryConvs(userId, userType);
+    else if (period !== 'manual') cleanupOldConversations(userId, userType, DAYS_MAP[period]);
+    else deleteAllConversations(userId, userType);
     setCleaning(false);
-    toast.success('צ\'אטים ישנים נוקו');
+    setShowDeleteAll(false);
+    toast.success('הצ\'אטים נוקו');
   };
 
   return (
     <div className="rounded-2xl overflow-hidden" style={{ background: CARD_BG, border: `1px solid ${BORDER}` }}>
       <div className="px-4 pt-4 pb-3" style={{ borderBottom: `1px solid ${BORDER}` }}>
-        <p className="text-[10px] font-semibold uppercase tracking-widest mb-0.5" style={{ color: TEXT2 }}>ניהול פרטיות</p>
-        <h2 className="text-[14px] font-black" style={{ color: TEXT }}>ניקוי צ׳אטים אוטומטי</h2>
+        <p className="text-[10px] font-semibold uppercase tracking-widest mb-0.5" style={{ color: '#757575' }}>ניהול פרטיות</p>
+        <h2 className="text-[14px] font-black" style={{ color: TEXT }}>ניקוי צ׳אטים</h2>
       </div>
       <div className="p-4 space-y-3">
-        <p className="text-[12px]" style={{ color: TEXT2 }}>בחר מתי למחוק שיחות ישנות אוטומטית</p>
+        <p className="text-[12px]" style={{ color: '#757575' }}>בחר מתי למחוק שיחות ישנות אוטומטית</p>
         <div className="space-y-2">
           {CLEANUP_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              onClick={() => savePeriod(opt.value)}
+            <button key={opt.value} onClick={() => savePeriod(opt.value)}
               className="w-full flex items-center gap-3 p-3 rounded-xl text-right transition-all"
-              style={{
-                background: period === opt.value ? `${BLUE}12` : BG,
-                border: `1.5px solid ${period === opt.value ? BLUE : BORDER}`,
-              }}
+              style={{ background: period === opt.value ? `${BLUE}12` : BG, border: `1.5px solid ${period === opt.value ? BLUE : BORDER}` }}
             >
-              <div
-                className="w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center"
-                style={{ borderColor: period === opt.value ? BLUE : BORDER }}
-              >
+              <div className="w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center"
+                style={{ borderColor: period === opt.value ? BLUE : BORDER }}>
                 {period === opt.value && <div className="w-2 h-2 rounded-full" style={{ background: BLUE }} />}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-[13px] font-bold" style={{ color: period === opt.value ? BLUE : TEXT }}>{opt.label}</p>
-                <p className="text-[11px]" style={{ color: TEXT2 }}>{opt.desc}</p>
+                <p className="text-[11px]" style={{ color: '#757575' }}>{opt.desc}</p>
               </div>
             </button>
           ))}
         </div>
-        <button
-          onClick={handleManualClean}
-          disabled={cleaning}
-          className="w-full py-2.5 rounded-xl text-[13px] font-bold transition-all active:scale-95 disabled:opacity-60"
-          style={{ background: BG, border: `1px solid ${BORDER}`, color: TEXT2 }}
-        >
-          {cleaning ? 'מנקה...' : 'נקה עכשיו'}
-        </button>
+        {/* Delete now button */}
+        {!showDeleteAll ? (
+          <button onClick={() => setShowDeleteAll(true)} disabled={cleaning}
+            className="w-full py-2.5 rounded-xl text-[13px] font-bold transition-all active:scale-95 disabled:opacity-60"
+            style={{ background: BG, border: `1px solid ${BORDER}`, color: '#757575' }}
+          >
+            {cleaning ? 'מנקה...' : 'נקה עכשיו'}
+          </button>
+        ) : (
+          <div className="rounded-xl p-3 space-y-2" style={{ background: '#FFF5F5', border: '1px solid #E2343740' }}>
+            <p className="text-[12px] font-bold text-center flex items-center justify-center gap-1" style={{ color: ERROR }}><Warning size={13} /> פעולה זו תמחק את כל השיחות. לא ניתן לשחזר.</p>
+            <div className="flex gap-2">
+              <button onClick={() => setShowDeleteAll(false)}
+                className="flex-1 py-2 rounded-xl text-[13px] font-bold"
+                style={{ background: BG, color: TEXT2, border: `1px solid ${BORDER}` }}>
+                ביטול
+              </button>
+              <button onClick={handleManualClean} disabled={cleaning}
+                className="flex-1 py-2 rounded-xl text-[13px] font-bold text-white"
+                style={{ background: ERROR }}>
+                {cleaning ? 'מוחק...' : 'מחק הכל'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -327,6 +339,7 @@ const BusinessProfile: React.FC = () => {
   const [editStreet, setEditStreet] = useState('');
   const [editCity, setEditCity] = useState('');
   const [editCategory, setEditCategory] = useState('');
+  const [editCustomCategory, setEditCustomCategory] = useState('');
 
   // Password change state
   const [pwMode, setPwMode] = useState(false);
@@ -350,7 +363,15 @@ const BusinessProfile: React.FC = () => {
       setEditPhone(b.phone);
       setEditStreet(b.address.street);
       setEditCity(b.address.city);
-      setEditCategory(b.category);
+      // If the category isn't in the standard list, treat it as custom "אחר"
+      const knownCats = ['מסעדה','בית קפה','פיצרייה','מכולת / סופר','פרמציה / תרופות','פרחים','בגדים / אופנה','ספרים / צעצועים','אלקטרוניקה','קונדיטוריה / מאפייה','בריאות / ספא','חיות מחמד','אחר'];
+      if (!knownCats.includes(b.category)) {
+        setEditCategory('אחר');
+        setEditCustomCategory(b.category);
+      } else {
+        setEditCategory(b.category);
+        setEditCustomCategory('');
+      }
     }
 
     // Load past couriers from deliveries
@@ -394,7 +415,7 @@ const BusinessProfile: React.FC = () => {
       contactPerson: editContact.trim(),
       phone: editPhone.trim(),
       address: { street: editStreet.trim(), city: editCity.trim() },
-      category: editCategory.trim(),
+      category: editCategory === 'אחר' && editCustomCategory.trim() ? editCustomCategory.trim() : editCategory.trim(),
     });
     setBiz(updated);
     setEditMode(false);
@@ -440,113 +461,95 @@ const BusinessProfile: React.FC = () => {
     navigate('/login');
   };
 
-  const categories = ['מסעדה', 'קפה', 'פרחים', 'תרופות', 'מכולת', 'אחר'];
+  const categories = [
+    'מסעדה',
+    'בית קפה',
+    'פיצרייה',
+    'מכולת / סופר',
+    'פרמציה / תרופות',
+    'פרחים',
+    'בגדים / אופנה',
+    'ספרים / צעצועים',
+    'אלקטרוניקה',
+    'קונדיטוריה / מאפייה',
+    'בריאות / ספא',
+    'חיות מחמד',
+    'אחר',
+  ];
 
   return (
-    <div className="max-w-lg mx-auto px-4 py-5 space-y-4" style={{ background: BG, minHeight: '100vh' }}>
+    <div className="w-full max-w-[1200px] mx-auto px-4 py-5" style={{ background: BG, minHeight: '100vh' }} dir="rtl">
 
-      {/* Profile header card */}
-      <div
-        className="rounded-2xl p-6 flex flex-col items-center text-center relative"
-        style={{ background: CARD_BG, border: `1px solid ${BORDER}` }}
-      >
-        <div className="relative mb-4">
-          {biz?.logo ? (
-            <img
-              src={biz.logo}
-              alt="לוגו"
-              className="w-20 h-20 rounded-full object-cover"
-              style={{ border: `3px solid ${BLUE}` }}
-            />
-          ) : (
-            <div
-              className="w-20 h-20 rounded-full flex items-center justify-center text-white text-[28px] font-black"
-              style={{ background: BLUE }}
-            >
-              {biz?.businessName?.[0] ?? '?'}
-            </div>
-          )}
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="absolute -bottom-1 -left-1 w-7 h-7 rounded-full flex items-center justify-center shadow"
+      {/* ── Desktop 2-column layout ── */}
+      <div className="lg:grid lg:grid-cols-[280px_1fr] lg:gap-6 lg:items-start space-y-4 lg:space-y-0">
+
+        {/* ── LEFT COLUMN: Profile header + tabs ── */}
+        <div className="space-y-4">
+
+          {/* Profile header card */}
+          <div
+            className="rounded-2xl p-6 flex flex-col items-center text-center relative"
             style={{ background: CARD_BG, border: `1px solid ${BORDER}` }}
           >
-            <CameraIcon className="w-4 h-4" style={{ color: BLUE }} />
-          </button>
-          <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
-        </div>
-
-        <h1 className="text-[20px] font-black" style={{ color: TEXT }}>{biz?.businessName ?? 'עסק'}</h1>
-        <p className="text-[13px] mt-1" style={{ color: TEXT2 }}>{biz?.category ?? ''}</p>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-1 p-1 rounded-2xl" style={{ background: BORDER }}>
-        {(['info', 'couriers'] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setActiveTab(t)}
-            className="flex-1 py-2 rounded-xl text-[13px] font-bold transition-all"
-            style={{
-              background: activeTab === t ? CARD_BG : 'transparent',
-              color: activeTab === t ? BLUE : TEXT2,
-              boxShadow: activeTab === t ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
-            }}
-          >
-            {t === 'info' ? 'פרטים' : `שליחים (${pastCouriers.length})`}
-          </button>
-        ))}
-      </div>
-
-      {activeTab === 'info' && (
-        <>
-          {/* Email notifications */}
-          <Section label="הגדרות" title="התראות מייל">
-            <div className="space-y-3">
-              {([
-                { key: 'emailOnDeliveryAdded' as keyof StoredBusiness, label: 'משלוח חדש נוצר', desc: 'קבל מייל כשנוצר משלוח חדש' },
-                { key: 'emailOnDeliveryAccepted' as keyof StoredBusiness, label: 'שליח קיבל משלוח', desc: 'כששליח מקבל את המשלוח שלך' },
-                { key: 'emailOnDeliveryPickedUp' as keyof StoredBusiness, label: 'חבילה נאספה', desc: 'כשהשליח אסף את החבילה' },
-                { key: 'emailOnDeliveryDelivered' as keyof StoredBusiness, label: 'משלוח נמסר ללקוח', desc: 'כשהמשלוח הגיע ליעד' },
-                { key: 'emailOnDeliveryCancelled' as keyof StoredBusiness, label: 'משלוח בוטל', desc: 'כשמשלוח מבוטל' },
-              ]).map(({ key, label, desc }) => (
-                <div key={key as string} className="flex items-center justify-between py-1">
-                  <div>
-                    <p className="text-[13px] font-bold" style={{ color: TEXT }}>{label}</p>
-                    <p className="text-[11px]" style={{ color: TEXT2 }}>{desc}</p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      if (!biz) return;
-                      const next = !biz[key];
-                      const updated = updateBusiness(businessId, { [key]: next } as Partial<StoredBusiness>);
-                      setBiz(updated);
-                      toast.success(next ? 'הופעל' : 'כובה');
-                    }}
-                    className="relative w-12 h-6 rounded-full transition-colors flex-shrink-0"
-                    style={{ background: biz?.[key] ? BLUE : BORDER }}
-                  >
-                    <span
-                      className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all"
-                      style={{ left: biz?.[key] ? '26px' : '2px' }}
-                    />
-                  </button>
+            <div className="relative mb-4">
+              {biz?.logo ? (
+                <img
+                  src={biz.logo}
+                  alt="לוגו"
+                  className="w-24 h-24 rounded-full object-cover"
+                  style={{ border: `3px solid ${BLUE}` }}
+                />
+              ) : (
+                <div
+                  className="w-24 h-24 rounded-full flex items-center justify-center text-white text-[32px] font-black"
+                  style={{ background: BLUE }}
+                >
+                  {biz?.businessName?.[0] ?? '?'}
                 </div>
-              ))}
-              <p className="text-[10px] pt-1" style={{ color: '#C0C0C0' }}>
-                * דורש הגדרת שירות מייל בהגדרות האדמין
-              </p>
+              )}
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute -bottom-1 -left-1 w-8 h-8 rounded-full flex items-center justify-center shadow cursor-pointer"
+                style={{ background: CARD_BG, border: `1px solid ${BORDER}` }}
+              >
+                <CameraIcon className="w-4 h-4" style={{ color: BLUE }} />
+              </button>
+              <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
             </div>
-          </Section>
 
-          {/* Support — opens directly in the chat messages area */}
+            <h1 className="text-[20px] font-black" style={{ color: TEXT }}>{biz?.businessName ?? 'עסק'}</h1>
+            <p className="text-[13px] mt-1" style={{ color: TEXT2 }}>{biz?.category ?? ''}</p>
+            {biz?.email && (
+              <p className="text-[12px] mt-1" style={{ color: TEXT2 }}>{biz.email}</p>
+            )}
+          </div>
+
+          {/* Tabs */}
+          <div className="flex gap-1 p-1 rounded-2xl" style={{ background: BORDER }}>
+            {(['info', 'couriers'] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setActiveTab(t)}
+                className="flex-1 py-2 rounded-xl text-[13px] font-bold transition-all cursor-pointer"
+                style={{
+                  background: activeTab === t ? CARD_BG : 'transparent',
+                  color: activeTab === t ? BLUE : TEXT2,
+                  boxShadow: activeTab === t ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
+                }}
+              >
+                {t === 'info' ? 'פרטים' : `שליחים (${pastCouriers.length})`}
+              </button>
+            ))}
+          </div>
+
+          {/* Support link — visible in left col on desktop */}
           <Link
             to="/business/chat?support=1"
-            className="rounded-2xl p-4 flex items-center gap-3 transition-all hover:shadow-md"
+            className="rounded-2xl p-4 flex items-center gap-3 transition-all hover:shadow-md cursor-pointer"
             style={{ background: CARD_BG, border: `1px solid ${BORDER}`, display: 'flex' }}
           >
             <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: `${BLUE}15` }}>
-              <span className="text-[18px]">🎧</span>
+              <Headphones size={20} style={{ color: BLUE }} />
             </div>
             <div className="flex-1">
               <p className="text-[14px] font-black" style={{ color: TEXT }}>צור קשר / תמיכה</p>
@@ -555,184 +558,258 @@ const BusinessProfile: React.FC = () => {
             <span style={{ color: TEXT2 }}>{'<'}</span>
           </Link>
 
-          {/* Details section */}
-          <Section label="פרופיל" title="פרטי עסק">
-            {!editMode ? (
-              <>
-                {[
-                  { label: 'שם עסק', value: biz?.businessName },
-                  { label: 'איש קשר', value: biz?.contactPerson },
-                  { label: 'טלפון', value: biz?.phone },
-                  { label: 'כתובת', value: biz ? `${biz.address.street}, ${biz.address.city}` : '' },
-                  { label: 'קטגוריה', value: biz?.category },
-                  { label: 'אימייל', value: biz?.email },
-                ].map(({ label, value }) => (
-                  <div key={label} className="flex items-center justify-between py-2.5" style={{ borderBottom: `1px solid ${BG}` }}>
-                    <span className="text-[11px] font-semibold" style={{ color: TEXT2 }}>{label}</span>
-                    <span className="text-[13px] font-bold" style={{ color: TEXT }}>{value || '—'}</span>
-                  </div>
-                ))}
-                <button
-                  onClick={() => setEditMode(true)}
-                  className="mt-3 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-[13px] transition-all active:scale-95"
-                  style={{ background: BG, color: BLUE, border: `1px solid ${BORDER}` }}
-                >
-                  <PencilIcon className="w-4 h-4" />
-                  ערוך פרטים
-                </button>
-              </>
-            ) : (
-              <div className="space-y-3">
-                {[
-                  { label: 'שם עסק', value: editName, setter: setEditName },
-                  { label: 'איש קשר', value: editContact, setter: setEditContact },
-                  { label: 'טלפון', value: editPhone, setter: setEditPhone },
-                  { label: 'רחוב', value: editStreet, setter: setEditStreet },
-                  { label: 'עיר', value: editCity, setter: setEditCity },
-                ].map(({ label, value, setter }) => (
-                  <div key={label}>
-                    <label className="text-[11px] font-semibold block mb-1" style={{ color: TEXT2 }}>{label}</label>
-                    <input
-                      className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none"
-                      style={{ background: BG, border: `1px solid ${BORDER}`, color: TEXT, direction: 'rtl' }}
-                      value={value}
-                      onChange={(e) => setter(e.target.value)}
-                    />
-                  </div>
-                ))}
-                <div>
-                  <label className="text-[11px] font-semibold block mb-1" style={{ color: TEXT2 }}>קטגוריה</label>
-                  <select
-                    className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none"
-                    style={{ background: BG, border: `1px solid ${BORDER}`, color: TEXT, direction: 'rtl' }}
-                    value={editCategory}
-                    onChange={(e) => setEditCategory(e.target.value)}
-                  >
-                    {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-                <div className="flex gap-2 pt-1">
-                  <button
-                    onClick={handleSaveDetails}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-2xl text-white font-bold text-[13px] transition-all active:scale-95"
-                    style={{ background: BLUE }}
-                  >
-                    <CheckIcon className="w-4 h-4" />
-                    שמור
-                  </button>
-                  <button
-                    onClick={() => setEditMode(false)}
-                    className="px-4 py-2.5 rounded-xl font-bold text-[13px] transition-all active:scale-95"
-                    style={{ background: BG, color: TEXT2, border: `1px solid ${BORDER}` }}
-                  >
-                    <XMarkIcon className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            )}
-          </Section>
-
-          {/* Password change */}
-          <Section label="אבטחה" title="שינוי סיסמה">
-            {!pwMode ? (
-              <button
-                onClick={() => setPwMode(true)}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-[13px] transition-all active:scale-95"
-                style={{ background: BG, color: BLUE, border: `1px solid ${BORDER}` }}
-              >
-                <KeyIcon className="w-4 h-4" />
-                שנה סיסמה
-              </button>
-            ) : (
-              <div className="space-y-3">
-                {[
-                  { label: 'סיסמה נוכחית', value: oldPw, setter: setOldPw },
-                  { label: 'סיסמה חדשה', value: newPw, setter: setNewPw },
-                  { label: 'אשר סיסמה חדשה', value: confirmPw, setter: setConfirmPw },
-                ].map(({ label, value, setter }) => (
-                  <div key={label}>
-                    <label className="text-[11px] font-semibold block mb-1" style={{ color: TEXT2 }}>{label}</label>
-                    <input
-                      type="password"
-                      className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none"
-                      style={{ background: BG, border: `1px solid ${BORDER}`, color: TEXT, direction: 'rtl' }}
-                      value={value}
-                      onChange={(e) => setter(e.target.value)}
-                    />
-                  </div>
-                ))}
-                {pwError && (
-                  <p className="text-[12px] font-semibold" style={{ color: ERROR }}>{pwError}</p>
-                )}
-                <div className="flex gap-2">
-                  <button
-                    onClick={handlePasswordChange}
-                    disabled={savingPw}
-                    className="flex-1 py-2.5 rounded-2xl text-white font-bold text-[13px] transition-all active:scale-95 disabled:opacity-60"
-                    style={{ background: BLUE }}
-                  >
-                    שמור
-                  </button>
-                  <button
-                    onClick={() => { setPwMode(false); setPwError(''); setOldPw(''); setNewPw(''); setConfirmPw(''); }}
-                    className="px-4 py-2.5 rounded-xl font-bold text-[13px]"
-                    style={{ background: BG, color: TEXT2, border: `1px solid ${BORDER}` }}
-                  >
-                    ביטול
-                  </button>
-                </div>
-              </div>
-            )}
-          </Section>
-        </>
-      )}
-
-      {activeTab === 'couriers' && (
-        <div className="space-y-3">
-          {pastCouriers.length === 0 ? (
-            <div
-              className="rounded-2xl p-10 flex flex-col items-center gap-3 text-center"
-              style={{ background: CARD_BG, border: `1px solid ${BORDER}` }}
-            >
-              <TruckIcon className="w-10 h-10" style={{ color: BORDER }} />
-              <p className="font-bold text-[14px]" style={{ color: TEXT2 }}>
-                עדיין לא עבדת עם שליחים
-              </p>
-              <p className="text-[12px]" style={{ color: TEXT2 }}>
-                לאחר שמשלוח יימסר, השליח יופיע כאן
-              </p>
-            </div>
-          ) : (
-            pastCouriers.map(({ courier, deliveryId }) => (
-              <PastCourierCard
-                key={courier.id}
-                courier={courier}
-                deliveryId={deliveryId}
-                businessId={businessId}
-                isFavorite={(biz?.favoriteCouriers ?? []).includes(courier.id)}
-                onToggleFavorite={() => toggleFavorite(courier.id)}
-                existingReview={reviews.find(r => r.targetId === courier.id && r.deliveryId === deliveryId)}
-                onReviewSaved={loadData}
-              />
-            ))
-          )}
+          {/* Logout — left col on desktop */}
+          <button
+            onClick={handleLogout}
+            className="w-full py-4 rounded-2xl font-black text-[15px] transition-all active:scale-95 cursor-pointer"
+            style={{ background: CARD_BG, border: `1px solid ${ERROR}40`, color: ERROR }}
+          >
+            התנתקות
+          </button>
         </div>
-      )}
 
-      {/* ── Chat Cleanup Settings ── */}
-      <ChatCleanupSection userId={businessId} userType="business" />
+        {/* ── RIGHT COLUMN: Settings / forms ── */}
+        <div className="space-y-4">
+
+          {activeTab === 'info' && (
+            <>
+              {/* Details section */}
+              <Section label="פרופיל" title="פרטי עסק">
+                {!editMode ? (
+                  <>
+                    <div className="lg:grid lg:grid-cols-2 lg:gap-x-6">
+                      {[
+                        { label: 'שם עסק', value: biz?.businessName },
+                        { label: 'איש קשר', value: biz?.contactPerson },
+                        { label: 'טלפון', value: biz?.phone },
+                        { label: 'כתובת', value: biz ? `${biz.address.street}, ${biz.address.city}` : '' },
+                        { label: 'קטגוריה', value: biz?.category },
+                        { label: 'אימייל', value: biz?.email },
+                      ].map(({ label, value }) => (
+                        <div key={label} className="flex items-center justify-between py-2.5" style={{ borderBottom: `1px solid ${BG}` }}>
+                          <span className="text-[11px] font-semibold" style={{ color: TEXT2 }}>{label}</span>
+                          <span className="text-[13px] font-bold" style={{ color: TEXT }}>{value || '—'}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => setEditMode(true)}
+                      className="mt-3 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-[13px] transition-all active:scale-95 cursor-pointer"
+                      style={{ background: BG, color: BLUE, border: `1px solid ${BORDER}` }}
+                    >
+                      <PencilIcon className="w-4 h-4" />
+                      ערוך פרטים
+                    </button>
+                  </>
+                ) : (
+                  <div className="space-y-3 lg:grid lg:grid-cols-2 lg:gap-4 lg:space-y-0">
+                    {[
+                      { label: 'שם עסק', value: editName, setter: setEditName },
+                      { label: 'איש קשר', value: editContact, setter: setEditContact },
+                      { label: 'טלפון', value: editPhone, setter: setEditPhone },
+                      { label: 'עיר', value: editCity, setter: setEditCity },
+                    ].map(({ label, value, setter }) => (
+                      <div key={label}>
+                        <label className="text-[11px] font-semibold block mb-1" style={{ color: TEXT2 }}>{label}</label>
+                        <input
+                          className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none"
+                          style={{ background: BG, border: `1px solid ${BORDER}`, color: TEXT, direction: 'rtl' }}
+                          value={value}
+                          onChange={(e) => setter(e.target.value)}
+                        />
+                      </div>
+                    ))}
+                    {/* Street with Google Places autocomplete */}
+                    <AddressAutocomplete
+                      label="רחוב"
+                      value={editStreet}
+                      onChange={setEditStreet}
+                      onCityChange={setEditCity}
+                      placeholder="רחוב הרצל 22"
+                      className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none"
+                      style={{ background: BG, border: `1px solid ${BORDER}`, color: TEXT, direction: 'rtl' }}
+                    />
+                    <div>
+                      <label className="text-[11px] font-semibold block mb-1" style={{ color: TEXT2 }}>קטגוריה</label>
+                      <select
+                        className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none"
+                        style={{ background: BG, border: `1px solid ${BORDER}`, color: TEXT, direction: 'rtl' }}
+                        value={editCategory}
+                        onChange={(e) => { setEditCategory(e.target.value); if (e.target.value !== 'אחר') setEditCustomCategory(''); }}
+                      >
+                        {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+                    {editCategory === 'אחר' && (
+                      <div className="lg:col-span-2">
+                        <label className="text-[11px] font-semibold block mb-1" style={{ color: TEXT2 }}>תחום העסק (חופשי)</label>
+                        <input
+                          className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none"
+                          style={{ background: BG, border: `1px solid ${BORDER}`, color: TEXT, direction: 'rtl' }}
+                          placeholder="לדוגמה: חנות ספרים, כלי בית..."
+                          value={editCustomCategory}
+                          onChange={(e) => setEditCustomCategory(e.target.value)}
+                        />
+                      </div>
+                    )}
+                    <div className="lg:col-span-2 flex gap-2 pt-1">
+                      <button
+                        onClick={handleSaveDetails}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-2xl text-white font-bold text-[13px] transition-all active:scale-95 cursor-pointer"
+                        style={{ background: BLUE }}
+                      >
+                        <CheckIcon className="w-4 h-4" />
+                        שמור
+                      </button>
+                      <button
+                        onClick={() => setEditMode(false)}
+                        className="px-4 py-2.5 rounded-xl font-bold text-[13px] transition-all active:scale-95 cursor-pointer"
+                        style={{ background: BG, color: TEXT2, border: `1px solid ${BORDER}` }}
+                      >
+                        <XMarkIcon className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </Section>
+
+              {/* Password change */}
+              <Section label="אבטחה" title="שינוי סיסמה">
+                {!pwMode ? (
+                  <button
+                    onClick={() => setPwMode(true)}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-[13px] transition-all active:scale-95 cursor-pointer"
+                    style={{ background: BG, color: BLUE, border: `1px solid ${BORDER}` }}
+                  >
+                    <KeyIcon className="w-4 h-4" />
+                    שנה סיסמה
+                  </button>
+                ) : (
+                  <div className="space-y-3 lg:grid lg:grid-cols-3 lg:gap-4 lg:space-y-0">
+                    {[
+                      { label: 'סיסמה נוכחית', value: oldPw, setter: setOldPw },
+                      { label: 'סיסמה חדשה', value: newPw, setter: setNewPw },
+                      { label: 'אשר סיסמה חדשה', value: confirmPw, setter: setConfirmPw },
+                    ].map(({ label, value, setter }) => (
+                      <div key={label}>
+                        <label className="text-[11px] font-semibold block mb-1" style={{ color: TEXT2 }}>{label}</label>
+                        <input
+                          type="password"
+                          className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none"
+                          style={{ background: BG, border: `1px solid ${BORDER}`, color: TEXT, direction: 'rtl' }}
+                          value={value}
+                          onChange={(e) => setter(e.target.value)}
+                        />
+                      </div>
+                    ))}
+                    {pwError && (
+                      <p className="text-[12px] font-semibold lg:col-span-3" style={{ color: ERROR }}>{pwError}</p>
+                    )}
+                    <div className="flex gap-2 lg:col-span-3">
+                      <button
+                        onClick={handlePasswordChange}
+                        disabled={savingPw}
+                        className="flex-1 py-2.5 rounded-2xl text-white font-bold text-[13px] transition-all active:scale-95 disabled:opacity-60 cursor-pointer"
+                        style={{ background: BLUE }}
+                      >
+                        שמור
+                      </button>
+                      <button
+                        onClick={() => { setPwMode(false); setPwError(''); setOldPw(''); setNewPw(''); setConfirmPw(''); }}
+                        className="px-4 py-2.5 rounded-xl font-bold text-[13px] cursor-pointer"
+                        style={{ background: BG, color: TEXT2, border: `1px solid ${BORDER}` }}
+                      >
+                        ביטול
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </Section>
+
+              {/* Email notifications */}
+              <Section label="הגדרות" title="התראות מייל">
+                <div className="space-y-3">
+                  {([
+                    { key: 'emailOnDeliveryAdded' as keyof StoredBusiness, label: 'משלוח חדש נוצר', desc: 'קבל מייל כשנוצר משלוח חדש' },
+                    { key: 'emailOnDeliveryAccepted' as keyof StoredBusiness, label: 'שליח קיבל משלוח', desc: 'כששליח מקבל את המשלוח שלך' },
+                    { key: 'emailOnDeliveryPickedUp' as keyof StoredBusiness, label: 'חבילה נאספה', desc: 'כשהשליח אסף את החבילה' },
+                    { key: 'emailOnDeliveryDelivered' as keyof StoredBusiness, label: 'משלוח נמסר ללקוח', desc: 'כשהמשלוח הגיע ליעד' },
+                    { key: 'emailOnDeliveryCancelled' as keyof StoredBusiness, label: 'משלוח בוטל', desc: 'כשמשלוח מבוטל' },
+                  ]).map(({ key, label, desc }) => (
+                    <div key={key as string} className="flex items-center justify-between py-1">
+                      <div>
+                        <p className="text-[13px] font-bold" style={{ color: TEXT }}>{label}</p>
+                        <p className="text-[11px]" style={{ color: TEXT2 }}>{desc}</p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          if (!biz) return;
+                          const next = !biz[key];
+                          const updated = updateBusiness(businessId, { [key]: next } as Partial<StoredBusiness>);
+                          setBiz(updated);
+                          toast.success(next ? 'הופעל' : 'כובה');
+                        }}
+                        className="relative w-12 h-6 rounded-full transition-colors flex-shrink-0 cursor-pointer"
+                        style={{ background: biz?.[key] ? BLUE : BORDER }}
+                      >
+                        <span
+                          className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all"
+                          style={{ left: biz?.[key] ? '26px' : '2px' }}
+                        />
+                      </button>
+                    </div>
+                  ))}
+                  <p className="text-[10px] pt-1" style={{ color: '#C0C0C0' }}>
+                    * דורש הגדרת שירות מייל בהגדרות האדמין
+                  </p>
+                </div>
+              </Section>
+            </>
+          )}
+
+          {activeTab === 'couriers' && (
+            <div className="space-y-3">
+              {pastCouriers.length === 0 ? (
+                <div
+                  className="rounded-2xl p-10 flex flex-col items-center gap-3 text-center"
+                  style={{ background: CARD_BG, border: `1px solid ${BORDER}` }}
+                >
+                  <TruckIcon className="w-10 h-10" style={{ color: BORDER }} />
+                  <p className="font-bold text-[14px]" style={{ color: TEXT2 }}>
+                    עדיין לא עבדת עם שליחים
+                  </p>
+                  <p className="text-[12px]" style={{ color: TEXT2 }}>
+                    לאחר שמשלוח יימסר, השליח יופיע כאן
+                  </p>
+                </div>
+              ) : (
+                <div className="lg:grid lg:grid-cols-2 lg:gap-3 space-y-3 lg:space-y-0">
+                  {pastCouriers.map(({ courier, deliveryId }) => (
+                    <PastCourierCard
+                      key={courier.id}
+                      courier={courier}
+                      deliveryId={deliveryId}
+                      businessId={businessId}
+                      isFavorite={(biz?.favoriteCouriers ?? []).includes(courier.id)}
+                      onToggleFavorite={() => toggleFavorite(courier.id)}
+                      existingReview={reviews.find(r => r.targetId === courier.id && r.deliveryId === deliveryId)}
+                      onReviewSaved={loadData}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Chat Cleanup Settings ── */}
+          <ChatCleanupSection userId={businessId} userType="business" />
+
+        </div>{/* end right column */}
+      </div>{/* end desktop grid */}
 
       {/* Clear cache */}
       <ClearCacheButton />
 
-      {/* Logout */}
-      <button
-        onClick={handleLogout}
-        className="w-full py-4 rounded-2xl font-black text-[15px] transition-all active:scale-95"
-        style={{ background: CARD_BG, border: `1px solid ${ERROR}40`, color: ERROR }}
-      >
-        התנתקות
-      </button>
     </div>
   );
 };

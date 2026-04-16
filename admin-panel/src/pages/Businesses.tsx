@@ -227,7 +227,7 @@ const Businesses: React.FC = () => {
         totalDeliveries: 0,
         rating: 5,
       });
-      toast.success('עסק נוסף בהצלחה ✅');
+      toast.success('עסק נוסף בהצלחה');
       setAddModal(false);
       setAddForm(emptyBizForm());
       load();
@@ -277,7 +277,7 @@ const Businesses: React.FC = () => {
       // Send approval email when admin activates a previously inactive account
       if (wasInactive && nowActive) {
         sendAccountApproved(editForm.email, editForm.businessName).catch(() => {});
-        toast.success('✅ העסק אושר ומייל אישור נשלח!');
+        toast.success('העסק אושר ומייל אישור נשלח!');
       } else {
         toast.success('עסק עודכן בהצלחה');
       }
@@ -336,7 +336,7 @@ const Businesses: React.FC = () => {
     dispatch(setPortalUser({ id: biz.id, type: 'business', name: biz.businessName }));
 
     navigate('/');
-    toast.success(`👤 כניסה בשם: ${biz.businessName}`);
+    toast.success(`כניסה בשם: ${biz.businessName}`);
   };
 
   return (
@@ -602,7 +602,7 @@ const Businesses: React.FC = () => {
                 </button>
               </div>
             </div>
-            <p className="text-[11px] text-gray-400 text-center">לשינוי פרטים — לחץ על כפתור העריכה ✏️</p>
+            <p className="text-[11px] text-gray-400 text-center">לשינוי פרטים — לחץ על כפתור העריכה</p>
           </div>
         )}
       </Modal>

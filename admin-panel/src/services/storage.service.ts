@@ -55,6 +55,7 @@ export interface StoredCourier {
   emailOnNewDelivery?: boolean; // email notification pref
   navPreference?: 'waze' | 'google' | 'apple'; // preferred navigation app
   bitPhone?: string; // phone number for Bit payment
+  serviceCities?: string[]; // cities the courier serves
 }
 
 export interface StoredReview {
@@ -76,7 +77,7 @@ export interface StoredMessage {
   senderName: string;
   senderType: 'business' | 'courier' | 'admin';
   content: string;
-  messageType: 'text' | 'image' | 'delivery_card' | 'system' | 'proof';
+  messageType: 'text' | 'image' | 'delivery_card' | 'system' | 'proof' | 'voice' | 'document';
   imageUrl?: string;
   readAt?: string;
   createdAt: string;
@@ -119,11 +120,15 @@ export interface StoredDelivery {
   paymentMethod?: 'cash' | 'bit'; // how business pays courier
   customerPaid?: boolean;     // true = customer already paid; false = courier collects
   archived?: boolean;         // archived by courier/business (removed from main list)
+  notificationSent?: boolean; // true = courier notification already sent (prevents double-fire)
   proofPhotoUrl?: string;
   proofNote?: string;
   proofSubmittedAt?: string;
   cancelledBy?: string;
   cancelAction?: 'find_new' | 'delete';
+  orderNumber?: number;  // Global sequential order number (1, 2, 3...)
+  pickupCity?: string;
+  dropCity?: string;
 }
 
 // ─── Support ticket & messages ──────────────────────────────
@@ -180,8 +185,70 @@ function read<T>(key: string): T[] {
   }
 }
 
+/** Prune bulky keys so we can recover from QuotaExceededError */
+function pruneLocalStorage(): void {
+  try {
+    // Keep only the 300 most recent messages
+    const msgRaw = localStorage.getItem('app_messages');
+    if (msgRaw) {
+      const msgs: { createdAt?: string }[] = JSON.parse(msgRaw);
+      if (msgs.length > 300) {
+        const trimmed = msgs
+          .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
+          .slice(0, 200);
+        localStorage.setItem('app_messages', JSON.stringify(trimmed));
+      }
+    }
+  } catch { /* ignore */ }
+
+  try {
+    // Keep only 50 completed/cancelled deliveries; all active ones stay
+    const delRaw = localStorage.getItem('app_deliveries');
+    if (delRaw) {
+      const dels: { status?: string; createdAt?: string }[] = JSON.parse(delRaw);
+      if (dels.length > 100) {
+        const active = dels.filter(d => ['pending','accepted','picked_up','scheduled'].includes(d.status ?? ''));
+        const done   = dels
+          .filter(d => ['delivered','cancelled'].includes(d.status ?? ''))
+          .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
+          .slice(0, 50);
+        localStorage.setItem('app_deliveries', JSON.stringify([...active, ...done]));
+      }
+    }
+  } catch { /* ignore */ }
+
+  try {
+    // Keep only 50 delivery notifications
+    const notifRaw = localStorage.getItem('app_notifications');
+    if (notifRaw) {
+      const notifs: { createdAt?: string }[] = JSON.parse(notifRaw);
+      if (notifs.length > 50) {
+        const trimmed = notifs
+          .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
+          .slice(0, 30);
+        localStorage.setItem('app_notifications', JSON.stringify(trimmed));
+      }
+    }
+  } catch { /* ignore */ }
+}
+
 function write<T>(key: string, data: T[]): void {
-  localStorage.setItem(key, JSON.stringify(data));
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+  } catch (err) {
+    if (err instanceof DOMException && (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED')) {
+      // Free up space and retry once
+      pruneLocalStorage();
+      try {
+        localStorage.setItem(key, JSON.stringify(data));
+      } catch {
+        // Still failing — log and skip. Supabase is the source of truth.
+        console.warn('[storage] localStorage quota exceeded, skipping write for key:', key);
+      }
+    } else {
+      console.warn('[storage] write failed for key:', key, err);
+    }
+  }
 }
 
 function uid(): string {
@@ -222,16 +289,26 @@ export interface DeliveryNotification {
   scheduledAt?: string;     // ISO – for scheduled deliveries
   paymentMethod?: 'cash' | 'bit';
   customerPaid?: boolean;
+  pickupCity?: string;
 }
 
 const NOTIF_KEY = 'app_delivery_notifications';
+
+/** Extract the city from an address string formatted as "Street Name, City" */
+function extractCityFromAddress(address: string): string | undefined {
+  const parts = address.split(',');
+  return parts.length >= 2 ? parts[parts.length - 1].trim() : undefined;
+}
 
 export function addDeliveryNotification(
   data: Omit<DeliveryNotification, 'id' | 'createdAt' | 'dismissedBy'>
 ): DeliveryNotification {
   const list = read<DeliveryNotification>(NOTIF_KEY);
+  // Try to extract city from pickupAddress if not already provided
+  const pickupCity = data.pickupCity ?? extractCityFromAddress(data.pickupAddress);
   const record: DeliveryNotification = {
     ...data,
+    pickupCity,
     id: uid(),
     createdAt: new Date().toISOString(),
     dismissedBy: [],
@@ -249,15 +326,58 @@ export function getPendingNotifications(courierId: string): DeliveryNotification
   if (courier?.isAvailable === false) return [];
 
   const list = read<DeliveryNotification>(NOTIF_KEY);
-  const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString(); // 10 min
-  return list.filter(
-    (n) =>
-      !n.dismissedBy.includes(courierId) &&
-      !n.takenBy &&
-      n.createdAt > cutoff &&
-      // Vehicle filter: if notification requires a specific vehicle, only show to matching couriers
-      (!n.requiredVehicle || !courier || n.requiredVehicle === courier.vehicle)
-  );
+  const cutoff = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(); // 3h max
+  const deliveries = getDeliveries();
+  const deliveryMap = new Map(deliveries.map((d) => [d.id, d]));
+
+  return list.filter((n) => {
+    if (n.dismissedBy.includes(courierId)) return false;
+    if (n.takenBy) return false;
+    if (n.createdAt <= cutoff) return false;
+    if (n.requiredVehicle && courier && n.requiredVehicle !== courier.vehicle) return false;
+
+    // City filter — only show notifications for cities the courier serves
+    if (courier?.serviceCities && courier.serviceCities.length > 0) {
+      if (n.pickupCity) {
+        if (!courier.serviceCities.includes(n.pickupCity)) return false;
+      }
+    }
+
+    // Cross-check delivery status: hide if delivery is no longer pending
+    if (n.deliveryId) {
+      const delivery = deliveryMap.get(n.deliveryId);
+      if (delivery && delivery.status !== 'pending') return false;
+    }
+
+    return true;
+  });
+}
+
+/** Returns notifications where another courier accepted the delivery but hasn't picked it up yet.
+ *  These are shown to other couriers as "נראה ששליח אחר לקח את המשלוח" until status = picked_up. */
+export function getTakenNotPickedUpNotifications(courierId: string): DeliveryNotification[] {
+  const courier = getCourier(courierId);
+  if (courier?.isAvailable === false) return [];
+
+  const list = read<DeliveryNotification>(NOTIF_KEY);
+  const deliveries = getDeliveries();
+  const deliveryMap = new Map(deliveries.map((d) => [d.id, d]));
+
+  const cutoff = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+
+  return list.filter((n) => {
+    if (n.dismissedBy.includes(courierId)) return false;
+    if (!n.takenBy) return false; // not yet taken by anyone
+    if (n.createdAt < cutoff) return false;
+    if (!n.requiredVehicle || !courier || n.requiredVehicle === courier.vehicle) {
+      const delivery = n.deliveryId ? deliveryMap.get(n.deliveryId) : undefined;
+      const status = delivery?.status;
+      // Show only while accepted (not yet picked_up / delivered / cancelled)
+      if (status === 'picked_up' || status === 'delivered' || status === 'cancelled') return false;
+      return true;
+    }
+    return false;
+  });
 }
 
 export function dismissNotification(notifId: string, courierId: string): void {
@@ -459,6 +579,13 @@ export function cleanupCompletedDeliveryConvs(
   }
 }
 
+export function deleteAllConversations(userId: string, userType: 'business' | 'courier'): void {
+  const convs = getConversations().filter((c) =>
+    userType === 'business' ? c.businessId === userId : c.courierId === userId
+  );
+  convs.forEach((c) => deleteConversation(c.id));
+}
+
 export function getOrCreateConversation(
   businessId: string,
   courierId: string
@@ -603,6 +730,10 @@ export function addDelivery(
     id: uid(),
     createdAt: new Date().toISOString(),
   };
+  // Auto-assign global sequential order number
+  const allExisting = getDeliveries();
+  const maxNum = allExisting.reduce((max, d) => Math.max(max, d.orderNumber ?? 0), 0);
+  record.orderNumber = maxNum + 1;
   write(KEYS.deliveries, [...list, record]);
   sync.upsertDelivery(record).catch(console.error);
   return record;
@@ -622,6 +753,38 @@ export function deleteDelivery(id: string): void {
   const list = getDeliveries();
   write(KEYS.deliveries, list.filter((d) => d.id !== id));
   sync.deleteDelivery(id).catch(console.error);
+}
+
+/** Re-publish a delivery to all couriers:
+ *  resets status → pending, clears courier assignment, sends a new notification. */
+export function republishDelivery(deliveryId: string): void {
+  const delivery = getDeliveries().find((d) => d.id === deliveryId);
+  if (!delivery) return;
+
+  // Reset delivery
+  const updated = updateDelivery(deliveryId, {
+    status: 'pending',
+    courierId: undefined,
+    courierName: undefined,
+    cancelledBy: undefined,
+    cancelAction: undefined,
+  });
+
+  // Send a new sound-trigger notification to all couriers
+  const business = getBusiness(delivery.businessId);
+  addDeliveryNotification({
+    deliveryId: updated.id,
+    businessId: updated.businessId,
+    businessName: business?.businessName ?? updated.businessId,
+    pickupAddress: updated.pickupAddress,
+    pickupCity: updated.pickupCity,
+    dropAddress: updated.dropAddress,
+    price: updated.price,
+    paymentMethod: updated.paymentMethod,
+    customerPaid: updated.customerPaid,
+    requiredVehicle: updated.requiredVehicle,
+    description: updated.description,
+  });
 }
 
 // ─── Reviews ─────────────────────────────────────────────────
@@ -653,11 +816,36 @@ export function addReview(
   write(KEYS.reviews, [...filtered, record]);
   sync.upsertReview(record).catch(console.error);
 
+  // Determine reviewer name and conversation participants
+  const reviewerName = data.reviewerType === 'business'
+    ? (getBusiness(data.reviewerId)?.businessName ?? data.reviewerId)
+    : (getCourier(data.reviewerId)?.name ?? data.reviewerId);
+
+  // businessId / courierId for the shared conversation
+  const bizId   = data.reviewerType === 'business' ? data.reviewerId : data.targetId;
+  const courId  = data.reviewerType === 'courier'  ? data.reviewerId : data.targetId;
+
+  // Send in-app system message notifying the reviewed party
+  try {
+    const conv = getOrCreateConversation(bizId, courId);
+    const msgContent = JSON.stringify({
+      type: 'review',
+      reviewerName,
+      reviewerType: data.reviewerType,
+      rating: data.rating,
+      comment: data.comment ?? null,
+    });
+    addMessage(conv.id, {
+      senderId: data.reviewerId,
+      senderName: reviewerName,
+      senderType: data.reviewerType === 'business' ? 'business' : 'courier',
+      content: msgContent,
+      messageType: 'system',
+    });
+  } catch { /* ignore */ }
+
   // Send email notification to the reviewed party
   try {
-    const reviewerName = data.reviewerType === 'business'
-      ? (getBusiness(data.reviewerId)?.businessName ?? data.reviewerId)
-      : (getCourier(data.reviewerId)?.name ?? data.reviewerId);
     if (data.targetType === 'courier') {
       const target = getCourier(data.targetId);
       if (target?.email) {
@@ -866,6 +1054,12 @@ export function getActiveDeliveryForCourier(courierId: string): StoredDelivery |
 
 export function getActiveDeliveryForBusiness(businessId: string): StoredDelivery | undefined {
   return getDeliveries().find(d => d.businessId === businessId && ['accepted', 'picked_up'].includes(d.status));
+}
+
+/** Format order number as zero-padded string: 1 → "#001" */
+export function formatOrderNumber(num?: number): string {
+  if (!num) return '';
+  return `#${String(num).padStart(3, '0')}`;
 }
 
 export function addDeliveryCardMessage(

@@ -1,4 +1,5 @@
 import React from 'react';
+import { Warning } from '@phosphor-icons/react';
 
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;
@@ -87,7 +88,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
 
         {error && (
           <p className="mt-1.5 text-[12px] font-medium flex items-center gap-1" style={{ color: '#ea2261' }}>
-            <span>⚠</span> {error}
+            <Warning size={13} /> {error}
           </p>
         )}
         {helperText && !error && (
