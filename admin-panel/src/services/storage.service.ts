@@ -129,6 +129,8 @@ export interface StoredDelivery {
   orderNumber?: number;  // Global sequential order number (1, 2, 3...)
   pickupCity?: string;
   dropCity?: string;
+  prepMinutes?: number;   // prep time in minutes set by business
+  prepReadyAt?: string;   // ISO — when order will be ready (acceptedAt + prepMinutes)
 }
 
 // ─── Support ticket & messages ──────────────────────────────

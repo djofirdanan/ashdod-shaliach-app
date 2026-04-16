@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Calendar, Truck, CheckCircle, Package, MapPin as PhosphorMapPin, User as PhosphorUser, Megaphone } from '@phosphor-icons/react';
+import { Calendar, Truck, CheckCircle, Package, MapPin as PhosphorMapPin, User as PhosphorUser, Megaphone, Timer } from '@phosphor-icons/react';
 import { useNavigate } from 'react-router-dom';
 import DeliveryMap from '../../../components/DeliveryMap';
 import {
@@ -395,6 +395,152 @@ function useCountdown(targetIso: string | undefined): string {
   return label;
 }
 
+// ─── Prep countdown hook ─────────────────────────────────────────────────────
+function usePrepCountdown(prepReadyAt: string | undefined): { label: string; isPast: boolean; urgency: 'ok' | 'soon' | 'ready' } {
+  const [state, setState] = React.useState({ label: '', isPast: false, urgency: 'ok' as 'ok' | 'soon' | 'ready' });
+  React.useEffect(() => {
+    if (!prepReadyAt) { setState({ label: '', isPast: false, urgency: 'ok' }); return; }
+    const calc = () => {
+      const diff = new Date(prepReadyAt).getTime() - Date.now();
+      if (diff <= 0) {
+        setState({ label: 'מוכן לאיסוף!', isPast: true, urgency: 'ready' });
+        return;
+      }
+      const totalSec = Math.ceil(diff / 1000);
+      const m = Math.floor(totalSec / 60);
+      const s = totalSec % 60;
+      const label = m > 0
+        ? `${m}:${String(s).padStart(2, '0')} דק׳`
+        : `0:${String(s).padStart(2, '0')} דק׳`;
+      const urgency: 'ok' | 'soon' | 'ready' = m < 2 ? 'soon' : 'ok';
+      setState({ label, isPast: false, urgency });
+    };
+    calc();
+    const id = setInterval(calc, 1000);
+    return () => clearInterval(id);
+  }, [prepReadyAt]);
+  return state;
+}
+
+// ─── Prep time edit sheet ─────────────────────────────────────────────────────
+const PREP_CHIPS = [5, 10, 15, 20, 25, 30];
+
+const PrepTimeSheet: React.FC<{
+  delivery: StoredDelivery;
+  onClose: () => void;
+  onSave: (deliveryId: string, prepMinutes: number) => void;
+}> = ({ delivery, onClose, onSave }) => {
+  const currentMins = delivery.prepMinutes ?? 15;
+  const [selected, setSelected] = React.useState<number>(currentMins);
+  const [custom, setCustom] = React.useState('');
+
+  const activeMins = custom ? parseInt(custom) || selected : selected;
+
+  return (
+    <div
+      className="fixed inset-0 z-[300] flex items-end justify-center"
+      style={{ background: 'rgba(0,0,0,0.55)' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        className="w-full max-w-lg rounded-t-3xl px-5 pt-2 pb-8"
+        style={{ background: '#fff', maxHeight: '80vh', overflowY: 'auto' }}
+        dir="rtl"
+      >
+        <div className="w-10 h-1 rounded-full mx-auto my-4" style={{ background: '#E8E8E8' }} />
+
+        {/* Title */}
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ background: '#FFF8E6' }}>
+            <Timer size={22} style={{ color: '#F58F1F' }} />
+          </div>
+          <div>
+            <h2 className="text-[17px] font-black" style={{ color: '#202125' }}>עדכון זמן הכנה</h2>
+            <p className="text-[11px] mt-0.5" style={{ color: '#757575' }}>השליח יקבל עדכון מיידי</p>
+          </div>
+          <button onClick={onClose} className="mr-auto p-2 rounded-xl" style={{ background: '#F4F4F4' }}>
+            <XMarkIcon className="w-5 h-5" style={{ color: '#757575' }} />
+          </button>
+        </div>
+
+        {/* Current prep time info */}
+        {delivery.prepReadyAt && new Date(delivery.prepReadyAt) > new Date() && (
+          <div className="rounded-2xl px-4 py-3 mb-4 flex items-center gap-3" style={{ background: '#EAF7FD', border: '1px solid #009DE020' }}>
+            <ClockIcon className="w-5 h-5 flex-shrink-0" style={{ color: BLUE }} />
+            <div>
+              <p className="text-[12px] font-bold" style={{ color: BLUE }}>זמן הכנה נוכחי</p>
+              <p className="text-[11px]" style={{ color: '#757575' }}>
+                מוכן בשעה {new Date(delivery.prepReadyAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Chips */}
+        <p className="text-[12px] font-bold mb-3" style={{ color: '#757575' }}>בחר זמן הכנה חדש</p>
+        <div className="grid grid-cols-3 gap-2 mb-4">
+          {PREP_CHIPS.map(m => {
+            const sel = selected === m && !custom;
+            return (
+              <button
+                key={m}
+                onClick={() => { setSelected(m); setCustom(''); }}
+                className="py-3 rounded-2xl font-black text-[14px] transition-all active:scale-95"
+                style={{
+                  border: `2px solid ${sel ? '#F58F1F' : '#E8E8E8'}`,
+                  background: sel ? '#FFF8E6' : '#FAFAFA',
+                  color: sel ? '#F58F1F' : '#202125',
+                }}
+              >
+                {m} דק׳
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Custom input */}
+        <div className="mb-5">
+          <p className="text-[12px] font-bold mb-2" style={{ color: '#757575' }}>או הכנס ידנית</p>
+          <div className="flex items-center gap-3">
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              placeholder="מספר דקות..."
+              value={custom}
+              onChange={e => {
+                const v = e.target.value.replace(/[^0-9]/g, '');
+                setCustom(v);
+              }}
+              className="flex-1 px-4 py-3 rounded-xl text-[14px] outline-none text-center font-bold"
+              style={{ border: `1.5px solid ${custom ? '#F58F1F' : '#E8E8E8'}`, background: '#FAFAFA' }}
+            />
+            <span className="text-[13px] font-bold flex-shrink-0" style={{ color: '#757575' }}>דקות</span>
+          </div>
+        </div>
+
+        {/* Preview */}
+        <div className="rounded-2xl px-4 py-3 mb-5 flex items-center justify-between" style={{ background: '#FFF8E6', border: '1px solid #F58F1F20' }}>
+          <p className="text-[13px] font-bold" style={{ color: '#F58F1F' }}>ההזמנה תהיה מוכנה בעוד</p>
+          <p className="text-[22px] font-black" style={{ color: '#F58F1F' }}>{activeMins} דק׳</p>
+        </div>
+
+        <button
+          onClick={() => {
+            if (!activeMins || activeMins < 1) return;
+            onSave(delivery.id, activeMins);
+          }}
+          className="w-full py-4 rounded-2xl text-white font-black text-[15px] flex items-center justify-center gap-2 transition-all active:scale-95"
+          style={{ background: '#F58F1F', boxShadow: '0 6px 20px #F58F1F40' }}
+        >
+          <Timer size={18} />
+          עדכן זמן הכנה
+        </button>
+      </div>
+    </div>
+  );
+};
+
 // ─── Scheduled delivery card ─────────────────────────────────────────────────
 const ScheduledCard: React.FC<{
   delivery: StoredDelivery;
@@ -526,10 +672,13 @@ const BIZ_STATUS_ORDER = ['accepted', 'picked_up', 'delivered'] as const;
 const BusinessDeliveryTrackingSheet: React.FC<{
   delivery: StoredDelivery;
   onClose: () => void;
-}> = ({ delivery, onClose }) => {
+  onUpdatePrepTime: (deliveryId: string, prepMinutes: number) => void;
+}> = ({ delivery, onClose, onUpdatePrepTime }) => {
   const d = delivery;
   const isActive = d.status === 'accepted' || d.status === 'picked_up';
   const isDone = d.status === 'delivered' || d.status === 'cancelled';
+  const [showPrepSheet, setShowPrepSheet] = React.useState(false);
+  const prep = usePrepCountdown(d.prepReadyAt);
 
   function fmtTime(iso?: string) {
     if (!iso) return null;
@@ -571,6 +720,55 @@ const BusinessDeliveryTrackingSheet: React.FC<{
         </div>
 
         <div className="px-5 pb-8 space-y-3">
+
+          {/* ── Prep Time Banner (active deliveries only) ── */}
+          {isActive && d.prepReadyAt && (
+            <div
+              className="rounded-2xl px-4 py-3 flex items-center justify-between"
+              style={{
+                background: prep.urgency === 'ready' ? '#ECFDF5' : prep.urgency === 'soon' ? '#FFF8E6' : '#EAF7FD',
+                border: `1.5px solid ${prep.urgency === 'ready' ? '#1BA67230' : prep.urgency === 'soon' ? '#F58F1F30' : '#009DE025'}`,
+              }}
+            >
+              <div className="flex items-center gap-2.5">
+                <div
+                  className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                  style={{ background: prep.urgency === 'ready' ? '#1BA672' : prep.urgency === 'soon' ? '#F58F1F' : BLUE }}
+                >
+                  <Timer size={18} style={{ color: '#fff' }} />
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold" style={{ color: '#757575' }}>
+                    {prep.urgency === 'ready' ? 'ההזמנה מוכנה!' : 'הכנת ההזמנה'}
+                  </p>
+                  <p
+                    className="text-[20px] font-black tabular-nums leading-tight"
+                    style={{ color: prep.urgency === 'ready' ? '#1BA672' : prep.urgency === 'soon' ? '#F58F1F' : BLUE }}
+                  >
+                    {prep.label}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowPrepSheet(true)}
+                className="px-3 py-2 rounded-xl font-bold text-[12px] transition-all active:scale-95"
+                style={{ background: 'rgba(255,255,255,0.8)', color: '#F58F1F', border: '1px solid #F58F1F30' }}
+              >
+                שנה זמן
+              </button>
+            </div>
+          )}
+          {isActive && !d.prepReadyAt && d.status === 'accepted' && (
+            <button
+              onClick={() => setShowPrepSheet(true)}
+              className="w-full rounded-2xl px-4 py-3 flex items-center justify-center gap-2 transition-all active:scale-95"
+              style={{ background: '#FFF8E6', border: '1.5px dashed #F58F1F50', color: '#F58F1F' }}
+            >
+              <Timer size={16} />
+              <span className="text-[13px] font-bold">הגדר זמן הכנה לשליח</span>
+            </button>
+          )}
+
           {/* Timeline */}
           <div className="rounded-2xl p-3" style={{ background: '#F8F8F8', border: '1px solid #E8E8E8' }}>
             {/* Created */}
@@ -655,6 +853,18 @@ const BusinessDeliveryTrackingSheet: React.FC<{
         </div>
       </div>
       <style>{`@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }`}</style>
+
+      {/* Prep time edit sheet */}
+      {showPrepSheet && (
+        <PrepTimeSheet
+          delivery={d}
+          onClose={() => setShowPrepSheet(false)}
+          onSave={(deliveryId, mins) => {
+            onUpdatePrepTime(deliveryId, mins);
+            setShowPrepSheet(false);
+          }}
+        />
+      )}
     </>
   );
 };
@@ -796,6 +1006,15 @@ const BusinessDeliveries: React.FC = () => {
     deleteDelivery(id);
     toast.success('המשלוח נמחק');
     setDelTarget(null);
+    load();
+  };
+
+  const handleUpdatePrepTime = (deliveryId: string, prepMinutes: number) => {
+    const prepReadyAt = new Date(Date.now() + prepMinutes * 60 * 1000).toISOString();
+    updateDelivery(deliveryId, { prepMinutes, prepReadyAt });
+    toast.success(`זמן הכנה עודכן: ${prepMinutes} דקות`, {
+      style: { background: '#F58F1F', color: '#fff', fontWeight: 700, borderRadius: 14, direction: 'rtl' },
+    });
     load();
   };
 
@@ -1191,6 +1410,7 @@ const BusinessDeliveries: React.FC = () => {
         <BusinessDeliveryTrackingSheet
           delivery={trackingSheet}
           onClose={() => setTrackingSheet(null)}
+          onUpdatePrepTime={handleUpdatePrepTime}
         />
       )}
     </div>

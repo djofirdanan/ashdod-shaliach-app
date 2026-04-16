@@ -281,6 +281,8 @@ function dbToDelivery(row: Record<string, unknown>): StoredDelivery {
     proofSubmittedAt: (row.proof_submitted_at as string | undefined) || undefined,
     cancelledBy: (row.cancelled_by as string | undefined) || undefined,
     cancelAction: (row.cancel_action as 'find_new' | 'delete' | undefined) || undefined,
+    prepMinutes: row.prep_minutes != null ? Number(row.prep_minutes) : undefined,
+    prepReadyAt: (row.prep_ready_at as string | undefined) || undefined,
   };
 }
 
@@ -643,6 +645,8 @@ export async function upsertDelivery(d: StoredDelivery): Promise<void> {
     proof_submitted_at: d.proofSubmittedAt ?? null,
     cancelled_by: d.cancelledBy ?? null,
     cancel_action: d.cancelAction ?? null,
+    prep_minutes: d.prepMinutes ?? null,
+    prep_ready_at: d.prepReadyAt ?? null,
   }, { onConflict: 'id' });
   if (error) console.error('[sync] upsertDelivery error:', error.message);
 }

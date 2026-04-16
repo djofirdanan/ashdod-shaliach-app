@@ -15,7 +15,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { ScheduledDeliveryPicker } from '../../../components/ui/ScheduledDeliveryPicker';
 import { DEFAULT_PRICING_ZONES } from '../../../utils/constants';
-import { Truck, Motorcycle, Scooter, Bicycle, Car, MapPin as PhosphorMapPin, Money, DeviceMobile, CheckCircle, CreditCard as PhosphorCreditCard, User as PhosphorUser, Rocket, Calendar, Plus, Minus } from '@phosphor-icons/react';
+import { Truck, Motorcycle, Scooter, Bicycle, Car, MapPin as PhosphorMapPin, Money, DeviceMobile, CheckCircle, CreditCard as PhosphorCreditCard, User as PhosphorUser, Rocket, Calendar, Plus, Minus, Timer } from '@phosphor-icons/react';
 
 // ── Wolt design tokens ──────────────────────────────────────────────────────
 const BLUE    = '#009DE0';
@@ -103,6 +103,10 @@ const NewDelivery: React.FC = () => {
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'bit'>('cash');
   const [customerPaid, setCustomerPaid] = useState(false);
 
+  // Prep time
+  const [prepMinutes, setPrepMinutes] = useState<number | undefined>(undefined);
+  const [prepCustom, setPrepCustom] = useState('');
+
   // Scheduled delivery
   const [isScheduled, setIsScheduled] = useState(false);
   const [scheduledAt, setScheduledAt] = useState<Date | null>(null);
@@ -173,6 +177,7 @@ const NewDelivery: React.FC = () => {
         paymentMethod,
         customerPaid,
         notificationSent: earlyNotify, // mark sent so scheduler skips it
+        prepMinutes: prepMinutes || undefined,
       });
 
       if (isNow) {
@@ -471,6 +476,82 @@ const NewDelivery: React.FC = () => {
                 onChange={e => setDescription(e.target.value)}
               />
             </div>
+          </div>
+
+          {/* ── Prep time ── */}
+          <div style={{ ...cardStyle }}>
+            <p style={{ fontSize: 13, fontWeight: 900, color: TEXT, margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Timer size={14} /> זמן הכנת ההזמנה
+            </p>
+            <p style={{ fontSize: 11, color: TEXT2, margin: '0 0 10px' }}>
+              כמה זמן צריך להכין את ההזמנה לפני שהשליח יגיע לאסוף?
+            </p>
+            {/* Quick chips */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+              {[5, 10, 20, 25].map(m => {
+                const sel = prepMinutes === m && !prepCustom;
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => { setPrepMinutes(m); setPrepCustom(''); }}
+                    style={{
+                      padding: '8px 14px',
+                      borderRadius: 10,
+                      border: `1.5px solid ${sel ? BLUE : BORDER}`,
+                      background: sel ? '#EAF7FD' : BG,
+                      color: sel ? BLUE : TEXT,
+                      fontSize: 13,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    {m} דק׳
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                onClick={() => { setPrepMinutes(undefined); setPrepCustom(''); }}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: 10,
+                  border: `1.5px solid ${!prepMinutes && !prepCustom ? BLUE : BORDER}`,
+                  background: !prepMinutes && !prepCustom ? '#EAF7FD' : BG,
+                  color: !prepMinutes && !prepCustom ? BLUE : TEXT2,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                }}
+              >
+                ללא
+              </button>
+            </div>
+            {/* Custom input */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                style={{ ...inputStyle, flex: 1, textAlign: 'center' }}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                placeholder="מספר דקות ידני..."
+                value={prepCustom}
+                onChange={e => {
+                  const v = e.target.value.replace(/[^0-9]/g, '');
+                  setPrepCustom(v);
+                  if (v) setPrepMinutes(parseInt(v));
+                  else setPrepMinutes(undefined);
+                }}
+              />
+              <span style={{ fontSize: 12, color: TEXT2, flexShrink: 0 }}>דקות</span>
+            </div>
+            {prepMinutes && (
+              <p style={{ margin: '8px 0 0', fontSize: 11, fontWeight: 700, color: BLUE, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <CheckCircle size={12} weight="fill" /> השליח יראה טיימר: {prepMinutes} דקות להכנה
+              </p>
+            )}
           </div>
 
           {/* ── Scheduled delivery ── */}

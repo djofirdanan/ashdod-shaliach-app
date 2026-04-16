@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { ArrowsClockwise } from '@phosphor-icons/react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { ArrowsClockwise, Timer } from '@phosphor-icons/react';
 import { useJsApiLoader } from '@react-google-maps/api';
 import DeliveryMap from '../../../components/DeliveryMap';
 import { useNavigate } from 'react-router-dom';
@@ -68,6 +68,87 @@ function formatDate(iso: string): string {
     day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
   });
 }
+
+// ─── Prep countdown hook ─────────────────────────────────────────
+function usePrepCountdown(prepReadyAt: string | undefined): {
+  label: string; secLeft: number; isPast: boolean; urgency: 'ok' | 'soon' | 'ready';
+} {
+  const [state, setState] = useState({ label: '', secLeft: 0, isPast: false, urgency: 'ok' as 'ok' | 'soon' | 'ready' });
+  useEffect(() => {
+    if (!prepReadyAt) { setState({ label: '', secLeft: 0, isPast: false, urgency: 'ok' }); return; }
+    const calc = () => {
+      const diff = new Date(prepReadyAt).getTime() - Date.now();
+      if (diff <= 0) {
+        setState({ label: 'מוכן לאיסוף!', secLeft: 0, isPast: true, urgency: 'ready' });
+        return;
+      }
+      const totalSec = Math.ceil(diff / 1000);
+      const m = Math.floor(totalSec / 60);
+      const s = totalSec % 60;
+      const label = `${m}:${String(s).padStart(2, '0')}`;
+      const urgency: 'ok' | 'soon' | 'ready' = m < 2 ? 'soon' : 'ok';
+      setState({ label, secLeft: totalSec, isPast: false, urgency });
+    };
+    calc();
+    const id = setInterval(calc, 1000);
+    return () => clearInterval(id);
+  }, [prepReadyAt]);
+  return state;
+}
+
+// ─── PrepCountdownBanner ──────────────────────────────────────────
+const PrepCountdownBanner: React.FC<{ prepReadyAt: string | undefined; prepMinutes: number | undefined }> = ({
+  prepReadyAt, prepMinutes,
+}) => {
+  const { label, isPast, urgency } = usePrepCountdown(prepReadyAt);
+  if (!prepReadyAt && !prepMinutes) return null;
+
+  const bgMap    = { ok: 'linear-gradient(135deg,#1d4ed8,#2563eb)', soon: 'linear-gradient(135deg,#d97706,#f59e0b)', ready: 'linear-gradient(135deg,#059669,#10b981)' };
+  const subLabel = isPast ? 'ההזמנה מוכנה לאיסוף עכשיו!' : urgency === 'soon' ? 'כמעט מוכן — התקרב לאיסוף' : 'ממתין להכנת ההזמנה';
+
+  return (
+    <div
+      className="rounded-2xl mb-2 overflow-hidden"
+      style={{ background: bgMap[urgency], boxShadow: '0 4px 16px rgba(0,0,0,0.18)' }}
+    >
+      <div className="px-4 py-4 flex items-center gap-3">
+        {/* Icon */}
+        <div
+          className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
+          style={{ background: 'rgba(255,255,255,0.18)' }}
+        >
+          {isPast
+            ? <CheckIcon className="w-6 h-6 text-white" />
+            : <Timer size={24} style={{ color: '#fff' }} />
+          }
+        </div>
+        {/* Text */}
+        <div className="flex-1 min-w-0">
+          <p className="text-white/80 text-[11px] font-semibold mb-0.5">{subLabel}</p>
+          {!isPast ? (
+            <p className="text-white font-black tabular-nums" style={{ fontSize: 38, lineHeight: 1 }}>
+              {label}
+            </p>
+          ) : (
+            <p className="text-white font-black text-[22px]">מוכן! 🎉</p>
+          )}
+          {!isPast && prepMinutes && (
+            <p className="text-white/60 text-[10px] mt-0.5">
+              זמן הכנה: {prepMinutes} דק׳
+            </p>
+          )}
+        </div>
+        {/* Pulsing dot — only when not ready */}
+        {!isPast && (
+          <div
+            className="w-3 h-3 rounded-full animate-pulse flex-shrink-0"
+            style={{ background: urgency === 'soon' ? '#fef08a' : 'rgba(255,255,255,0.7)' }}
+          />
+        )}
+      </div>
+    </div>
+  );
+};
 
 // ─── DistanceInfo ────────────────────────────────────────────────
 const LIBRARIES: ('places' | 'geometry')[] = ['places', 'geometry'];
@@ -355,6 +436,13 @@ const DeliveryActionSheet: React.FC<ActionSheetProps> = ({
             </button>
           </div>
         </div>
+
+        {/* ── Prep countdown banner — shown when status=accepted ── */}
+        {d.status === 'accepted' && d.prepReadyAt && (
+          <div className="mx-5 mb-1">
+            <PrepCountdownBanner prepReadyAt={d.prepReadyAt} prepMinutes={d.prepMinutes} />
+          </div>
+        )}
 
         {/* Earnings banner */}
         <div className="mx-5 mb-1 rounded-2xl py-3 text-center" style={{ background: 'linear-gradient(135deg, #047857, #059669)' }}>
@@ -712,6 +800,7 @@ const CourierDeliveries: React.FC = () => {
 
   const mountedRef = useRef(false);
   const prevStatusMapRef = useRef<Map<string, string>>(new Map());
+  const prevPrepReadyAtRef = useRef<Map<string, string | undefined>>(new Map());
 
   /**
    * Full load: sync both the global deliveries AND courier-specific deliveries
@@ -733,13 +822,36 @@ const CourierDeliveries: React.FC = () => {
     const d = getDeliveriesByCourier(courierId);
     setDeliveries(d.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
     // Auto-open action sheet when a delivery first becomes accepted
+    // Also detect prep time changes and show notification banner
     d.forEach(del => {
-      const prev = prevStatusMapRef.current.get(del.id);
-      if (mountedRef.current && del.status === 'accepted' && prev && prev !== 'accepted') {
+      const prevStatus   = prevStatusMapRef.current.get(del.id);
+      const prevPrepAt   = prevPrepReadyAtRef.current.get(del.id);
+
+      if (mountedRef.current && del.status === 'accepted' && prevStatus && prevStatus !== 'accepted') {
         setTab('active');
         setActiveSheet(del);
       }
+      // Notify courier when business updates prep time on an active delivery
+      if (mountedRef.current && del.prepReadyAt && del.prepReadyAt !== prevPrepAt && prevPrepAt !== undefined) {
+        const readyTime = new Date(del.prepReadyAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+        toast(
+          `⏱ העסק עדכן זמן הכנה — מוכן בשעה ${readyTime}`,
+          {
+            duration: 8000,
+            style: {
+              background: '#1d4ed8',
+              color: '#fff',
+              fontWeight: 700,
+              borderRadius: 14,
+              direction: 'rtl',
+              fontSize: 14,
+            },
+          }
+        );
+      }
+
       prevStatusMapRef.current.set(del.id, del.status);
+      prevPrepReadyAtRef.current.set(del.id, del.prepReadyAt);
     });
     mountedRef.current = true;
     // Keep activeSheet in sync if it's open
