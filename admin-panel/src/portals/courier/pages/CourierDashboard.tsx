@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Truck, Package, MapPin as PhosphorMapPin, Money } from '@phosphor-icons/react';
+import { Truck, Package, MapPin as PhosphorMapPin, Money, Timer } from '@phosphor-icons/react';
+import { usePrepCountdown } from '../../../utils/usePrepCountdown';
 import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../../../store';
@@ -65,6 +66,37 @@ interface PendingCandidacy {
   notifId:    string;
   joinedAt?:  string;  // written when joining so we can compute wait time
 }
+
+// ── Prep timer pill (used inside active delivery card) ─────────
+const PrepTimerPill: React.FC<{ prepReadyAt: string | undefined; prepMinutes: number | undefined }> = ({
+  prepReadyAt, prepMinutes,
+}) => {
+  const prep = usePrepCountdown(prepReadyAt);
+  if (!prepReadyAt && !prepMinutes) return null;
+
+  const bg     = prep.urgency === 'ready' ? 'rgba(16,185,129,0.25)' : prep.urgency === 'soon' ? 'rgba(251,191,36,0.25)' : 'rgba(255,255,255,0.18)';
+  const border = prep.urgency === 'ready' ? 'rgba(16,185,129,0.5)' : prep.urgency === 'soon' ? 'rgba(251,191,36,0.5)' : 'rgba(255,255,255,0.3)';
+  const color  = '#fff';
+
+  return (
+    <div
+      className="mx-4 mb-2 rounded-xl px-3 py-2 flex items-center justify-between"
+      style={{ background: bg, border: `1px solid ${border}` }}
+    >
+      <div className="flex items-center gap-2">
+        <Timer size={14} style={{ color }} />
+        <span className="text-[11px] font-semibold" style={{ color: 'rgba(255,255,255,0.85)' }}>
+          {prep.isPast ? 'ההזמנה מוכנה לאיסוף!' : 'מוכן לאיסוף בעוד'}
+        </span>
+      </div>
+      {!prep.isPast ? (
+        <span className="text-[18px] font-black tabular-nums" style={{ color }}>{prep.label}</span>
+      ) : (
+        <span className="text-[14px] font-black" style={{ color }}>עכשיו! 🎉</span>
+      )}
+    </div>
+  );
+};
 
 function getGreeting(): string {
   const h = new Date().getHours();
@@ -380,6 +412,11 @@ const CourierDashboard: React.FC = () => {
               </div>
               <span className="text-white/70 text-[20px]">›</span>
             </div>
+            {/* Prep countdown — only while heading to pickup */}
+            {activeBanner.status === 'accepted' && (
+              <PrepTimerPill prepReadyAt={activeBanner.prepReadyAt} prepMinutes={activeBanner.prepMinutes} />
+            )}
+
             {/* Addresses */}
             <div className="mx-4 mb-3 rounded-xl p-3 space-y-2" style={{ background: 'rgba(0,0,0,0.15)' }}>
               <div className="flex items-start gap-2">

@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { usePrepCountdown } from '../../utils/usePrepCountdown';
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import type { RootState, AppDispatch } from '../../store';
@@ -32,6 +33,59 @@ import {
 import toast from 'react-hot-toast';
 
 const BLUE = '#009DE0';
+
+// ── Prep timer shown in the active-delivery strip ─────────────────────────────
+const StripPrepTimer: React.FC<{ prepReadyAt: string | undefined; prepMinutes: number | undefined }> = ({
+  prepReadyAt, prepMinutes,
+}) => {
+  const prep = usePrepCountdown(prepReadyAt);
+  if (!prepReadyAt && !prepMinutes) return null;
+
+  return (
+    <span
+      className="flex-shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-lg"
+      style={{ background: prep.urgency === 'ready' ? 'rgba(16,185,129,0.25)' : 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.25)' }}
+    >
+      {/* Timer icon */}
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+      </svg>
+      <span className="text-white font-black text-[12px] tabular-nums">
+        {prep.isPast ? '✓ מוכן' : prep.label}
+      </span>
+    </span>
+  );
+};
+
+// ── Prep timer for the expanded strip panel ────────────────────────────────────
+const ExpandedPrepTimer: React.FC<{ prepReadyAt: string | undefined; prepMinutes: number | undefined }> = ({
+  prepReadyAt, prepMinutes,
+}) => {
+  const prep = usePrepCountdown(prepReadyAt);
+  if (!prepReadyAt && !prepMinutes) return null;
+
+  const bg = prep.urgency === 'ready'
+    ? 'linear-gradient(135deg,#059669,#10b981)'
+    : prep.urgency === 'soon'
+      ? 'linear-gradient(135deg,#d97706,#f59e0b)'
+      : 'linear-gradient(135deg,#1d4ed8,#2563eb)';
+
+  return (
+    <div className="mx-4 mb-3 rounded-xl px-3 py-2 flex items-center justify-between" style={{ background: bg }}>
+      <div>
+        <p className="text-white/80 text-[10px] font-semibold">
+          {prep.isPast ? 'ההזמנה מוכנה!' : 'הכנת ההזמנה — מוכן בשעה ' + prep.readyTime}
+        </p>
+        <p className="text-white font-black tabular-nums" style={{ fontSize: prep.isPast ? 16 : 28, lineHeight: 1.1 }}>
+          {prep.isPast ? 'מוכן לאיסוף! 🎉' : prep.label}
+        </p>
+      </div>
+      {!prep.isPast && (
+        <div className="w-2.5 h-2.5 rounded-full animate-pulse flex-shrink-0" style={{ background: 'rgba(255,255,255,0.7)' }} />
+      )}
+    </div>
+  );
+};
 
 const CourierLayout: React.FC = () => {
   const navigate = useNavigate();
@@ -687,6 +741,14 @@ const CourierLayout: React.FC = () => {
                   </button>
                 </div>
 
+                {/* Prep countdown in expanded panel */}
+                {activeDelivery.status === 'accepted' && (
+                  <ExpandedPrepTimer
+                    prepReadyAt={activeDelivery.prepReadyAt}
+                    prepMinutes={activeDelivery.prepMinutes}
+                  />
+                )}
+
                 {/* Addresses */}
                 <div className="px-4 py-3 space-y-2">
                   <div className="flex items-start gap-2">
@@ -737,7 +799,7 @@ const CourierLayout: React.FC = () => {
 
           {/* Compact strip (always visible) */}
           <div
-            className="mx-3 mb-1.5 rounded-2xl flex items-center gap-3 px-3 py-2.5 cursor-pointer"
+            className="mx-3 mb-1.5 rounded-2xl flex items-center gap-2 px-3 py-2.5 cursor-pointer"
             style={{
               background: activeDelivery.status === 'accepted'
                 ? 'linear-gradient(90deg,#0077AA,#009DE0)'
@@ -759,6 +821,14 @@ const CourierLayout: React.FC = () => {
                 {activeDelivery.status === 'accepted' ? activeDelivery.pickupAddress : activeDelivery.dropAddress}
               </p>
             </div>
+
+            {/* Prep timer pill — only shown when heading to pickup */}
+            {activeDelivery.status === 'accepted' && (
+              <StripPrepTimer
+                prepReadyAt={activeDelivery.prepReadyAt}
+                prepMinutes={activeDelivery.prepMinutes}
+              />
+            )}
 
             {/* Quick-action button */}
             <button
