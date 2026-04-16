@@ -3,11 +3,18 @@ import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import type { RootState, AppDispatch } from '../../store';
 import { logoutUser } from '../../store/authSlice';
-import { getPendingNotifications, getCourier, updateCourier, updateCourierLocation, getDeliveriesByCourier, getDeliveries, getOrCreateConversation, updateDelivery, getUnreadCount, getOrCreateSupportTicket, getSupportMessages, getConversations } from '../../services/storage.service';
+import { getPendingNotifications, getCourier, updateCourier, updateCourierLocation, getDeliveriesByCourier, getDeliveries, getOrCreateConversation, updateDelivery, getUnreadCount, getOrCreateSupportTicket, getSupportMessages, getConversations, formatOrderNumber, type StoredDelivery } from '../../services/storage.service';
 import { playNewMessage } from '../../utils/sounds';
 import { pingCandidateHeartbeat, getCandidacyStatus, withdrawFromQueue, syncConversationsDown, syncSupportMessagesDown } from '../../services/sync.service';
 import { supabase } from '../../lib/supabase';
 import { DeliveryNotificationOverlay } from '../../components/DeliveryNotificationOverlay';
+import {
+  House,
+  Bell,
+  Truck as PhosphorTruck,
+  ChatCircle,
+  User,
+} from '@phosphor-icons/react';
 import {
   HomeIcon,
   BellIcon,
@@ -48,6 +55,11 @@ const CourierLayout: React.FC = () => {
   const [candidacyBanner, setCandidacyBanner] = useState<CandidacyBanner | null>(null);
   const [withdrawing,     setWithdrawing]     = useState(false);
 
+  // ── Active delivery strip ─────────────────────────────────────
+  const [activeDelivery, setActiveDelivery] = useState<StoredDelivery | null>(null);
+  const [stripUpdating,  setStripUpdating]  = useState(false);
+  const [stripExpanded,  setStripExpanded]  = useState(false);
+
   // ── New-message toasts ───────────────────────────────────────
   interface MsgToast { id: string; name: string; preview: string; path: string; }
   const [msgToasts, setMsgToasts]   = useState<MsgToast[]>([]);
@@ -60,6 +72,19 @@ const CourierLayout: React.FC = () => {
     const c = getCourier(courierId);
     setIsAvailable(c?.isAvailable ?? true);
     if (c?.name) setCourierName(c.name);
+  }, [courierId]);
+
+  // ── Poll for active delivery to power the persistent strip ──────
+  useEffect(() => {
+    const check = () => {
+      if (!courierId) return;
+      const mine = getDeliveriesByCourier(courierId);
+      const active = mine.find(d => d.status === 'accepted' || d.status === 'picked_up') ?? null;
+      setActiveDelivery(active);
+    };
+    check();
+    const id = setInterval(check, 3_000);
+    return () => clearInterval(id);
   }, [courierId]);
 
   useEffect(() => {
@@ -156,15 +181,15 @@ const CourierLayout: React.FC = () => {
           updateDelivery(deliveryId, { status: 'accepted', courierId, acceptedAt: new Date().toISOString() });
           const conv = getOrCreateConversation(delivery.businessId, courierId);
           localStorage.removeItem('pending_candidacy');
-          toast.success('🎉 אושרת על ידי העסק!');
+          toast.success('אושרת על ידי העסק!');
           navigate(`/courier/chat?convId=${conv.id}&deliveryId=${deliveryId}`);
         } else {
           localStorage.removeItem('pending_candidacy');
-          toast.success('🎉 אושרת על ידי העסק!');
+          toast.success('אושרת על ידי העסק!');
         }
       } else if (status === 'rejected') {
         localStorage.removeItem('pending_candidacy');
-        toast.error('❌ העסק בחר שליח אחר, המשך לחפש');
+        toast.error('העסק בחר שליח אחר, המשך לחפש');
       }
     };
     const id = setInterval(tick, 20_000);
@@ -289,13 +314,33 @@ const CourierLayout: React.FC = () => {
     return () => timers.forEach(clearTimeout);
   }, [msgToasts]);
 
+  // ── Strip quick action: advance delivery status ───────────────
+  const handleStripAction = async () => {
+    if (!activeDelivery || stripUpdating) return;
+    setStripUpdating(true);
+    try {
+      if (activeDelivery.status === 'accepted') {
+        updateDelivery(activeDelivery.id, { status: 'picked_up', pickedUpAt: new Date().toISOString() });
+        setActiveDelivery(d => d ? { ...d, status: 'picked_up' } : null);
+        toast.success('אספת את החבילה!');
+      } else if (activeDelivery.status === 'picked_up') {
+        updateDelivery(activeDelivery.id, { status: 'delivered', deliveredAt: new Date().toISOString() });
+        setActiveDelivery(null);
+        toast.success('מסרת את החבילה בהצלחה!');
+      }
+      setStripExpanded(false);
+    } finally {
+      setStripUpdating(false);
+    }
+  };
+
   const confirmToggleAvailability = () => {
     if (!courierId) return;
     const next = !isAvailable;
     updateCourier(courierId, { isAvailable: next });
     setIsAvailable(next);
     setShowAvailConfirm(false);
-    toast.success(next ? '🟢 אתה זמין לקבל משלוחים' : '🔴 סימנת את עצמך כלא זמין');
+    toast.success(next ? 'אתה זמין לקבל משלוחים' : 'סימנת את עצמך כלא זמין');
   };
 
   const handleLogout = async () => {
@@ -304,11 +349,11 @@ const CourierLayout: React.FC = () => {
   };
 
   const navItems = [
-    { label: 'ראשי',     path: '/courier/dashboard',  icon: HomeIcon,                iconSolid: HomeIconSolid,  badge: 0 },
-    { label: 'פנויים',   path: '/courier/available',  icon: BellIcon,               iconSolid: BellIconSolid,  badge: pendingCount },
-    { label: 'משלוחים', path: '/courier/deliveries', icon: TruckIcon,              iconSolid: TruckIconSolid, badge: 0 },
-    { label: 'צ׳אט',    path: '/courier/chat',       icon: ChatBubbleLeftRightIcon, iconSolid: ChatIconSolid,  badge: chatUnread },
-    { label: 'פרופיל',  path: '/courier/profile',    icon: UserCircleIcon,         iconSolid: UserIconSolid,  badge: 0 },
+    { label: 'ראשי',     path: '/courier/dashboard',  icon: HomeIcon,                iconSolid: HomeIconSolid,  phosphorIcon: House,        badge: 0 },
+    { label: 'פנויים',   path: '/courier/available',  icon: BellIcon,               iconSolid: BellIconSolid,  phosphorIcon: Bell,         badge: pendingCount },
+    { label: 'משלוחים', path: '/courier/deliveries', icon: TruckIcon,              iconSolid: TruckIconSolid, phosphorIcon: PhosphorTruck, badge: 0 },
+    { label: 'צ׳אט',    path: '/courier/chat',       icon: ChatBubbleLeftRightIcon, iconSolid: ChatIconSolid,  phosphorIcon: ChatCircle,   badge: chatUnread },
+    { label: 'פרופיל',  path: '/courier/profile',    icon: UserCircleIcon,         iconSolid: UserIconSolid,  phosphorIcon: User,         badge: 0 },
   ];
 
   return (
@@ -453,14 +498,224 @@ const CourierLayout: React.FC = () => {
         </div>
       )}
 
-      {/* ── Page content ── */}
-      <main className="flex-1 overflow-y-auto pb-[72px]">
-        <Outlet />
-      </main>
+      {/* ── Body: sidebar (desktop) + main content ── */}
+      <div className="flex flex-1 overflow-hidden">
 
-      {/* ── Bottom navigation ── */}
+        {/* ── Desktop sidebar (lg+) ── */}
+        <aside
+          className="hidden lg:flex flex-col flex-shrink-0 sticky top-[60px] overflow-y-auto"
+          style={{
+            width: 220,
+            height: 'calc(100vh - 60px)',
+            background: '#FFFFFF',
+            borderLeft: '1px solid #E8E8E8',
+            boxShadow: '-2px 0 12px rgba(0,0,0,0.04)',
+          }}
+        >
+          {/* Nav items */}
+          <nav className="flex flex-col gap-1 p-3 flex-1">
+            {navItems.map(({ label, path, phosphorIcon: PhosphorIcon, badge }) => {
+              const active = location.pathname === path ||
+                (path === '/courier/dashboard' && location.pathname === '/courier');
+              return (
+                <Link
+                  key={path}
+                  to={path}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-2xl transition-all duration-150 cursor-pointer"
+                  style={{
+                    background: active ? 'linear-gradient(135deg, #533afd, #ea2261)' : 'transparent',
+                    color: active ? '#FFFFFF' : '#757575',
+                    fontWeight: active ? 800 : 600,
+                  }}
+                  onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = '#F4F6FF'; }}
+                  onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                >
+                  <div className="relative flex-shrink-0">
+                    <PhosphorIcon size={20} weight={active ? 'fill' : 'regular'} />
+                    {badge > 0 && (
+                      <span
+                        className="absolute -top-1.5 -left-1.5 min-w-[16px] h-4 px-0.5 rounded-full flex items-center justify-center text-[9px] text-white font-bold"
+                        style={{ background: '#E23437' }}
+                      >
+                        {badge > 9 ? '9+' : badge}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[14px]">{label}</span>
+                </Link>
+              );
+            })}
+          </nav>
+
+          {/* Sidebar footer: availability status */}
+          <div className="p-3 border-t" style={{ borderColor: '#E8E8E8' }}>
+            <button
+              onClick={() => setShowAvailConfirm(true)}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer transition-all hover:opacity-80"
+              style={{ background: isAvailable ? '#E8F8F0' : '#FFF0F0', border: `1px solid ${isAvailable ? '#1BA67230' : '#E2343730'}` }}
+            >
+              <span
+                className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                style={{ background: isAvailable ? '#1BA672' : '#E23437' }}
+              />
+              <span className="text-[12px] font-bold" style={{ color: isAvailable ? '#1BA672' : '#E23437' }}>
+                {isAvailable ? 'זמין לקבל משלוחים' : 'לא זמין כרגע'}
+              </span>
+            </button>
+          </div>
+        </aside>
+
+        {/* ── Page content ── */}
+        <main className={`flex-1 overflow-y-auto lg:pb-4 ${activeDelivery ? 'pb-[136px]' : 'pb-[72px]'}`}>
+          <Outlet />
+        </main>
+      </div>
+
+      {/* ── Persistent active-delivery strip (above bottom nav) ── */}
+      {activeDelivery && (
+        <div
+          className="fixed left-0 right-0 z-[45] lg:hidden"
+          style={{ bottom: 68 }}
+        >
+          {/* Expanded panel */}
+          {stripExpanded && (
+            <>
+              <div
+                className="fixed inset-0 z-[-1]"
+                style={{ background: 'rgba(0,0,0,0.35)' }}
+                onClick={() => setStripExpanded(false)}
+              />
+              <div
+                dir="rtl"
+                className="mx-3 mb-2 rounded-2xl overflow-hidden"
+                style={{
+                  background: '#fff',
+                  boxShadow: '0 -4px 24px rgba(0,0,0,0.18)',
+                  animation: 'slideUp 0.22s ease',
+                }}
+              >
+                {/* Header */}
+                <div
+                  className="flex items-center justify-between px-4 py-3"
+                  style={{
+                    background: activeDelivery.status === 'accepted'
+                      ? 'linear-gradient(90deg,#0077AA,#009DE0)'
+                      : 'linear-gradient(90deg,#d97706,#F58F1F)',
+                    borderBottom: '1px solid rgba(255,255,255,0.15)',
+                  }}
+                >
+                  <div>
+                    <p className="text-white font-black text-[15px]">
+                      {activeDelivery.status === 'accepted' ? 'בדרך לאיסוף' : 'בדרך ללקוח'}
+                    </p>
+                    <p className="text-[11px]" style={{ color: 'rgba(255,255,255,0.8)' }}>
+                      {formatOrderNumber(activeDelivery.orderNumber)}
+                      {activeDelivery.businessName ? ` · ${activeDelivery.businessName}` : ''}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setStripExpanded(false)}
+                    className="w-8 h-8 rounded-full flex items-center justify-center"
+                    style={{ background: 'rgba(255,255,255,0.2)' }}
+                  >
+                    <span style={{ color: '#fff', fontSize: 16, lineHeight: 1 }}>✕</span>
+                  </button>
+                </div>
+
+                {/* Addresses */}
+                <div className="px-4 py-3 space-y-2">
+                  <div className="flex items-start gap-2">
+                    <span className="w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-white text-[10px] font-black mt-0.5" style={{ background: '#1BA672' }}>א</span>
+                    <div>
+                      <p className="text-[10px]" style={{ color: '#9CA3AF' }}>איסוף</p>
+                      <p className="text-[13px] font-semibold" style={{ color: '#202125' }}>{activeDelivery.pickupAddress}</p>
+                    </div>
+                  </div>
+                  <div className="w-px h-3 mr-2.5" style={{ background: '#E8E8E8' }} />
+                  <div className="flex items-start gap-2">
+                    <span className="w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-white text-[10px] font-black mt-0.5" style={{ background: '#E23437' }}>ב</span>
+                    <div>
+                      <p className="text-[10px]" style={{ color: '#9CA3AF' }}>מסירה</p>
+                      <p className="text-[13px] font-semibold" style={{ color: '#202125' }}>{activeDelivery.dropAddress}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action button */}
+                <div className="px-4 pb-4">
+                  <button
+                    onClick={handleStripAction}
+                    disabled={stripUpdating}
+                    className="w-full py-3.5 rounded-2xl font-black text-[14px] text-white flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-60"
+                    style={{
+                      background: activeDelivery.status === 'accepted'
+                        ? 'linear-gradient(135deg,#F58F1F,#d97706)'
+                        : 'linear-gradient(135deg,#1BA672,#16a34a)',
+                      boxShadow: activeDelivery.status === 'accepted'
+                        ? '0 4px 14px rgba(245,143,31,0.4)'
+                        : '0 4px 14px rgba(27,166,114,0.4)',
+                    }}
+                  >
+                    {stripUpdating ? '...' : activeDelivery.status === 'accepted' ? 'אספתי את החבילה' : 'מסרתי ללקוח ✓'}
+                  </button>
+                  <button
+                    onClick={() => { setStripExpanded(false); navigate('/courier/deliveries'); }}
+                    className="w-full mt-2 py-2.5 rounded-2xl text-[13px] font-semibold"
+                    style={{ background: 'transparent', color: '#009DE0' }}
+                  >
+                    פרטים מלאים
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Compact strip (always visible) */}
+          <div
+            className="mx-3 mb-1.5 rounded-2xl flex items-center gap-3 px-3 py-2.5 cursor-pointer"
+            style={{
+              background: activeDelivery.status === 'accepted'
+                ? 'linear-gradient(90deg,#0077AA,#009DE0)'
+                : 'linear-gradient(90deg,#d97706,#F58F1F)',
+              boxShadow: '0 -2px 16px rgba(0,0,0,0.15)',
+            }}
+            onClick={() => setStripExpanded(v => !v)}
+          >
+            {/* Pulsing dot */}
+            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 animate-pulse" style={{ background: 'rgba(255,255,255,0.8)' }} />
+
+            {/* Text */}
+            <div className="flex-1 min-w-0">
+              <p className="text-white font-black text-[13px] leading-tight truncate">
+                {activeDelivery.status === 'accepted' ? 'בדרך לאיסוף' : 'בדרך ללקוח'}
+                {activeDelivery.orderNumber ? ` · ${formatOrderNumber(activeDelivery.orderNumber)}` : ''}
+              </p>
+              <p className="text-[11px] truncate" style={{ color: 'rgba(255,255,255,0.75)' }}>
+                {activeDelivery.status === 'accepted' ? activeDelivery.pickupAddress : activeDelivery.dropAddress}
+              </p>
+            </div>
+
+            {/* Quick-action button */}
+            <button
+              onClick={(e) => { e.stopPropagation(); handleStripAction(); }}
+              disabled={stripUpdating}
+              className="flex-shrink-0 px-3 py-2 rounded-xl font-black text-[12px] transition-all active:scale-95 disabled:opacity-60"
+              style={{
+                background: 'rgba(255,255,255,0.2)',
+                color: '#fff',
+                border: '1.5px solid rgba(255,255,255,0.4)',
+                backdropFilter: 'blur(4px)',
+              }}
+            >
+              {stripUpdating ? '...' : activeDelivery.status === 'accepted' ? 'אספתי ✓' : 'מסרתי ✓'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Bottom navigation (mobile only, hidden on lg+) ── */}
       <nav
-        className="nav-glass fixed bottom-0 right-0 left-0 z-40 flex items-center justify-around px-2"
+        className="nav-glass fixed bottom-0 right-0 left-0 z-40 flex items-center justify-around px-2 lg:hidden"
         style={{ height: 68 }}
       >
         {navItems.map(({ label, path, icon: Icon, iconSolid: IconSolid, badge }) => {
@@ -512,58 +767,68 @@ const CourierLayout: React.FC = () => {
       {/* ── Delivery popup overlay ── */}
       <DeliveryNotificationOverlay />
 
-      {/* ── Availability confirmation dialog ── */}
+      {/* ── Availability bottom sheet ── */}
       {showAvailConfirm && (
-        <div
-          className="fixed inset-0 z-[200] flex items-end justify-center"
-          style={{ background: 'rgba(0,0,0,0.45)' }}
-          onClick={e => { if (e.target === e.currentTarget) setShowAvailConfirm(false); }}
-        >
+        <>
+          <div className="fixed inset-0 z-50" style={{ background: 'rgba(0,0,0,0.45)' }} onClick={() => setShowAvailConfirm(false)} />
           <div
-            className="w-full max-w-lg rounded-t-3xl p-6"
-            style={{ background: '#fff' }}
             dir="rtl"
+            className="fixed bottom-0 right-0 left-0 z-50 rounded-t-3xl px-5 pt-4 pb-10"
+            style={{ background: '#fff', boxShadow: '0 -8px 40px rgba(0,0,0,0.2)', animation: 'slideUp 0.25s ease' }}
           >
-            {/* Handle bar */}
-            <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#E8E8E8' }} />
-
-            <div className="flex items-center gap-3 mb-4">
-              <div
-                className="w-12 h-12 rounded-2xl flex items-center justify-center text-[22px]"
-                style={{ background: isAvailable ? '#FFF0F0' : '#E8F8F0' }}
-              >
-                {isAvailable ? '🔴' : '🟢'}
-              </div>
-              <div>
-                <h3 className="text-[17px] font-black" style={{ color: '#202125' }}>
-                  {isAvailable ? 'סימון כלא זמין?' : 'סימון כזמין?'}
-                </h3>
-                <p className="text-[13px]" style={{ color: '#757575' }}>
-                  {isAvailable
-                    ? 'לא תקבל משלוחים חדשים'
-                    : 'תתחיל לקבל התראות על משלוחים'}
-                </p>
-              </div>
+            <div className="flex justify-center mb-4">
+              <div className="w-10 h-1 rounded-full" style={{ background: '#E8E8E8' }} />
             </div>
-
-            <div className="flex gap-3 mt-2">
+            <h3 style={{ fontSize: 18, fontWeight: 900, color: '#202125', textAlign: 'center', marginBottom: 6 }}>
+              שנה סטטוס זמינות
+            </h3>
+            <p style={{ fontSize: 13, color: '#757575', textAlign: 'center', marginBottom: 24 }}>
+              {isAvailable ? 'עבור למצב לא זמין — לא תקבל משלוחים חדשים' : 'עבור למצב זמין — תקבל משלוחים חדשים'}
+            </p>
+            <div className="flex flex-col gap-3">
               <button
-                onClick={() => setShowAvailConfirm(false)}
-                className="flex-1 py-3.5 rounded-2xl font-bold text-[14px]"
-                style={{ background: '#F4F4F4', color: '#757575' }}
+                onClick={() => {
+                  if (!courierId) return;
+                  updateCourier(courierId, { isAvailable: true });
+                  setIsAvailable(true);
+                  setShowAvailConfirm(false);
+                  toast.success('אתה זמין לקבל משלוחים');
+                }}
+                style={{
+                  padding: '16px', borderRadius: 16, border: 'none', width: '100%',
+                  background: !isAvailable ? 'linear-gradient(135deg, #1BA672, #16a34a)' : '#F4F4F4',
+                  color: !isAvailable ? '#fff' : '#757575',
+                  fontWeight: 800, fontSize: 15, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                }}
               >
-                ביטול
+                זמין למשלוחים
               </button>
               <button
-                onClick={confirmToggleAvailability}
-                className="flex-1 py-3.5 rounded-2xl font-bold text-[14px] text-white"
-                style={{ background: isAvailable ? '#E23437' : '#1BA672' }}
+                onClick={() => {
+                  if (!courierId) return;
+                  updateCourier(courierId, { isAvailable: false });
+                  setIsAvailable(false);
+                  setShowAvailConfirm(false);
+                  toast.success('סימנת את עצמך כלא זמין');
+                }}
+                style={{
+                  padding: '16px', borderRadius: 16, width: '100%',
+                  background: isAvailable ? '#E234371A' : '#F4F4F4',
+                  color: isAvailable ? '#E23437' : '#757575',
+                  fontWeight: 800, fontSize: 15, cursor: 'pointer',
+                  border: isAvailable ? '1.5px solid #E2343740' : '1.5px solid #E8E8E8',
+                }}
               >
-                {isAvailable ? 'אשר — לא זמין' : 'אשר — זמין'}
+                לא זמין
+              </button>
+              <button onClick={() => setShowAvailConfirm(false)} style={{ padding: '12px', background: 'none', border: 'none', color: '#757575', fontSize: 14, cursor: 'pointer' }}>
+                ביטול
               </button>
             </div>
           </div>
-        </div>
+          <style>{`@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }`}</style>
+        </>
       )}
     </div>
   );
