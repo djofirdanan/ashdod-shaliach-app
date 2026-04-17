@@ -2,38 +2,80 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import {
-  TruckIcon,
   MapPinIcon,
   XMarkIcon,
-  CheckIcon,
-  InformationCircleIcon,
+  ClockIcon,
 } from '@heroicons/react/24/outline';
-import { Siren, Hand } from '@phosphor-icons/react';
+import { Siren, Timer } from '@phosphor-icons/react';
 import type { RootState } from '../store';
 import * as storageService from '../services/storage.service';
 import type { DeliveryNotification } from '../services/storage.service';
 import { syncNotificationsDown, joinCandidatesQueue, syncDeliveriesDown } from '../services/sync.service';
 import { supabase } from '../lib/supabase';
 import { playNewDelivery } from '../utils/sounds';
-import { Modal } from './ui/Modal';
 import toast from 'react-hot-toast';
+import { usePrepCountdown } from '../utils/usePrepCountdown';
+
+// ETA options the courier can pick
+const ETA_OPTIONS = [5, 10, 15, 20, 25, 30, 45, 60];
+
+// ─── Prep time row (only when delivery has prepReadyAt) ─────────
+const PrepTimeRow: React.FC<{ prepReadyAt?: string; prepMinutes?: number }> = ({
+  prepReadyAt, prepMinutes,
+}) => {
+  const prep = usePrepCountdown(prepReadyAt);
+  if (!prepReadyAt && !prepMinutes) return null;
+
+  return (
+    <div
+      className="flex items-center justify-between px-3 py-2 rounded-xl"
+      style={{
+        background: prep.urgency === 'ready'
+          ? 'rgba(16,185,129,0.12)'
+          : 'rgba(0,157,224,0.10)',
+        border: `1px solid ${prep.urgency === 'ready' ? 'rgba(16,185,129,0.25)' : 'rgba(0,157,224,0.2)'}`,
+      }}
+    >
+      <div className="flex items-center gap-1.5">
+        <Timer size={13} style={{ color: prep.urgency === 'ready' ? '#10b981' : '#009DE0' }} />
+        <span className="text-[11px] font-semibold" style={{ color: prep.urgency === 'ready' ? '#065f46' : '#0c4a6e' }}>
+          {prep.isPast ? 'מוכן לאיסוף עכשיו!' : 'ההזמנה תהיה מוכנה בערך בעוד:'}
+        </span>
+      </div>
+      {!prep.isPast && (
+        <span className="text-[14px] font-black tabular-nums" style={{ color: '#009DE0' }}>
+          {prep.label}
+        </span>
+      )}
+    </div>
+  );
+};
 
 // ─── Single notification card ─────────────────────────────────
 const NotifCard: React.FC<{
   notif: DeliveryNotification;
   courierId: string;
-  onAccept: () => void;
+  onAccept: (etaMinutes: number) => void;
   onDismiss: () => void;
-  onDetails: () => void;
   index: number;
-}> = ({ notif, onAccept, onDismiss, onDetails, index }) => {
+}> = ({ notif, onAccept, onDismiss, index }) => {
   const [countdown, setCountdown] = useState(60);
-  const [exiting, setExiting] = useState(false);
+  const [exiting,   setExiting]   = useState(false);
+  const [phase,     setPhase]     = useState<'default' | 'eta'>('default');
+
+  // Look up delivery for prep time info
+  const delivery = storageService.getDeliveries().find(
+    d => d.id === notif.deliveryId || (
+      d.businessId === notif.businessId &&
+      d.pickupAddress === notif.pickupAddress &&
+      d.dropAddress === notif.dropAddress
+    )
+  );
 
   useEffect(() => {
     const t = setInterval(() => {
-      setCountdown((c) => {
-        if (c <= 1) { clearInterval(t); setExiting(true); setTimeout(onDismiss, 400); return 0; }
+      setCountdown(c => {
+        if (c <= 1) { clearInterval(t); setExiting(true); setTimeout(onDismiss, 350); return 0; }
         return c - 1;
       });
     }, 1000);
@@ -43,233 +85,195 @@ const NotifCard: React.FC<{
   const age = Math.round((Date.now() - new Date(notif.createdAt).getTime()) / 1000);
   const progressPct = (countdown / 60) * 100;
 
+  const dismiss = () => { setExiting(true); setTimeout(onDismiss, 350); };
+
   return (
     <div
       className="relative w-full"
       style={{
         animation: exiting
-          ? 'slideOut 0.4s ease-in forwards'
-          : 'slideIn 0.5s cubic-bezier(0.34,1.56,0.64,1) forwards',
-        transform: `scale(${1 - index * 0.025}) translateY(${index * 6}px)`,
+          ? 'notifOut 0.35s ease-in forwards'
+          : 'notifIn 0.45s cubic-bezier(0.34,1.56,0.64,1) forwards',
+        transform: `scale(${1 - index * 0.03}) translateY(${index * 8}px)`,
         zIndex: 200 - index,
-        opacity: exiting ? 0 : undefined,
       }}
     >
       <div
-        className="rounded-3xl overflow-hidden"
+        className="rounded-2xl overflow-hidden"
         style={{
-          background: 'linear-gradient(160deg, #0d1f3c 0%, #0f2044 55%, #1a1050 100%)',
-          border: '1.5px solid rgba(83,58,253,0.5)',
-          boxShadow: '0 32px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(83,58,253,0.2), inset 0 1px 0 rgba(255,255,255,0.08)',
+          background: '#FFFFFF',
+          border: '1.5px solid rgba(0,157,224,0.25)',
+          boxShadow: '0 12px 40px rgba(0,0,0,0.18), 0 2px 8px rgba(0,157,224,0.12)',
         }}
       >
-        {/* Countdown bar */}
-        <div className="h-1 w-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
+        {/* Progress bar */}
+        <div className="h-1 w-full" style={{ background: '#F0F0F0' }}>
           <div
-            className="h-full"
+            className="h-full transition-all"
             style={{
               width: `${progressPct}%`,
               background: progressPct > 33
-                ? 'linear-gradient(90deg, #533afd, #ea2261)'
-                : 'linear-gradient(90deg, #ea2261, #ff4444)',
-              transition: 'width 1s linear, background 0.5s',
+                ? 'linear-gradient(90deg, #009DE0, #2563eb)'
+                : 'linear-gradient(90deg, #f59e0b, #ef4444)',
+              transition: 'width 1s linear',
             }}
           />
         </div>
 
         {/* Header */}
-        <div className="px-5 pt-4 pb-2 flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3">
+        <div className="px-4 pt-3 pb-2 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5">
+            {/* Icon */}
             <div
-              className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
-              style={{
-                background: 'linear-gradient(135deg, #533afd, #ea2261)',
-                boxShadow: '0 6px 16px rgba(83,58,253,0.5)',
-              }}
+              className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ background: 'linear-gradient(135deg, #009DE0, #2563eb)' }}
             >
-              <TruckIcon className="w-6 h-6 text-white" />
+              <Siren size={18} weight="fill" style={{ color: '#fff' }} />
             </div>
             <div>
-              <div className="flex items-center gap-2 mb-0.5">
+              <div className="flex items-center gap-1.5 mb-0.5">
                 <span
-                  className="inline-flex items-center gap-1.5 text-[11px] font-black px-2.5 py-1 rounded-full"
-                  style={{ background: 'rgba(83,58,253,0.3)', color: '#a89bff', border: '1px solid rgba(83,58,253,0.4)' }}
+                  className="text-[10px] font-black px-2 py-0.5 rounded-full"
+                  style={{ background: '#EAF7FD', color: '#009DE0' }}
                 >
-                  <span className="w-2 h-2 rounded-full bg-[#533afd] animate-pulse inline-block" />
-                  <Siren size={12} weight="fill" /> משלוח חדש!
+                  ● משלוח חדש!
                 </span>
-                <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.25)' }}>
+                <span className="text-[10px]" style={{ color: '#9CA3AF' }}>
                   {age < 60 ? `לפני ${age}ש׳` : 'עכשיו'}
                 </span>
               </div>
-              <p className="text-white font-black text-[17px] leading-tight">{notif.businessName}</p>
+              <p className="font-black text-[16px] leading-tight" style={{ color: '#202125' }}>
+                {notif.businessName}
+              </p>
             </div>
           </div>
-          <button
-            onClick={() => { setExiting(true); setTimeout(onDismiss, 400); }}
-            className="p-2 rounded-xl flex-shrink-0 transition-colors hover:bg-white/10 mt-0.5"
-            style={{ color: 'rgba(255,255,255,0.3)' }}
-          >
-            <XMarkIcon className="w-5 h-5" />
-          </button>
+
+          {/* Price + close */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {notif.price != null && (
+              <div
+                className="px-2.5 py-1 rounded-xl text-center"
+                style={{ background: '#EAF7FD' }}
+              >
+                <p className="text-[18px] font-black leading-none" style={{ color: '#009DE0' }}>₪{notif.price}</p>
+              </div>
+            )}
+            <button
+              onClick={dismiss}
+              className="p-1.5 rounded-lg transition-colors hover:bg-gray-100"
+              style={{ color: '#9CA3AF' }}
+            >
+              <XMarkIcon className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
-        {/* Price badge (if present) */}
-        {notif.price != null && (
-          <div className="px-5 pb-2">
-            <div
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl"
-              style={{ background: 'rgba(83,58,253,0.2)', border: '1px solid rgba(83,58,253,0.3)' }}
-            >
-              <span className="text-[13px]" style={{ color: 'rgba(255,255,255,0.6)' }}>תשלום:</span>
-              <span className="text-[20px] font-black text-white">₪{notif.price}</span>
+        {/* Addresses */}
+        <div className="px-4 pb-2 space-y-1.5">
+          <div className="flex items-start gap-2.5 px-3 py-2 rounded-xl" style={{ background: '#F8FFFE' }}>
+            <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <MapPinIcon className="w-3 h-3 text-emerald-600" />
             </div>
+            <div>
+              <p className="text-[9px] font-bold" style={{ color: '#9CA3AF' }}>איסוף</p>
+              <p className="text-[13px] font-semibold leading-tight" style={{ color: '#202125' }}>{notif.pickupAddress}</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-2.5 px-3 py-2 rounded-xl" style={{ background: '#FFF8F8' }}>
+            <div className="w-5 h-5 rounded-full bg-red-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <MapPinIcon className="w-3 h-3 text-red-500" />
+            </div>
+            <div>
+              <p className="text-[9px] font-bold" style={{ color: '#9CA3AF' }}>מסירה</p>
+              <p className="text-[13px] font-semibold leading-tight" style={{ color: '#202125' }}>{notif.dropAddress}</p>
+            </div>
+          </div>
+
+          {/* Prep time row — only if set */}
+          {(delivery?.prepReadyAt || delivery?.prepMinutes) && (
+            <PrepTimeRow prepReadyAt={delivery.prepReadyAt} prepMinutes={delivery.prepMinutes} />
+          )}
+        </div>
+
+        {/* ── Phase: default — "אני מגיע!" button ── */}
+        {phase === 'default' && (
+          <div className="px-4 pb-3 flex gap-2">
+            <button
+              onClick={() => setPhase('eta')}
+              className="flex-1 py-3 rounded-xl font-black text-[14px] text-white flex items-center justify-center gap-1.5 transition-all active:scale-95"
+              style={{
+                background: 'linear-gradient(135deg, #009DE0, #2563eb)',
+                boxShadow: '0 4px 14px rgba(0,157,224,0.35)',
+              }}
+            >
+              ✋ אני מגיע!
+            </button>
           </div>
         )}
 
-        {/* Addresses */}
-        <div className="px-5 pb-3 space-y-2">
-          <div className="flex items-start gap-3 px-3 py-2.5 rounded-2xl" style={{ background: 'rgba(255,255,255,0.06)' }}>
-            <div className="w-6 h-6 rounded-full bg-green-500/25 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <MapPinIcon className="w-3.5 h-3.5 text-green-400" />
+        {/* ── Phase: ETA selection ── */}
+        {phase === 'eta' && (
+          <div className="px-4 pb-4">
+            <p className="text-[12px] font-bold text-center mb-2.5" style={{ color: '#202125' }}>
+              תוך כמה זמן תאסוף?
+            </p>
+            <div className="grid grid-cols-4 gap-1.5">
+              {ETA_OPTIONS.map(m => (
+                <button
+                  key={m}
+                  onClick={() => onAccept(m)}
+                  className="py-2.5 rounded-xl font-black text-[13px] transition-all active:scale-95 hover:scale-105 flex flex-col items-center justify-center gap-0"
+                  style={{
+                    background: 'linear-gradient(135deg, #009DE0, #2563eb)',
+                    color: '#fff',
+                    boxShadow: '0 2px 8px rgba(0,157,224,0.3)',
+                  }}
+                >
+                  <span className="text-[15px] font-black leading-tight">{m}</span>
+                  <span className="text-[9px] font-semibold opacity-80 leading-tight">דקות</span>
+                </button>
+              ))}
             </div>
-            <div>
-              <p className="text-[10px] font-bold mb-0.5" style={{ color: 'rgba(255,255,255,0.4)' }}>איסוף</p>
-              <p className="text-[14px] text-white font-medium leading-tight">{notif.pickupAddress}</p>
-            </div>
+            <button
+              onClick={() => setPhase('default')}
+              className="w-full mt-2 py-2 rounded-xl text-[12px] font-semibold"
+              style={{ color: '#9CA3AF', background: '#F4F4F4' }}
+            >
+              חזור
+            </button>
           </div>
-          <div className="flex items-center justify-center">
-            <div className="w-px h-3" style={{ background: 'rgba(255,255,255,0.15)' }} />
-          </div>
-          <div className="flex items-start gap-3 px-3 py-2.5 rounded-2xl" style={{ background: 'rgba(255,255,255,0.06)' }}>
-            <div className="w-6 h-6 rounded-full bg-red-500/25 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <MapPinIcon className="w-3.5 h-3.5 text-red-400" />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold mb-0.5" style={{ color: 'rgba(255,255,255,0.4)' }}>מסירה</p>
-              <p className="text-[14px] text-white font-medium leading-tight">{notif.dropAddress}</p>
-            </div>
-          </div>
-        </div>
+        )}
 
-        {/* Action buttons */}
-        <div className="px-5 pb-4 flex gap-3">
-          <button
-            onClick={onAccept}
-            className="flex-1 py-3.5 rounded-2xl font-black text-[15px] text-white flex items-center justify-center gap-2 transition-all active:scale-95"
-            style={{
-              background: 'linear-gradient(135deg, #533afd, #ea2261)',
-              boxShadow: '0 6px 20px rgba(83,58,253,0.5)',
-            }}
-          >
-            <CheckIcon className="w-5 h-5" />
-            אני מגיע! <Hand size={16} weight="regular" />
-          </button>
-          <button
-            onClick={onDetails}
-            className="px-4 py-3.5 rounded-2xl font-bold text-[13px] flex items-center gap-1.5 transition-all active:scale-95"
-            style={{ background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.8)', border: '1px solid rgba(255,255,255,0.15)' }}
-          >
-            <InformationCircleIcon className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Countdown */}
-        <div className="px-5 pb-4">
-          <div
-            className="w-full py-1.5 rounded-xl text-center text-[11px] font-semibold"
-            style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.3)' }}
-          >
-            נסגר אוטומטית בעוד {countdown} שניות
-          </div>
+        {/* Countdown footer */}
+        <div
+          className="px-4 pb-3 text-center text-[10px] font-semibold"
+          style={{ color: '#9CA3AF' }}
+        >
+          נסגר אוטומטית בעוד {countdown} שניות
         </div>
       </div>
     </div>
   );
 };
 
-// ─── Details modal ────────────────────────────────────────────
-const DetailModal: React.FC<{
-  notif: DeliveryNotification | null;
-  onClose: () => void;
-  onAccept: () => void;
-}> = ({ notif, onClose, onAccept }) => (
-  <Modal isOpen={!!notif} onClose={onClose} title="פרטי משלוח" size="sm"
-    footer={
-      <>
-        <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100 transition-colors">סגור</button>
-        <button
-          onClick={() => { onAccept(); onClose(); }}
-          className="px-5 py-2 rounded-lg text-sm font-bold text-white transition-all"
-          style={{ background: 'linear-gradient(135deg, #533afd, #ea2261)' }}
-        >
-          <Hand size={14} weight="regular" /> אני מגיע!
-        </button>
-      </>
-    }
-  >
-    {notif && (
-      <div className="space-y-3 text-right" dir="rtl">
-        <div className="grid grid-cols-2 gap-3">
-          <div className="bg-gray-50 rounded-xl p-3">
-            <p className="text-[11px] text-gray-400 mb-1">עסק</p>
-            <p className="font-bold text-gray-900 text-sm">{notif.businessName}</p>
-          </div>
-          {notif.price && (
-            <div className="bg-purple-50 rounded-xl p-3">
-              <p className="text-[11px] text-purple-400 mb-1">תשלום</p>
-              <p className="font-bold text-purple-700 text-xl">₪{notif.price}</p>
-            </div>
-          )}
-        </div>
-        <div className="bg-gray-50 rounded-xl p-3 space-y-2">
-          <div>
-            <p className="text-[11px] text-gray-400 flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-green-400 inline-block" /> כתובת איסוף
-            </p>
-            <p className="font-medium text-gray-800 text-sm mt-0.5">{notif.pickupAddress}</p>
-          </div>
-          <div className="border-t border-gray-200 pt-2">
-            <p className="text-[11px] text-gray-400 flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-red-400 inline-block" /> כתובת מסירה
-            </p>
-            <p className="font-medium text-gray-800 text-sm mt-0.5">{notif.dropAddress}</p>
-          </div>
-        </div>
-        {notif.description && (
-          <div className="bg-amber-50 rounded-xl p-3">
-            <p className="text-[11px] text-amber-500 mb-1">הערות</p>
-            <p className="text-sm text-gray-700">{notif.description}</p>
-          </div>
-        )}
-        <p className="text-[11px] text-gray-400 text-center">
-          פורסם ב-{new Date(notif.createdAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
-        </p>
-      </div>
-    )}
-  </Modal>
-);
-
 // ─── Main Overlay ─────────────────────────────────────────────
 export const DeliveryNotificationOverlay: React.FC = () => {
-  const navigate = useNavigate();
+  const navigate   = useNavigate();
   const portalUser = useSelector((state: RootState) => state.auth.currentPortalUser);
 
   const courierToken = localStorage.getItem('admin_token') || '';
-  const isCourier = courierToken.startsWith('courier-') || portalUser?.type === 'courier';
-  const courierId = portalUser?.type === 'courier'
+  const isCourier    = courierToken.startsWith('courier-') || portalUser?.type === 'courier';
+  const courierId    = portalUser?.type === 'courier'
     ? portalUser.id
     : courierToken.startsWith('courier-')
       ? courierToken.replace('courier-', '')
       : null;
 
   const [notifications, setNotifications] = useState<DeliveryNotification[]>([]);
-  const [detailNotif, setDetailNotif] = useState<DeliveryNotification | null>(null);
   const prevCountRef = useRef(-1);
 
   const refresh = useCallback(async () => {
     if (!courierId) return;
-    // Courier in "unavailable" mode → flight mode, no notifications
     const courierInfo = storageService.getCourier(courierId);
     if (courierInfo?.isAvailable === false) {
       setNotifications([]);
@@ -278,7 +282,6 @@ export const DeliveryNotificationOverlay: React.FC = () => {
     }
     await syncNotificationsDown();
     const pending = storageService.getPendingNotifications(courierId);
-    // Play sound when NEW notifications arrive (not on first load)
     if (prevCountRef.current >= 0 && pending.length > prevCountRef.current) {
       playNewDelivery();
     }
@@ -286,7 +289,6 @@ export const DeliveryNotificationOverlay: React.FC = () => {
     setNotifications(pending.slice(0, 3));
   }, [courierId]);
 
-  // ─── Polling every 4 seconds ──────────────────────────────────
   useEffect(() => {
     if (!courierId) return;
     refresh();
@@ -298,74 +300,61 @@ export const DeliveryNotificationOverlay: React.FC = () => {
     return () => { clearInterval(interval); window.removeEventListener('storage', onStorage); };
   }, [courierId, refresh]);
 
-  // ─── Supabase Realtime: instant push on new notifications ─────
   useEffect(() => {
     if (!courierId) return;
     const channel = supabase
       .channel(`overlay_notif_${courierId}`)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'delivery_notifications' },
-        () => { refresh(); }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'delivery_notifications' },
-        () => { refresh(); }
-      )
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'delivery_notifications' }, () => refresh())
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'delivery_notifications' }, () => refresh())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [courierId, refresh]);
 
-  const handleAccept = async (notif: DeliveryNotification) => {
+  const handleAccept = async (notif: DeliveryNotification, etaMinutes: number) => {
     if (!courierId) return;
 
-    const courierData = storageService.getCourier(courierId);
-    const courierName = courierData?.name ?? 'שליח';
+    const courierData   = storageService.getCourier(courierId);
+    const courierName   = courierData?.name ?? 'שליח';
     const courierRating = courierData?.rating ?? 5;
     const courierVehicle = courierData?.vehicle ?? 'motorcycle';
 
-    // 1. Use deliveryId directly from notification (no localStorage lookup needed)
-    //    If notification doesn't have deliveryId, sync then search by address
     let deliveryId = notif.deliveryId;
-
     if (!deliveryId) {
       await syncDeliveriesDown().catch(() => {});
-      const allDeliveries = storageService.getDeliveries();
-      const matching = allDeliveries.find(d =>
+      const all = storageService.getDeliveries();
+      const match = all.find(d =>
         d.businessId === notif.businessId &&
         d.pickupAddress === notif.pickupAddress &&
         d.dropAddress === notif.dropAddress &&
         d.status === 'pending'
       );
-      deliveryId = matching?.id;
+      deliveryId = match?.id;
     }
 
-    // 2. Join the candidates queue using deliveryId
     if (deliveryId) {
-      await joinCandidatesQueue(deliveryId, courierId, courierName, courierRating, courierVehicle);
+      await joinCandidatesQueue(deliveryId, courierId, courierName, courierRating, courierVehicle, etaMinutes);
       localStorage.setItem('pending_candidacy', JSON.stringify({
         deliveryId,
         notifId: notif.id,
         joinedAt: new Date().toISOString(),
       }));
-      toast.success('אישרת! ממתין לאישור העסק');
+      toast.success(`✋ אישרת! מגיע בעוד ${etaMinutes} דק׳ — ממתין לאישור העסק`, {
+        duration: 5000,
+        style: { background: '#009DE0', color: '#fff', fontWeight: 700, borderRadius: 14, direction: 'rtl' },
+      });
     } else {
       toast.error('המשלוח כבר לא זמין');
     }
 
-    // 3. Mark notification as taken & remove from overlay
     storageService.acceptNotification(notif.id, courierId);
-    setNotifications((prev) => prev.filter((n) => n.id !== notif.id));
-
-    // 4. Navigate to dashboard where candidacy polling is active
+    setNotifications(prev => prev.filter(n => n.id !== notif.id));
     navigate('/courier/dashboard');
   };
 
   const handleDismiss = (notifId: string) => {
     if (!courierId) return;
     storageService.dismissNotification(notifId, courierId);
-    setNotifications((prev) => prev.filter((n) => n.id !== notifId));
+    setNotifications(prev => prev.filter(n => n.id !== notifId));
   };
 
   const courierData = courierId ? storageService.getCourier(courierId) : null;
@@ -374,28 +363,26 @@ export const DeliveryNotificationOverlay: React.FC = () => {
   return (
     <>
       <style>{`
-        @keyframes slideIn {
-          from { opacity: 0; transform: translateX(110%) scale(0.8); }
-          to   { opacity: 1; transform: translateX(0) scale(1); }
+        @keyframes notifIn {
+          from { opacity: 0; transform: translateY(-24px) scale(0.94); }
+          to   { opacity: 1; transform: translateY(0)    scale(1);    }
         }
-        @keyframes slideOut {
-          from { opacity: 1; transform: translateX(0) scale(1); }
-          to   { opacity: 0; transform: translateX(110%) scale(0.8); }
+        @keyframes notifOut {
+          from { opacity: 1; transform: translateY(0) scale(1);     }
+          to   { opacity: 0; transform: translateY(-16px) scale(0.94); }
         }
       `}</style>
 
-      {/* Overlay dim for top notification only */}
-      {notifications.length > 0 && (
-        <div
-          className="fixed inset-0 z-40 pointer-events-none"
-          style={{ background: 'rgba(0,0,0,0.45)' }}
-        />
-      )}
-
-      {/* Notification stack */}
+      {/* Soft backdrop */}
       <div
-        className="fixed z-50 flex flex-col-reverse gap-3"
-        style={{ bottom: 24, left: 12, right: 12, maxWidth: 440, margin: '0 auto' }}
+        className="fixed inset-0 z-40 pointer-events-none"
+        style={{ background: 'rgba(0,0,0,0.28)' }}
+      />
+
+      {/* Card stack — top of screen */}
+      <div
+        className="fixed z-50 flex flex-col gap-2"
+        style={{ top: 72, left: 10, right: 10, maxWidth: 420, margin: '0 auto' }}
         dir="rtl"
       >
         {notifications.map((notif, i) => (
@@ -404,22 +391,11 @@ export const DeliveryNotificationOverlay: React.FC = () => {
             notif={notif}
             courierId={courierId!}
             index={i}
-            onAccept={() => handleAccept(notif)}
+            onAccept={eta => handleAccept(notif, eta)}
             onDismiss={() => handleDismiss(notif.id)}
-            onDetails={() => setDetailNotif(notif)}
           />
         ))}
       </div>
-
-      {/* Detail modal */}
-      <DetailModal
-        notif={detailNotif}
-        onClose={() => setDetailNotif(null)}
-        onAccept={() => detailNotif && handleAccept(detailNotif)}
-      />
     </>
   );
 };
-
-const NOTIF_KEY_WATCH = 'app_delivery_notifications';
-void NOTIF_KEY_WATCH; // suppress unused warning

@@ -111,10 +111,10 @@ const CourierLayout: React.FC = () => {
   const [candidacyBanner, setCandidacyBanner] = useState<CandidacyBanner | null>(null);
   const [withdrawing,     setWithdrawing]     = useState(false);
 
-  // ── Active delivery strip ─────────────────────────────────────
-  const [activeDelivery, setActiveDelivery] = useState<StoredDelivery | null>(null);
-  const [stripUpdating,  setStripUpdating]  = useState(false);
-  const [stripExpanded,  setStripExpanded]  = useState(false);
+  // ── Active deliveries strip (up to 5) ────────────────────────
+  const [activeDeliveries,  setActiveDeliveries]  = useState<StoredDelivery[]>([]);
+  const [stripUpdating,     setStripUpdating]     = useState<string | null>(null); // deliveryId being updated
+  const [expandedDeliveryId, setExpandedDeliveryId] = useState<string | null>(null);
 
   // ── New-message toasts ───────────────────────────────────────
   interface MsgToast { id: string; name: string; preview: string; path: string; }
@@ -142,28 +142,41 @@ const CourierLayout: React.FC = () => {
     return () => clearInterval(id);
   }, []);
 
-  // ── Poll for active delivery — sync from Supabase every tick ──────
-  const prevActiveIdRef = useRef<string | null>(null);
+  // ── Poll for active deliveries — sync from Supabase every tick ──────
+  const prevActiveIdsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!courierId) return;
+    const sortActives = (list: StoredDelivery[]) =>
+      list
+        .filter(d => d.status === 'accepted' || d.status === 'picked_up')
+        .sort((a, b) => {
+          // picked_up first — courier already has the package, deliver it ASAP
+          if (a.status === 'picked_up' && b.status !== 'picked_up') return -1;
+          if (b.status === 'picked_up' && a.status !== 'picked_up') return 1;
+          // Within same status: oldest first (longest waiting = most urgent)
+          const aTime = (a.status === 'picked_up' ? a.pickedUpAt : a.acceptedAt) ?? a.createdAt;
+          const bTime = (b.status === 'picked_up' ? b.pickedUpAt : b.acceptedAt) ?? b.createdAt;
+          return aTime.localeCompare(bTime);
+        })
+        .slice(0, 5);
+
     const check = async () => {
-      // Always pull fresh data from Supabase so courier sees their delivery immediately
       await syncCourierDeliveriesDown(courierId).catch(() => {});
       const mine = getDeliveriesByCourier(courierId);
-      const active = mine.find(d => d.status === 'accepted' || d.status === 'picked_up') ?? null;
-      setActiveDelivery(active);
-      // Toast when a new active delivery appears (e.g. just approved by business)
-      if (active && active.id !== prevActiveIdRef.current) {
-        if (prevActiveIdRef.current !== null) {
-          toast.success(`✅ ${active.businessName} אישר אותך! המשלוח שלך מוכן`, {
-            duration: 6000,
-            style: { background: '#1BA672', color: '#fff', fontWeight: 700, borderRadius: 14, direction: 'rtl' },
-          });
+      const actives = sortActives(mine);
+      setActiveDeliveries(actives);
+      // Toast for each newly-appeared delivery
+      for (const a of actives) {
+        if (!prevActiveIdsRef.current.has(a.id)) {
+          if (prevActiveIdsRef.current.size > 0 || actives.length > 1) {
+            toast.success(`✅ ${a.businessName} אישר אותך! המשלוח שלך מוכן`, {
+              duration: 6000,
+              style: { background: '#1BA672', color: '#fff', fontWeight: 700, borderRadius: 14, direction: 'rtl' },
+            });
+          }
         }
-        prevActiveIdRef.current = active.id;
-      } else if (!active) {
-        prevActiveIdRef.current = null;
       }
+      prevActiveIdsRef.current = new Set(actives.map(a => a.id));
     };
     check();
     const id = setInterval(check, 4_000);
@@ -181,15 +194,26 @@ const CourierLayout: React.FC = () => {
       }, async () => {
         await syncCourierDeliveriesDown(courierId).catch(() => {});
         const mine = getDeliveriesByCourier(courierId);
-        const active = mine.find(d => d.status === 'accepted' || d.status === 'picked_up') ?? null;
-        setActiveDelivery(active);
-        if (active && active.id !== prevActiveIdRef.current) {
-          toast.success(`✅ ${active.businessName} אישר אותך! המשלוח שלך מוכן`, {
-            duration: 6000,
-            style: { background: '#1BA672', color: '#fff', fontWeight: 700, borderRadius: 14, direction: 'rtl' },
-          });
-          prevActiveIdRef.current = active.id;
+        const actives = mine
+          .filter(d => d.status === 'accepted' || d.status === 'picked_up')
+          .sort((a, b) => {
+            if (a.status === 'picked_up' && b.status !== 'picked_up') return -1;
+            if (b.status === 'picked_up' && a.status !== 'picked_up') return 1;
+            const aTime = (a.status === 'picked_up' ? a.pickedUpAt : a.acceptedAt) ?? a.createdAt;
+            const bTime = (b.status === 'picked_up' ? b.pickedUpAt : b.acceptedAt) ?? b.createdAt;
+            return aTime.localeCompare(bTime);
+          })
+          .slice(0, 5);
+        setActiveDeliveries(actives);
+        for (const a of actives) {
+          if (!prevActiveIdsRef.current.has(a.id)) {
+            toast.success(`✅ ${a.businessName} אישר אותך! המשלוח שלך מוכן`, {
+              duration: 6000,
+              style: { background: '#1BA672', color: '#fff', fontWeight: 700, borderRadius: 14, direction: 'rtl' },
+            });
+          }
         }
+        prevActiveIdsRef.current = new Set(actives.map(a => a.id));
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
@@ -220,8 +244,7 @@ const CourierLayout: React.FC = () => {
   useEffect(() => {
     if (!courierId || !navigator.geolocation) return;
     const shareLocation = () => {
-      const deliveries = getDeliveriesByCourier(courierId);
-      const hasActive = deliveries.some((d) => d.status === 'accepted' || d.status === 'picked_up');
+      const hasActive = activeDeliveries.length > 0;
       if (!hasActive) return;
       navigator.geolocation.getCurrentPosition(
         (pos) => updateCourierLocation(courierId, pos.coords.latitude, pos.coords.longitude),
@@ -232,7 +255,7 @@ const CourierLayout: React.FC = () => {
     shareLocation();
     const locId = setInterval(shareLocation, 30_000);
     return () => clearInterval(locId);
-  }, [courierId]);
+  }, [courierId, activeDeliveries]);
 
   // ── Poll pending_candidacy every 3s → drive the top banner ──────────────
   useEffect(() => {
@@ -423,22 +446,25 @@ const CourierLayout: React.FC = () => {
   }, [msgToasts]);
 
   // ── Strip quick action: advance delivery status ───────────────
-  const handleStripAction = async () => {
-    if (!activeDelivery || stripUpdating) return;
-    setStripUpdating(true);
+  const handleStripAction = async (deliveryId: string) => {
+    if (stripUpdating) return;
+    const d = activeDeliveries.find(x => x.id === deliveryId);
+    if (!d) return;
+    setStripUpdating(deliveryId);
     try {
-      if (activeDelivery.status === 'accepted') {
-        updateDelivery(activeDelivery.id, { status: 'picked_up', pickedUpAt: new Date().toISOString() });
-        setActiveDelivery(d => d ? { ...d, status: 'picked_up' } : null);
+      if (d.status === 'accepted') {
+        updateDelivery(d.id, { status: 'picked_up', pickedUpAt: new Date().toISOString() });
+        setActiveDeliveries(prev => prev.map(x => x.id === d.id ? { ...x, status: 'picked_up' as const } : x));
         toast.success('אספת את החבילה!');
-      } else if (activeDelivery.status === 'picked_up') {
-        updateDelivery(activeDelivery.id, { status: 'delivered', deliveredAt: new Date().toISOString() });
-        setActiveDelivery(null);
+      } else if (d.status === 'picked_up') {
+        updateDelivery(d.id, { status: 'delivered', deliveredAt: new Date().toISOString() });
+        setActiveDeliveries(prev => prev.filter(x => x.id !== d.id));
+        if (expandedDeliveryId === d.id) setExpandedDeliveryId(null);
         toast.success('מסרת את החבילה בהצלחה!');
       }
-      setStripExpanded(false);
+      setExpandedDeliveryId(null);
     } finally {
-      setStripUpdating(false);
+      setStripUpdating(null);
     }
   };
 
@@ -685,165 +711,189 @@ const CourierLayout: React.FC = () => {
         </aside>
 
         {/* ── Page content ── */}
-        <main className={`flex-1 overflow-y-auto lg:pb-4 ${activeDelivery ? 'pb-[136px]' : 'pb-[72px]'}`}>
+        <main
+          className="flex-1 overflow-y-auto lg:pb-4"
+          style={{ paddingBottom: activeDeliveries.length > 0 ? 68 + activeDeliveries.length * 62 : 72 }}
+        >
           <Outlet />
         </main>
       </div>
 
-      {/* ── Persistent active-delivery strip (above bottom nav) ── */}
-      {activeDelivery && (
+      {/* ── Persistent active-deliveries strip stack (above bottom nav) ── */}
+      {activeDeliveries.length > 0 && (
         <div
           className="fixed left-0 right-0 z-[45] lg:hidden"
           style={{ bottom: 68 }}
         >
-          {/* Expanded panel */}
-          {stripExpanded && (
-            <>
-              <div
-                className="fixed inset-0 z-[-1]"
-                style={{ background: 'rgba(0,0,0,0.35)' }}
-                onClick={() => setStripExpanded(false)}
-              />
-              <div
-                dir="rtl"
-                className="mx-3 mb-2 rounded-2xl overflow-hidden"
-                style={{
-                  background: '#fff',
-                  boxShadow: '0 -4px 24px rgba(0,0,0,0.18)',
-                  animation: 'slideUp 0.22s ease',
-                }}
-              >
-                {/* Header */}
+          {/* Expanded panel for one delivery at a time */}
+          {expandedDeliveryId && (() => {
+            const ad = activeDeliveries.find(x => x.id === expandedDeliveryId);
+            if (!ad) return null;
+            return (
+              <>
                 <div
-                  className="flex items-center justify-between px-4 py-3"
+                  className="fixed inset-0 z-[-1]"
+                  style={{ background: 'rgba(0,0,0,0.35)' }}
+                  onClick={() => setExpandedDeliveryId(null)}
+                />
+                <div
+                  dir="rtl"
+                  className="mx-3 mb-2 rounded-2xl overflow-hidden"
                   style={{
-                    background: activeDelivery.status === 'accepted'
-                      ? 'linear-gradient(90deg,#0077AA,#009DE0)'
-                      : 'linear-gradient(90deg,#d97706,#F58F1F)',
-                    borderBottom: '1px solid rgba(255,255,255,0.15)',
+                    background: '#fff',
+                    boxShadow: '0 -4px 24px rgba(0,0,0,0.18)',
+                    animation: 'slideUp 0.22s ease',
+                    maxHeight: '70vh',
+                    overflowY: 'auto',
                   }}
                 >
-                  <div>
-                    <p className="text-white font-black text-[15px]">
-                      {activeDelivery.status === 'accepted' ? 'בדרך לאיסוף' : 'בדרך ללקוח'}
-                    </p>
-                    <p className="text-[11px]" style={{ color: 'rgba(255,255,255,0.8)' }}>
-                      {formatOrderNumber(activeDelivery.orderNumber)}
-                      {activeDelivery.businessName ? ` · ${activeDelivery.businessName}` : ''}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setStripExpanded(false)}
-                    className="w-8 h-8 rounded-full flex items-center justify-center"
-                    style={{ background: 'rgba(255,255,255,0.2)' }}
-                  >
-                    <span style={{ color: '#fff', fontSize: 16, lineHeight: 1 }}>✕</span>
-                  </button>
-                </div>
-
-                {/* Prep countdown in expanded panel */}
-                {activeDelivery.status === 'accepted' && (
-                  <ExpandedPrepTimer
-                    prepReadyAt={activeDelivery.prepReadyAt}
-                    prepMinutes={activeDelivery.prepMinutes}
-                  />
-                )}
-
-                {/* Addresses */}
-                <div className="px-4 py-3 space-y-2">
-                  <div className="flex items-start gap-2">
-                    <span className="w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-white text-[10px] font-black mt-0.5" style={{ background: '#1BA672' }}>א</span>
-                    <div>
-                      <p className="text-[10px]" style={{ color: '#9CA3AF' }}>איסוף</p>
-                      <p className="text-[13px] font-semibold" style={{ color: '#202125' }}>{activeDelivery.pickupAddress}</p>
-                    </div>
-                  </div>
-                  <div className="w-px h-3 mr-2.5" style={{ background: '#E8E8E8' }} />
-                  <div className="flex items-start gap-2">
-                    <span className="w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-white text-[10px] font-black mt-0.5" style={{ background: '#E23437' }}>ב</span>
-                    <div>
-                      <p className="text-[10px]" style={{ color: '#9CA3AF' }}>מסירה</p>
-                      <p className="text-[13px] font-semibold" style={{ color: '#202125' }}>{activeDelivery.dropAddress}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Action button */}
-                <div className="px-4 pb-4">
-                  <button
-                    onClick={handleStripAction}
-                    disabled={stripUpdating}
-                    className="w-full py-3.5 rounded-2xl font-black text-[14px] text-white flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-60"
+                  {/* Header */}
+                  <div
+                    className="flex items-center justify-between px-4 py-3 sticky top-0"
                     style={{
-                      background: activeDelivery.status === 'accepted'
-                        ? 'linear-gradient(135deg,#F58F1F,#d97706)'
-                        : 'linear-gradient(135deg,#1BA672,#16a34a)',
-                      boxShadow: activeDelivery.status === 'accepted'
-                        ? '0 4px 14px rgba(245,143,31,0.4)'
-                        : '0 4px 14px rgba(27,166,114,0.4)',
+                      background: ad.status === 'accepted'
+                        ? 'linear-gradient(90deg,#0077AA,#009DE0)'
+                        : 'linear-gradient(90deg,#d97706,#F58F1F)',
+                      borderBottom: '1px solid rgba(255,255,255,0.15)',
                     }}
                   >
-                    {stripUpdating ? '...' : activeDelivery.status === 'accepted' ? 'אספתי את החבילה' : 'מסרתי ללקוח ✓'}
-                  </button>
-                  <button
-                    onClick={() => { setStripExpanded(false); navigate('/courier/deliveries'); }}
-                    className="w-full mt-2 py-2.5 rounded-2xl text-[13px] font-semibold"
-                    style={{ background: 'transparent', color: '#009DE0' }}
-                  >
-                    פרטים מלאים
-                  </button>
+                    <div>
+                      <p className="text-white font-black text-[15px]">
+                        {ad.status === 'accepted' ? 'בדרך לאיסוף' : 'בדרך ללקוח'}
+                      </p>
+                      <p className="text-[11px]" style={{ color: 'rgba(255,255,255,0.8)' }}>
+                        {formatOrderNumber(ad.orderNumber)}
+                        {ad.businessName ? ` · ${ad.businessName}` : ''}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setExpandedDeliveryId(null)}
+                      className="w-8 h-8 rounded-full flex items-center justify-center"
+                      style={{ background: 'rgba(255,255,255,0.2)' }}
+                    >
+                      <span style={{ color: '#fff', fontSize: 16, lineHeight: 1 }}>✕</span>
+                    </button>
+                  </div>
+
+                  {/* Prep countdown */}
+                  {ad.status === 'accepted' && (
+                    <ExpandedPrepTimer
+                      prepReadyAt={ad.prepReadyAt}
+                      prepMinutes={ad.prepMinutes}
+                    />
+                  )}
+
+                  {/* Addresses */}
+                  <div className="px-4 py-3 space-y-2">
+                    <div className="flex items-start gap-2">
+                      <span className="w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-white text-[10px] font-black mt-0.5" style={{ background: '#1BA672' }}>א</span>
+                      <div>
+                        <p className="text-[10px]" style={{ color: '#9CA3AF' }}>איסוף</p>
+                        <p className="text-[13px] font-semibold" style={{ color: '#202125' }}>{ad.pickupAddress}</p>
+                      </div>
+                    </div>
+                    <div className="w-px h-3 mr-2.5" style={{ background: '#E8E8E8' }} />
+                    <div className="flex items-start gap-2">
+                      <span className="w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-white text-[10px] font-black mt-0.5" style={{ background: '#E23437' }}>ב</span>
+                      <div>
+                        <p className="text-[10px]" style={{ color: '#9CA3AF' }}>מסירה</p>
+                        <p className="text-[13px] font-semibold" style={{ color: '#202125' }}>{ad.dropAddress}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Action buttons */}
+                  <div className="px-4 pb-4">
+                    <button
+                      onClick={() => handleStripAction(ad.id)}
+                      disabled={stripUpdating === ad.id}
+                      className="w-full py-3.5 rounded-2xl font-black text-[14px] text-white flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-60"
+                      style={{
+                        background: ad.status === 'accepted'
+                          ? 'linear-gradient(135deg,#F58F1F,#d97706)'
+                          : 'linear-gradient(135deg,#1BA672,#16a34a)',
+                        boxShadow: ad.status === 'accepted'
+                          ? '0 4px 14px rgba(245,143,31,0.4)'
+                          : '0 4px 14px rgba(27,166,114,0.4)',
+                      }}
+                    >
+                      {stripUpdating === ad.id ? '...' : ad.status === 'accepted' ? 'אספתי את החבילה' : 'מסרתי ללקוח ✓'}
+                    </button>
+                    <button
+                      onClick={() => { setExpandedDeliveryId(null); navigate('/courier/deliveries'); }}
+                      className="w-full mt-2 py-2.5 rounded-2xl text-[13px] font-semibold"
+                      style={{ background: 'transparent', color: '#009DE0' }}
+                    >
+                      פרטים מלאים
+                    </button>
+                  </div>
                 </div>
+              </>
+            );
+          })()}
+
+          {/* Compact strips — one per active delivery, stacked */}
+          <div className="flex flex-col gap-1.5 mx-3 mb-1.5">
+            {activeDeliveries.map((ad, idx) => (
+              <div
+                key={ad.id}
+                className="rounded-2xl flex items-center gap-2 px-3 py-2.5 cursor-pointer"
+                style={{
+                  background: ad.status === 'accepted'
+                    ? idx === 0
+                      ? 'linear-gradient(90deg,#0077AA,#009DE0)'
+                      : 'linear-gradient(90deg,#1565C0,#1976D2)'
+                    : 'linear-gradient(90deg,#d97706,#F58F1F)',
+                  boxShadow: idx === 0 ? '0 -2px 16px rgba(0,0,0,0.15)' : '0 2px 8px rgba(0,0,0,0.10)',
+                  opacity: expandedDeliveryId && expandedDeliveryId !== ad.id ? 0.85 : 1,
+                }}
+                onClick={() => setExpandedDeliveryId(v => v === ad.id ? null : ad.id)}
+              >
+                {/* Delivery count badge when multiple */}
+                {activeDeliveries.length > 1 && (
+                  <span
+                    className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black flex-shrink-0"
+                    style={{ background: 'rgba(255,255,255,0.25)', color: '#fff' }}
+                  >
+                    {idx + 1}
+                  </span>
+                )}
+
+                {/* Pulsing dot */}
+                <span className="w-2 h-2 rounded-full flex-shrink-0 animate-pulse" style={{ background: 'rgba(255,255,255,0.8)' }} />
+
+                {/* Text */}
+                <div className="flex-1 min-w-0">
+                  <p className="text-white font-black text-[12px] leading-tight truncate">
+                    {ad.businessName || (ad.status === 'accepted' ? 'בדרך לאיסוף' : 'בדרך ללקוח')}
+                    {ad.orderNumber ? ` · ${formatOrderNumber(ad.orderNumber)}` : ''}
+                  </p>
+                  <p className="text-[10px] truncate" style={{ color: 'rgba(255,255,255,0.75)' }}>
+                    {ad.status === 'accepted' ? ad.pickupAddress : ad.dropAddress}
+                  </p>
+                </div>
+
+                {/* Prep timer pill */}
+                {ad.status === 'accepted' && (
+                  <StripPrepTimer prepReadyAt={ad.prepReadyAt} prepMinutes={ad.prepMinutes} />
+                )}
+
+                {/* Quick action */}
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleStripAction(ad.id); }}
+                  disabled={stripUpdating === ad.id}
+                  className="flex-shrink-0 px-2.5 py-1.5 rounded-xl font-black text-[11px] transition-all active:scale-95 disabled:opacity-60"
+                  style={{
+                    background: 'rgba(255,255,255,0.2)',
+                    color: '#fff',
+                    border: '1.5px solid rgba(255,255,255,0.4)',
+                    backdropFilter: 'blur(4px)',
+                  }}
+                >
+                  {stripUpdating === ad.id ? '...' : ad.status === 'accepted' ? 'אספתי ✓' : 'מסרתי ✓'}
+                </button>
               </div>
-            </>
-          )}
-
-          {/* Compact strip (always visible) */}
-          <div
-            className="mx-3 mb-1.5 rounded-2xl flex items-center gap-2 px-3 py-2.5 cursor-pointer"
-            style={{
-              background: activeDelivery.status === 'accepted'
-                ? 'linear-gradient(90deg,#0077AA,#009DE0)'
-                : 'linear-gradient(90deg,#d97706,#F58F1F)',
-              boxShadow: '0 -2px 16px rgba(0,0,0,0.15)',
-            }}
-            onClick={() => setStripExpanded(v => !v)}
-          >
-            {/* Pulsing dot */}
-            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 animate-pulse" style={{ background: 'rgba(255,255,255,0.8)' }} />
-
-            {/* Text */}
-            <div className="flex-1 min-w-0">
-              <p className="text-white font-black text-[13px] leading-tight truncate">
-                {activeDelivery.status === 'accepted' ? 'בדרך לאיסוף' : 'בדרך ללקוח'}
-                {activeDelivery.orderNumber ? ` · ${formatOrderNumber(activeDelivery.orderNumber)}` : ''}
-              </p>
-              <p className="text-[11px] truncate" style={{ color: 'rgba(255,255,255,0.75)' }}>
-                {activeDelivery.status === 'accepted' ? activeDelivery.pickupAddress : activeDelivery.dropAddress}
-              </p>
-            </div>
-
-            {/* Prep timer pill — only shown when heading to pickup */}
-            {activeDelivery.status === 'accepted' && (
-              <StripPrepTimer
-                prepReadyAt={activeDelivery.prepReadyAt}
-                prepMinutes={activeDelivery.prepMinutes}
-              />
-            )}
-
-            {/* Quick-action button */}
-            <button
-              onClick={(e) => { e.stopPropagation(); handleStripAction(); }}
-              disabled={stripUpdating}
-              className="flex-shrink-0 px-3 py-2 rounded-xl font-black text-[12px] transition-all active:scale-95 disabled:opacity-60"
-              style={{
-                background: 'rgba(255,255,255,0.2)',
-                color: '#fff',
-                border: '1.5px solid rgba(255,255,255,0.4)',
-                backdropFilter: 'blur(4px)',
-              }}
-            >
-              {stripUpdating ? '...' : activeDelivery.status === 'accepted' ? 'אספתי ✓' : 'מסרתי ✓'}
-            </button>
+            ))}
           </div>
         </div>
       )}

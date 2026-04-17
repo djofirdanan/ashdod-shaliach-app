@@ -56,7 +56,7 @@ type ViewType = 'pending' | 'my-accepted' | 'other-accepted';
 function getViewType(d: StoredDelivery, courierId: string): ViewType {
   if (d.status === 'pending') return 'pending';
   if (d.status === 'accepted' && d.courierId === courierId) return 'my-accepted';
-  return 'other-accepted'; // accepted by another courier
+  return 'other-accepted';
 }
 
 const STATUS_CFG: Record<ViewType, {
@@ -166,184 +166,251 @@ const DeliveryFeedCard: React.FC<{
 
   return (
     <div
-      className="rounded-2xl p-4"
+      className="rounded-2xl overflow-hidden transition-all duration-200"
       style={{
         background: CARD_BG,
-        border: `1.5px solid ${cfg.color}30`,
-        boxShadow: `0 2px 10px ${cfg.color}12`,
-        opacity: 1,
+        border: `1.5px solid ${cfg.color}28`,
+        boxShadow: `0 4px 16px ${cfg.color}10`,
       }}
     >
-      {/* Order number + status badge row */}
-      <div className="flex items-center justify-between mb-3">
-        {delivery.orderNumber ? (
-          <span style={{ fontSize: 20, fontWeight: 900, color: '#061b31', letterSpacing: '-0.5px' }}>
-            {formatOrderNumber(delivery.orderNumber)}
-          </span>
-        ) : <div />}
-        <div
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black"
-          style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}30` }}
-        >
-          <span
-            className={`w-1.5 h-1.5 rounded-full inline-block${cfg.pulse ? ' animate-pulse' : ''}`}
-            style={{ background: cfg.color }}
-          />
-          {cfg.label}
-        </div>
-      </div>
+      {/* Top accent bar */}
+      <div className="h-1 w-full" style={{ background: `linear-gradient(90deg, ${cfg.color}, ${cfg.color}80)` }} />
 
-      {/* Business + price row */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
+      <div className="p-4">
+        {/* ── Row 1: Business avatar + name + time | HERO price ── */}
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2.5">
+            {/* Avatar */}
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-[14px] font-black flex-shrink-0 shadow-sm"
+              style={{
+                background: isActionable
+                  ? `linear-gradient(135deg, ${BLUE}, #0077AA)`
+                  : `linear-gradient(135deg, ${GREY}, #6B7280)`,
+              }}
+            >
+              {(delivery.businessName ?? '?')[0].toUpperCase()}
+            </div>
+            <div>
+              <p className="text-[14px] font-bold leading-tight" style={{ color: TEXT }}>
+                {delivery.businessName ?? '—'}
+              </p>
+              <p className="text-[11px] mt-0.5" style={{ color: TEXT2 }}>
+                {new Date(delivery.createdAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
+                {delivery.orderNumber ? ` · ${formatOrderNumber(delivery.orderNumber)}` : ''}
+              </p>
+            </div>
+          </div>
+
+          {/* HERO price */}
+          <div className="text-left">
+            <p
+              className="text-[27px] font-black leading-none tabular-nums"
+              style={{ color: cfg.color }}
+            >
+              ₪{delivery.price}
+            </p>
+            <p className="text-[10px] text-left font-semibold mt-0.5" style={{ color: TEXT2 }}>תשלום</p>
+          </div>
+        </div>
+
+        {/* ── Status badge ── */}
+        <div className="mb-3">
           <div
-            className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-[12px] font-black flex-shrink-0"
-            style={{ background: isActionable ? `linear-gradient(135deg, ${BLUE}, #0077AA)` : `linear-gradient(135deg, ${GREY}, #6B7280)` }}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black"
+            style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}28` }}
           >
-            {(delivery.businessId ?? '?')[0].toUpperCase()}
-          </div>
-          <div>
-            <p className="text-[13px] font-bold" style={{ color: TEXT }}>
-              {delivery.businessId}
-            </p>
-            <p className="text-[10px]" style={{ color: TEXT2 }}>
-              {new Date(delivery.createdAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
-            </p>
+            <span
+              className={`w-1.5 h-1.5 rounded-full inline-block${cfg.pulse ? ' animate-pulse' : ''}`}
+              style={{ background: cfg.color }}
+            />
+            {cfg.label}
           </div>
         </div>
-        <span
-          className="text-[16px] font-black"
-          style={{ color: isActionable ? BLUE : TEXT2 }}
-        >
-          ₪{delivery.price}
-        </span>
-      </div>
 
-      {/* Addresses */}
-      <div className="space-y-2 mb-2">
-        <div className="flex gap-2 items-start">
-          <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 text-[10px] font-bold text-white"
-            style={{ background: isActionable ? GREEN : GREY }}>א</div>
-          <div>
-            <p className="text-[11px] font-semibold" style={{ color: TEXT2 }}>איסוף</p>
-            <p className="text-[13px] font-semibold" style={{ color: TEXT }}>{delivery.pickupAddress}</p>
+        {/* ── Route visualization ── */}
+        <div className="mb-3 rounded-xl p-3" style={{ background: BG }}>
+          {/* Pickup row */}
+          <div className="flex gap-3 items-start">
+            <div className="flex flex-col items-center flex-shrink-0">
+              <div
+                className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black text-white shadow-sm"
+                style={{ background: isActionable ? GREEN : GREY }}
+              >
+                א
+              </div>
+              {/* Dashed connector */}
+              <div
+                className="w-px flex-1 my-1"
+                style={{
+                  minHeight: 18,
+                  borderLeft: `2px dashed ${isActionable ? GREEN + '60' : GREY + '50'}`,
+                }}
+              />
+            </div>
+            <div className="pb-3 flex-1">
+              <p className="text-[10px] font-semibold uppercase tracking-wide mb-0.5" style={{ color: TEXT2 }}>
+                איסוף
+              </p>
+              <p className="text-[13px] font-semibold leading-snug" style={{ color: TEXT }}>
+                {delivery.pickupAddress}
+              </p>
+            </div>
+          </div>
+          {/* Drop row */}
+          <div className="flex gap-3 items-start">
+            <div
+              className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black text-white shadow-sm flex-shrink-0"
+              style={{ background: isActionable ? ERROR : '#D1D5DB' }}
+            >
+              ב
+            </div>
+            <div className="flex-1">
+              <p className="text-[10px] font-semibold uppercase tracking-wide mb-0.5" style={{ color: TEXT2 }}>
+                מסירה
+              </p>
+              <p className="text-[13px] font-semibold leading-snug" style={{ color: TEXT }}>
+                {delivery.dropAddress}
+              </p>
+            </div>
           </div>
         </div>
-        <div className="w-px h-3 mr-2.5" style={{ background: BORDER }} />
-        <div className="flex gap-2 items-start">
-          <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 text-[10px] font-bold text-white"
-            style={{ background: isActionable ? ERROR : '#D1D5DB' }}>ב</div>
-          <div>
-            <p className="text-[11px] font-semibold" style={{ color: TEXT2 }}>מסירה</p>
-            <p className="text-[13px] font-semibold" style={{ color: TEXT }}>{delivery.dropAddress}</p>
-          </div>
-        </div>
-      </div>
 
-      {/* Distance + nav */}
-      <DistanceChip pickupAddress={delivery.pickupAddress} dropAddress={delivery.dropAddress} />
-      {isActionable && (
-        <a href={navUrl(delivery.pickupAddress, navPref)} target="_blank" rel="noopener noreferrer"
-          className="flex items-center gap-1 text-[11px] font-semibold mb-3" style={{ color: BLUE }}>
-          <PhosphorMapPin size={12} /> נווט לאיסוף
-        </a>
-      )}
-
-      {/* Tags */}
-      <div className="flex flex-wrap gap-1.5 mb-3">
-        {delivery.paymentMethod && (
-          <span className="flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-bold" style={{ background: BG, color: TEXT2 }}>
-            {delivery.paymentMethod === 'cash' ? 'מזומן' : 'ביט'}
-          </span>
-        )}
-        {delivery.customerPaid !== undefined && (
-          <span className="flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-bold"
-            style={{ background: delivery.customerPaid ? '#E8F8F2' : '#FFF4E5', color: delivery.customerPaid ? GREEN : ORANGE }}>
-            {delivery.customerPaid ? <><CheckCircle size={11} /> שולם ע"י לקוח</> : <><CreditCard size={11} /> גביה בעת המסירה</>}
-          </span>
-        )}
-        {delivery.requiredVehicle && (
-          <span className="flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-bold" style={{ background: '#E6F5FC', color: BLUE }}>
-            <Truck size={11} />
-            {delivery.requiredVehicle === 'motorcycle' ? 'אופנוע'
-              : delivery.requiredVehicle === 'bicycle' ? 'אופניים'
-              : delivery.requiredVehicle === 'scooter' ? 'קטנוע' : 'רכב'}
-          </span>
-        )}
-      </div>
-
-      {delivery.description && (
-        <div className="rounded-xl px-3 py-2 mb-3 text-[12px]" style={{ background: BG, color: TEXT2 }}>
-          {delivery.description}
-        </div>
-      )}
-
-      {/* Action buttons */}
-      {isActionable ? (
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            onClick={onApprove}
-            disabled={accepting}
-            className="py-3 rounded-2xl font-black text-[13px] text-white col-span-2 flex items-center justify-center gap-1.5 transition-all active:scale-95 disabled:opacity-60"
-            style={{ background: GREEN, boxShadow: `0 4px 14px ${GREEN}35` }}
-          >
-            {accepting ? '...' : <><CheckCircle size={14} /> אשר משלוח</>}
-          </button>
-          <button
-            onClick={onDetails}
-            className="py-2.5 rounded-2xl font-bold text-[12px] flex items-center justify-center gap-1 transition-all active:scale-95"
-            style={{ background: '#EAF7FD', color: BLUE, border: `1px solid ${BLUE}25` }}
-          >
-            <Info size={13} /> פרטים
-          </button>
-          <button
-            onClick={onChat}
-            className="py-2.5 rounded-2xl font-bold text-[12px] flex items-center justify-center gap-1 transition-all active:scale-95"
-            style={{ background: '#FFF4E5', color: ORANGE, border: `1px solid ${ORANGE}25` }}
-          >
-            <ChatCircle size={13} /> צ'אט
-          </button>
-        </div>
-      ) : isMyDelivery ? (
-        <div className="grid grid-cols-2 gap-2">
+        {/* Distance + nav link */}
+        <DistanceChip pickupAddress={delivery.pickupAddress} dropAddress={delivery.dropAddress} />
+        {isActionable && (
           <a
             href={navUrl(delivery.pickupAddress, navPref)}
-            target="_blank" rel="noopener noreferrer"
-            className="py-3 rounded-2xl font-black text-[13px] text-white text-center col-span-2 flex items-center justify-center gap-1.5 transition-all active:scale-95"
-            style={{ background: BLUE }}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-[11px] font-semibold mb-3 cursor-pointer transition-all duration-200"
+            style={{ color: BLUE }}
           >
-            <PhosphorMapPin size={14} /> נווט לאיסוף
+            <PhosphorMapPin size={12} /> נווט לאיסוף
           </a>
-          <button onClick={onChat}
-            className="py-2.5 rounded-2xl font-bold text-[12px] flex items-center justify-center gap-1 transition-all active:scale-95"
-            style={{ background: '#FFF4E5', color: ORANGE, border: `1px solid ${ORANGE}25` }}
-          >
-            <ChatCircle size={13} /> צ'אט
-          </button>
-          <button onClick={onDetails}
-            className="py-2.5 rounded-2xl font-bold text-[12px] flex items-center justify-center gap-1 transition-all active:scale-95"
-            style={{ background: BG, color: TEXT2 }}
-          >
-            <Info size={13} /> פרטים
-          </button>
-          {onIssue && (
-            <button onClick={onIssue}
-              className="col-span-2 py-2 rounded-2xl font-bold text-[12px] flex items-center justify-center gap-1 transition-all active:scale-95"
-              style={{ background: '#FFF0F0', color: ERROR, border: `1px solid ${ERROR}25` }}
+        )}
+
+        {/* Tags */}
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {delivery.paymentMethod && (
+            <span
+              className="flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-bold"
+              style={{ background: BG, color: TEXT2, border: `1px solid ${BORDER}` }}
             >
-              דווח תקלה
-            </button>
+              {delivery.paymentMethod === 'cash' ? 'מזומן' : 'ביט'}
+            </span>
+          )}
+          {delivery.customerPaid !== undefined && (
+            <span
+              className="flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-bold"
+              style={{
+                background: delivery.customerPaid ? '#E8F8F2' : '#FFF4E5',
+                color: delivery.customerPaid ? GREEN : ORANGE,
+              }}
+            >
+              {delivery.customerPaid
+                ? <><CheckCircle size={11} /> שולם ע"י לקוח</>
+                : <><CreditCard size={11} /> גביה בעת המסירה</>}
+            </span>
+          )}
+          {delivery.requiredVehicle && (
+            <span
+              className="flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-bold"
+              style={{ background: '#E6F5FC', color: BLUE }}
+            >
+              <Truck size={11} />
+              {delivery.requiredVehicle === 'motorcycle' ? 'אופנוע'
+                : delivery.requiredVehicle === 'bicycle' ? 'אופניים'
+                : delivery.requiredVehicle === 'scooter' ? 'קטנוע' : 'רכב'}
+            </span>
           )}
         </div>
-      ) : (
-        /* other-accepted / in-transit — info only */
-        <div className="rounded-xl px-3 py-2 text-[12px] text-center"
-          style={{ background: `${cfg.color}10`, color: cfg.color }}>
-          {viewType === 'other-accepted'
-            ? <><Clock size={12} /> ממתין לאישור עסק — המשלוח עדיין עשוי להשתנות</>
-            : <><Rocket size={12} /> השליח בדרך ללקוח</>}
-        </div>
-      )}
+
+        {delivery.description && (
+          <div className="rounded-xl px-3 py-2 mb-3 text-[12px]" style={{ background: BG, color: TEXT2 }}>
+            {delivery.description}
+          </div>
+        )}
+
+        {/* Action buttons */}
+        {isActionable ? (
+          <div className="grid grid-cols-2 gap-2">
+            {/* Full-width confirm button */}
+            <button
+              onClick={onApprove}
+              disabled={accepting}
+              className="py-3.5 rounded-2xl font-black text-[14px] text-white col-span-2 flex items-center justify-center gap-2 transition-all duration-200 active:scale-95 disabled:opacity-60 cursor-pointer"
+              style={{
+                background: accepting ? GREY : `linear-gradient(135deg, ${GREEN}, #14905D)`,
+                boxShadow: accepting ? 'none' : `0 6px 18px ${GREEN}40`,
+                minHeight: 52,
+              }}
+            >
+              {accepting
+                ? <><span className="animate-spin inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full" /> מצטרף...</>
+                : <><CheckCircle size={18} weight="bold" /> אשר משלוח</>}
+            </button>
+            <button
+              onClick={onDetails}
+              className="py-2.5 rounded-2xl font-bold text-[12px] flex items-center justify-center gap-1 transition-all duration-200 active:scale-95 cursor-pointer"
+              style={{ background: '#EAF7FD', color: BLUE, border: `1px solid ${BLUE}20` }}
+            >
+              <Info size={13} /> פרטים
+            </button>
+            <button
+              onClick={onChat}
+              className="py-2.5 rounded-2xl font-bold text-[12px] flex items-center justify-center gap-1 transition-all duration-200 active:scale-95 cursor-pointer"
+              style={{ background: '#FFF4E5', color: ORANGE, border: `1px solid ${ORANGE}20` }}
+            >
+              <ChatCircle size={13} /> צ'אט
+            </button>
+          </div>
+        ) : isMyDelivery ? (
+          <div className="grid grid-cols-2 gap-2">
+            <a
+              href={navUrl(delivery.pickupAddress, navPref)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="py-3 rounded-2xl font-black text-[13px] text-white text-center col-span-2 flex items-center justify-center gap-1.5 transition-all duration-200 active:scale-95 cursor-pointer"
+              style={{ background: `linear-gradient(135deg, ${BLUE}, #0077AA)`, boxShadow: `0 4px 14px ${BLUE}35` }}
+            >
+              <PhosphorMapPin size={14} /> נווט לאיסוף
+            </a>
+            <button
+              onClick={onChat}
+              className="py-2.5 rounded-2xl font-bold text-[12px] flex items-center justify-center gap-1 transition-all duration-200 active:scale-95 cursor-pointer"
+              style={{ background: '#FFF4E5', color: ORANGE, border: `1px solid ${ORANGE}20` }}
+            >
+              <ChatCircle size={13} /> צ'אט
+            </button>
+            <button
+              onClick={onDetails}
+              className="py-2.5 rounded-2xl font-bold text-[12px] flex items-center justify-center gap-1 transition-all duration-200 active:scale-95 cursor-pointer"
+              style={{ background: BG, color: TEXT2, border: `1px solid ${BORDER}` }}
+            >
+              <Info size={13} /> פרטים
+            </button>
+            {onIssue && (
+              <button
+                onClick={onIssue}
+                className="col-span-2 py-2 rounded-2xl font-bold text-[12px] flex items-center justify-center gap-1 transition-all duration-200 active:scale-95 cursor-pointer"
+                style={{ background: '#FFF0F0', color: ERROR, border: `1px solid ${ERROR}20` }}
+              >
+                דווח תקלה
+              </button>
+            )}
+          </div>
+        ) : (
+          <div
+            className="rounded-xl px-3 py-2.5 text-[12px] text-center flex items-center justify-center gap-1.5"
+            style={{ background: `${cfg.color}10`, color: cfg.color }}
+          >
+            {viewType === 'other-accepted'
+              ? <><Clock size={13} /> ממתין לאישור עסק — המשלוח עדיין עשוי להשתנות</>
+              : <><Rocket size={13} /> השליח בדרך ללקוח</>}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
@@ -361,16 +428,24 @@ const DetailModal: React.FC<{
   const isActionable = viewType === 'pending';
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-end justify-center"
-      style={{ background: 'rgba(0,0,0,0.6)' }}>
-      <div className="w-full max-w-lg rounded-t-3xl pb-8 overflow-y-auto"
-        style={{ background: CARD_BG, maxHeight: '90vh' }} dir="rtl">
-
+    <div
+      className="fixed inset-0 z-[200] flex items-end justify-center"
+      style={{ background: 'rgba(0,0,0,0.6)' }}
+    >
+      <div
+        className="w-full max-w-lg rounded-t-3xl pb-8 overflow-y-auto"
+        style={{ background: CARD_BG, maxHeight: '90vh' }}
+        dir="rtl"
+      >
         <div className="sticky top-0 bg-white pt-3 pb-2 px-5 z-10">
           <div className="w-10 h-1 rounded-full mx-auto mb-3" style={{ background: BORDER }} />
           <div className="flex items-center justify-between">
             <h2 className="text-[18px] font-black" style={{ color: TEXT }}>פרטי המשלוח</h2>
-            <button onClick={onClose} className="p-2 rounded-xl" style={{ background: BG }}>
+            <button
+              onClick={onClose}
+              className="p-2 rounded-xl transition-all duration-200 active:scale-95 cursor-pointer"
+              style={{ background: BG }}
+            >
               <XMarkIcon className="w-4 h-4" style={{ color: TEXT2 }} />
             </button>
           </div>
@@ -378,8 +453,10 @@ const DetailModal: React.FC<{
 
         <div className="px-5 space-y-4 pt-2">
           {/* Status badge */}
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black"
-            style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}35` }}>
+          <div
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black"
+            style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}35` }}
+          >
             <span
               className={`w-1.5 h-1.5 rounded-full${cfg.pulse ? ' animate-pulse' : ''}`}
               style={{ background: cfg.color }}
@@ -387,40 +464,70 @@ const DetailModal: React.FC<{
             {cfg.label}
           </div>
 
-          {/* Price + time */}
+          {/* Business + price row */}
           <div className="flex items-center gap-3 p-3 rounded-2xl" style={{ background: BG }}>
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-[14px] font-black"
-              style={{ background: `linear-gradient(135deg, ${BLUE}, #0077AA)` }}>
-              {(delivery.businessId ?? '?')[0].toUpperCase()}
+            <div
+              className="w-11 h-11 rounded-xl flex items-center justify-center text-white text-[15px] font-black shadow-sm"
+              style={{ background: `linear-gradient(135deg, ${BLUE}, #0077AA)` }}
+            >
+              {(delivery.businessName ?? '?')[0].toUpperCase()}
             </div>
-            <div>
-              <p className="font-black text-[15px]" style={{ color: TEXT }}>{delivery.businessId}</p>
+            <div className="flex-1">
+              <p className="font-black text-[15px]" style={{ color: TEXT }}>{delivery.businessName ?? '—'}</p>
               <p className="text-[11px]" style={{ color: TEXT2 }}>
                 {new Date(delivery.createdAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
               </p>
             </div>
-            <span className="mr-auto text-[22px] font-black" style={{ color: BLUE }}>₪{delivery.price}</span>
+            <span className="text-[26px] font-black tabular-nums" style={{ color: cfg.color }}>
+              ₪{delivery.price}
+            </span>
           </div>
 
           {/* Addresses */}
           <div className="space-y-3">
             <div className="flex gap-3 items-start">
-              <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[11px] font-black text-white" style={{ background: GREEN }}>א</div>
-              <div>
+              <div className="flex flex-col items-center flex-shrink-0">
+                <div
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-[12px] font-black text-white"
+                  style={{ background: GREEN }}
+                >
+                  א
+                </div>
+                <div className="w-px flex-1 my-1" style={{ minHeight: 16, borderLeft: `2px dashed ${GREEN}50` }} />
+              </div>
+              <div className="flex-1 pb-3">
                 <p className="text-[11px] font-semibold mb-0.5" style={{ color: TEXT2 }}>כתובת איסוף</p>
                 <p className="text-[14px] font-semibold" style={{ color: TEXT }}>{delivery.pickupAddress}</p>
-                <a href={navUrl(delivery.pickupAddress, navPref)} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-[11px] font-bold" style={{ color: BLUE }}><PhosphorMapPin size={11} /> נווט לאיסוף</a>
+                <a
+                  href={navUrl(delivery.pickupAddress, navPref)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-[11px] font-bold mt-1 cursor-pointer"
+                  style={{ color: BLUE }}
+                >
+                  <PhosphorMapPin size={11} /> נווט לאיסוף
+                </a>
               </div>
             </div>
-            <div className="w-px h-4 mr-3" style={{ background: BORDER }} />
             <div className="flex gap-3 items-start">
-              <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[11px] font-black text-white" style={{ background: ERROR }}>ב</div>
-              <div>
+              <div
+                className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-[12px] font-black text-white"
+                style={{ background: ERROR }}
+              >
+                ב
+              </div>
+              <div className="flex-1">
                 <p className="text-[11px] font-semibold mb-0.5" style={{ color: TEXT2 }}>כתובת מסירה</p>
                 <p className="text-[14px] font-semibold" style={{ color: TEXT }}>{delivery.dropAddress}</p>
-                <a href={navUrl(delivery.dropAddress, navPref)} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-[11px] font-bold" style={{ color: BLUE }}><PhosphorMapPin size={11} /> נווט למסירה</a>
+                <a
+                  href={navUrl(delivery.dropAddress, navPref)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-[11px] font-bold mt-1 cursor-pointer"
+                  style={{ color: BLUE }}
+                >
+                  <PhosphorMapPin size={11} /> נווט למסירה
+                </a>
               </div>
             </div>
           </div>
@@ -444,9 +551,16 @@ const DetailModal: React.FC<{
               </span>
             )}
             {delivery.customerPaid !== undefined && (
-              <span className="flex items-center gap-1 text-[12px] px-3 py-1 rounded-full font-bold"
-                style={{ background: delivery.customerPaid ? '#E8F8F2' : '#FFF4E5', color: delivery.customerPaid ? GREEN : ORANGE }}>
-                {delivery.customerPaid ? <><CheckCircle size={12} /> שולם ע"י לקוח</> : <><CreditCard size={12} /> גביה בעת המסירה</>}
+              <span
+                className="flex items-center gap-1 text-[12px] px-3 py-1 rounded-full font-bold"
+                style={{
+                  background: delivery.customerPaid ? '#E8F8F2' : '#FFF4E5',
+                  color: delivery.customerPaid ? GREEN : ORANGE,
+                }}
+              >
+                {delivery.customerPaid
+                  ? <><CheckCircle size={12} /> שולם ע"י לקוח</>
+                  : <><CreditCard size={12} /> גביה בעת המסירה</>}
               </span>
             )}
             {delivery.requiredVehicle && (
@@ -471,21 +585,31 @@ const DetailModal: React.FC<{
               <button
                 onClick={onApprove}
                 disabled={accepting}
-                className="py-3.5 rounded-2xl font-black text-[14px] text-white col-span-2 flex items-center justify-center gap-1.5 transition-all active:scale-95 disabled:opacity-60"
-                style={{ background: GREEN }}
+                className="py-4 rounded-2xl font-black text-[15px] text-white col-span-2 flex items-center justify-center gap-2 transition-all duration-200 active:scale-95 disabled:opacity-60 cursor-pointer"
+                style={{
+                  background: accepting ? GREY : `linear-gradient(135deg, ${GREEN}, #14905D)`,
+                  boxShadow: accepting ? 'none' : `0 6px 20px ${GREEN}40`,
+                  minHeight: 54,
+                }}
               >
-                {accepting ? 'מצטרף...' : <><CheckCircle size={15} /> אשר משלוח</>}
+                {accepting
+                  ? <><span className="animate-spin inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full" /> מצטרף...</>
+                  : <><CheckCircle size={18} weight="bold" /> אשר משלוח</>}
               </button>
-              <button onClick={onClose}
-                className="py-3 rounded-2xl font-semibold text-[13px] col-span-2 transition-all active:scale-95"
-                style={{ background: BG, color: TEXT2 }}>
+              <button
+                onClick={onClose}
+                className="py-3 rounded-2xl font-semibold text-[13px] col-span-2 transition-all duration-200 active:scale-95 cursor-pointer"
+                style={{ background: BG, color: TEXT2 }}
+              >
                 סגור
               </button>
             </div>
           ) : (
-            <button onClick={onClose}
-              className="w-full py-3 rounded-2xl font-semibold text-[13px] transition-all active:scale-95"
-              style={{ background: BG, color: TEXT2 }}>
+            <button
+              onClick={onClose}
+              className="w-full py-3 rounded-2xl font-semibold text-[13px] transition-all duration-200 active:scale-95 cursor-pointer"
+              style={{ background: BG, color: TEXT2 }}
+            >
               סגור
             </button>
           )}
@@ -501,11 +625,14 @@ const SectionHeader: React.FC<{
 }> = ({ title, count, color, open, onToggle }) => (
   <button
     onClick={onToggle}
-    className="w-full flex items-center justify-between py-2 px-1"
+    className="w-full flex items-center justify-between py-2 px-1 cursor-pointer transition-all duration-200"
   >
     <div className="flex items-center gap-2">
       <span className="text-[13px] font-black" style={{ color }}>{title}</span>
-      <span className="text-[11px] font-black px-2 py-0.5 rounded-full" style={{ background: `${color}18`, color }}>
+      <span
+        className="text-[11px] font-black px-2 py-0.5 rounded-full"
+        style={{ background: `${color}18`, color }}
+      >
         {count}
       </span>
     </div>
@@ -526,9 +653,7 @@ const AvailableDeliveries: React.FC = () => {
   const [detailDelivery, setDetailDelivery] = useState<StoredDelivery | null>(null);
   const [issueDeliveryId, setIssueDeliveryId] = useState<string | null>(null);
 
-  // Accepted section collapsible
   const [openAccepted, setOpenAccepted] = useState(false);
-  // Recent (48h) section collapsible — collapsed by default
   const [openRecent, setOpenRecent] = useState(false);
 
   const prevPendingCount = useRef(-1);
@@ -539,9 +664,7 @@ const AvailableDeliveries: React.FC = () => {
 
   // ─── Filter + group deliveries ────────────────────────────
   const visibleDeliveries = allDeliveries.filter(d => {
-    // Hide finished deliveries
     if (d.status === 'delivered' || d.status === 'cancelled' || d.status === 'picked_up') return false;
-    // Vehicle filter for pending — don't show wrong-vehicle deliveries
     if (d.status === 'pending' && d.requiredVehicle && courier && d.requiredVehicle !== courier.vehicle) return false;
     return true;
   });
@@ -550,7 +673,6 @@ const AvailableDeliveries: React.FC = () => {
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   const acceptedDeliveries = visibleDeliveries.filter(d => d.status === 'accepted')
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  const transitDeliveries: StoredDelivery[] = []; // picked_up → hidden from available feed
 
   // ─── Refresh ──────────────────────────────────────────────
   const refresh = useCallback(async () => {
@@ -559,14 +681,12 @@ const AvailableDeliveries: React.FC = () => {
     const fresh = getDeliveries();
     setAllDeliveries(fresh);
 
-    // Sound only for NEW pending deliveries (actionable)
     const newPendingCount = fresh.filter(d =>
       d.status === 'pending' &&
       (!d.requiredVehicle || !courier || d.requiredVehicle === courier.vehicle)
     ).length;
 
     if (prevPendingCount.current >= 0 && newPendingCount > prevPendingCount.current) {
-      // Don't alert unavailable couriers — flight mode
       const isCourierUnavailable = courierId ? getCourier(courierId)?.isAvailable === false : false;
       if (!isCourierUnavailable) {
         playNewDelivery();
@@ -639,9 +759,9 @@ const AvailableDeliveries: React.FC = () => {
         return;
       }
 
-      const courierData = getCourier(courierId);
-      const courierName   = courierData?.name    ?? 'שליח';
-      const courierRating = courierData?.rating   ?? 5;
+      const courierData    = getCourier(courierId);
+      const courierName    = courierData?.name    ?? 'שליח';
+      const courierRating  = courierData?.rating   ?? 5;
       const courierVehicle = courierData?.vehicle ?? 'motorcycle';
 
       await joinCandidatesQueue(delivery.id, courierId, courierName, courierRating, courierVehicle);
@@ -682,7 +802,6 @@ const AvailableDeliveries: React.FC = () => {
 
   const totalVisible = visibleDeliveries.length;
 
-  // Last 48 hours — delivered or cancelled (read-only history, no courier info shown)
   const cutoff48h = Date.now() - 48 * 60 * 60 * 1000;
   const recentDeliveries = allDeliveries
     .filter(d =>
@@ -692,39 +811,45 @@ const AvailableDeliveries: React.FC = () => {
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   return (
-    <div className="max-w-lg mx-auto px-4 py-5" style={{ background: BG, minHeight: '100vh' }}>
+    <div className="max-w-lg mx-auto px-4 py-4" style={{ background: BG, minHeight: '100vh' }}>
 
-      {/* Header */}
-      <div className="flex items-center justify-between mb-5">
+      {/* ── Compact header ── */}
+      <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-[20px] font-black" style={{ color: TEXT }}>
-            משלוחים פנויים
+          <div className="flex items-center gap-2">
+            <h1 className="text-[19px] font-black" style={{ color: TEXT }}>משלוחים פנויים</h1>
             {pendingDeliveries.length > 0 && (
-              <span className="mr-2 text-[13px] px-2 py-0.5 rounded-full font-bold" style={{ background: ERROR, color: '#fff' }}>
+              <span
+                className="text-[12px] px-2 py-0.5 rounded-full font-black animate-pulse"
+                style={{ background: GREEN, color: '#fff' }}
+              >
                 {pendingDeliveries.length}
               </span>
             )}
-          </h1>
+          </div>
           {totalVisible > 0 && (
             <p className="text-[11px] mt-0.5" style={{ color: TEXT2 }}>
-              {totalVisible} משלוח{totalVisible !== 1 ? 'ים' : ''} פעיל{totalVisible !== 1 ? 'ים' : ''} במערכת
+              {totalVisible} פעיל{totalVisible !== 1 ? 'ים' : ''} · מסנכרן כל 3 שניות
             </p>
           )}
         </div>
         <button
           onClick={refresh}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-2xl text-[12px] font-semibold transition-all active:scale-95"
-          style={{ background: CARD_BG, color: BLUE, border: `1px solid ${BORDER}` }}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold transition-all duration-200 active:scale-95 cursor-pointer"
+          style={{ background: CARD_BG, color: BLUE, border: `1px solid ${BORDER}`, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}
         >
-          <ArrowPathIcon className="w-4 h-4" />
+          <ArrowPathIcon className="w-3.5 h-3.5" />
           רענן
         </button>
       </div>
 
       {/* Unavailable banner */}
       {isUnavailable && (
-        <div className="rounded-2xl p-4 mb-4 flex items-center gap-3" style={{ background: '#FDECEA', border: `1px solid #F5C6C6` }}>
-          <span className="w-4 h-4 rounded-full flex-shrink-0" style={{ background: '#E23437' }} />
+        <div
+          className="rounded-2xl p-3.5 mb-4 flex items-center gap-3"
+          style={{ background: '#FDECEA', border: '1px solid #F5C6C6' }}
+        >
+          <span className="w-3.5 h-3.5 rounded-full flex-shrink-0" style={{ background: ERROR }} />
           <div>
             <p className="text-[13px] font-black" style={{ color: ERROR }}>אתה מסומן כלא זמין</p>
             <p className="text-[11px]" style={{ color: '#C0392B' }}>שנה את הסטטוס בפרופיל כדי לקבל התראות.</p>
@@ -732,25 +857,52 @@ const AvailableDeliveries: React.FC = () => {
         </div>
       )}
 
-      {/* Empty state */}
+      {/* ── Empty state ── */}
       {totalVisible === 0 && (
-        <div className="rounded-2xl p-10 flex flex-col items-center gap-3 text-center"
-          style={{ background: CARD_BG, border: `1px solid ${BORDER}`, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
-          <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: '#E6F5FC' }}>
-            <BellIcon className="w-8 h-8" style={{ color: BLUE }} />
+        <div
+          className="rounded-2xl p-10 flex flex-col items-center gap-4 text-center"
+          style={{ background: CARD_BG, border: `1px solid ${BORDER}`, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}
+        >
+          {/* Illustration-style icon stack */}
+          <div className="relative w-20 h-20">
+            <div
+              className="absolute inset-0 rounded-2xl"
+              style={{ background: '#E6F5FC', transform: 'rotate(8deg)' }}
+            />
+            <div
+              className="absolute inset-0 rounded-2xl flex items-center justify-center"
+              style={{ background: `linear-gradient(135deg, ${BLUE}20, ${BLUE}10)`, border: `1.5px solid ${BLUE}25` }}
+            >
+              <BellIcon className="w-9 h-9" style={{ color: BLUE }} />
+            </div>
           </div>
-          <p className="font-bold text-[16px]" style={{ color: TEXT }}>אין משלוחים פעילים כרגע</p>
-          <p className="text-[12px]" style={{ color: TEXT2 }}>המערכת מסנכרנת כל 3 שניות...</p>
+          <div>
+            <p className="font-black text-[16px] mb-1" style={{ color: TEXT }}>אין משלוחים פנויים כרגע</p>
+            <p className="text-[12px]" style={{ color: TEXT2 }}>המערכת מסנכרנת כל 3 שניות ותתריע בקול כשיגיע משלוח</p>
+          </div>
+          <button
+            onClick={refresh}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[12px] font-bold transition-all duration-200 active:scale-95 cursor-pointer"
+            style={{ background: '#E6F5FC', color: BLUE }}
+          >
+            <ArrowPathIcon className="w-3.5 h-3.5" />
+            רענן עכשיו
+          </button>
         </div>
       )}
 
       {/* ── PENDING section ── */}
       {pendingDeliveries.length > 0 && (
         <div className="mb-4">
+          {/* Section header with pulsing dot + count badge */}
           <div className="flex items-center gap-2 mb-3">
-            <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: GREEN }} />
-            <span className="text-[13px] font-black" style={{ color: GREEN }}>
-              פנוי לקיחה ({pendingDeliveries.length})
+            <span className="w-2.5 h-2.5 rounded-full animate-pulse flex-shrink-0" style={{ background: GREEN }} />
+            <span className="text-[14px] font-black" style={{ color: GREEN }}>פנוי לקיחה</span>
+            <span
+              className="text-[11px] font-black px-2 py-0.5 rounded-full"
+              style={{ background: `${GREEN}18`, color: GREEN }}
+            >
+              {pendingDeliveries.length}
             </span>
           </div>
           <div className="space-y-3">
@@ -773,7 +925,7 @@ const AvailableDeliveries: React.FC = () => {
       {/* ── ACCEPTED section ── */}
       {acceptedDeliveries.length > 0 && (
         <div className="mb-4">
-          <div className="h-px mb-3" style={{ background: `${BORDER}` }} />
+          <div className="h-px mb-3" style={{ background: BORDER }} />
           <SectionHeader
             title="שליח בדרך לאיסוף"
             count={acceptedDeliveries.length}
@@ -801,7 +953,7 @@ const AvailableDeliveries: React.FC = () => {
         </div>
       )}
 
-      {/* ── RECENT 48h section — read-only, no courier info ── */}
+      {/* ── RECENT 48h section ── */}
       {recentDeliveries.length > 0 && (
         <div className="mb-4">
           <div className="h-px mb-3" style={{ background: BORDER }} />
@@ -825,9 +977,12 @@ const AvailableDeliveries: React.FC = () => {
                   <div
                     key={d.id}
                     className="rounded-2xl px-4 py-3"
-                    style={{ background: CARD_BG, border: `1px solid ${BORDER}` }}
+                    style={{
+                      background: CARD_BG,
+                      border: `1px solid ${BORDER}`,
+                      borderRight: `3px solid ${statusClr}`,
+                    }}
                   >
-                    {/* Status + time row */}
                     <div className="flex items-center justify-between mb-2">
                       <span
                         className="text-[11px] font-black px-2.5 py-0.5 rounded-full"
@@ -837,7 +992,6 @@ const AvailableDeliveries: React.FC = () => {
                       </span>
                       <span className="text-[11px] tabular-nums" style={{ color: TEXT2 }}>{time}</span>
                     </div>
-                    {/* Addresses */}
                     <div className="space-y-1">
                       <div className="flex gap-2 items-start">
                         <span className="w-2 h-2 rounded-full flex-shrink-0 mt-1.5" style={{ background: GREEN }} />
@@ -845,7 +999,7 @@ const AvailableDeliveries: React.FC = () => {
                       </div>
                       <div className="w-px h-2 mr-[3px]" style={{ background: BORDER }} />
                       <div className="flex gap-2 items-start">
-                        <span className="w-2 h-2 rounded-full flex-shrink-0 mt-1.5" style={{ background: '#E23437' }} />
+                        <span className="w-2 h-2 rounded-full flex-shrink-0 mt-1.5" style={{ background: ERROR }} />
                         <p className="text-[12px] font-medium leading-snug" style={{ color: TEXT }}>{d.dropAddress}</p>
                       </div>
                     </div>

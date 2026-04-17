@@ -846,6 +846,7 @@ export interface DeliveryCandidate {
   joinedAt: string;
   lastHeartbeat: string;
   status: 'waiting' | 'rejected' | 'accepted';
+  etaMinutes?: number;  // how fast courier said they can arrive
 }
 
 function dbToCandidate(row: Record<string, unknown>): DeliveryCandidate {
@@ -859,16 +860,18 @@ function dbToCandidate(row: Record<string, unknown>): DeliveryCandidate {
     joinedAt: row.joined_at as string,
     lastHeartbeat: row.last_heartbeat as string,
     status: (row.status as 'waiting' | 'rejected' | 'accepted') || 'waiting',
+    etaMinutes: row.eta_minutes != null ? Number(row.eta_minutes) : undefined,
   };
 }
 
-/** Fetch waiting candidates for a delivery, ordered by joined_at */
+/** Fetch waiting candidates for a delivery, ordered by eta_minutes ASC (fastest first), then joined_at */
 export async function getCandidates(deliveryId: string): Promise<DeliveryCandidate[]> {
   const { data } = await supabase
     .from('delivery_candidates')
     .select('*')
     .eq('delivery_id', deliveryId)
     .eq('status', 'waiting')
+    .order('eta_minutes', { ascending: true, nullsFirst: false })
     .order('joined_at', { ascending: true });
   return data ? data.map(dbToCandidate) : [];
 }
@@ -880,6 +883,7 @@ export async function joinCandidatesQueue(
   courierName: string,
   courierRating: number,
   courierVehicle: string,
+  etaMinutes?: number,
 ): Promise<void> {
   const { error } = await supabase.from('delivery_candidates').upsert({
     delivery_id: deliveryId,
@@ -890,6 +894,7 @@ export async function joinCandidatesQueue(
     joined_at: new Date().toISOString(),
     last_heartbeat: new Date().toISOString(),
     status: 'waiting',
+    eta_minutes: etaMinutes ?? null,
   }, { onConflict: 'delivery_id,courier_id' });
   if (error) console.error('[sync] joinCandidatesQueue error:', error.message);
 }

@@ -1058,24 +1058,44 @@ const BusinessDeliveries: React.FC = () => {
     <div className="max-w-lg mx-auto px-4 py-5" style={{ background: '#F4F4F4', minHeight: '100vh' }}>
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-[20px] font-black" style={{ color: '#202125' }}>המשלוחים שלי</h1>
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-2.5">
+          <h1 className="text-[20px] font-black" style={{ color: '#202125' }}>המשלוחים שלי</h1>
+          {filtered.length > 0 && (
+            <span
+              className="text-[11px] font-black px-2 py-0.5 rounded-full"
+              style={{ background: BLUE + '18', color: BLUE }}
+            >
+              {tab === 'pending_approval' ? pendingApproval.length : filtered.length}
+            </span>
+          )}
+        </div>
         <button
           onClick={() => navigate('/business/new-delivery')}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-white text-[12px] font-bold transition-all active:scale-95"
-          style={{ background: BLUE, boxShadow: `0 3px 10px ${BLUE}30` }}
+          className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl text-white text-[13px] font-black transition-all duration-200 active:scale-95"
+          style={{ background: `linear-gradient(135deg, ${BLUE}, #2563EB)`, boxShadow: `0 4px 14px ${BLUE}40` }}
         >
           <PlusCircleIcon className="w-4 h-4" />
-          חדש
+          משלוח חדש
         </button>
       </div>
+      {/* Divider below header */}
+      <div className="mb-4 mt-3" style={{ height: 1, background: 'linear-gradient(90deg, #E8E8E8, transparent)' }} />
 
-      {/* Tabs */}
+      {/* Tabs — pill-based scrollable bar */}
       <div
-        className="flex mb-4"
-        style={{ background: '#FFFFFF', borderRadius: 12, border: '1px solid #E8E8E8', overflow: 'hidden' }}
+        className="flex mb-4 overflow-x-auto gap-1.5 pb-0.5"
+        style={{
+          background: '#F0F0F0',
+          borderRadius: 14,
+          padding: '4px',
+          scrollbarWidth: 'none',
+          WebkitOverflowScrolling: 'touch',
+        }}
       >
-        {tabs.map((t, i) => {
+        <style>{`.tab-scroll::-webkit-scrollbar { display: none; }`}</style>
+        {tabs.map((t) => {
+          const isActive = tab === t.id;
           const badge =
             t.id === 'pending_approval' && pendingApproval.length > 0 ? pendingApproval.length :
             t.id === 'scheduled' && scheduledCount > 0 ? scheduledCount :
@@ -1084,21 +1104,25 @@ const BusinessDeliveries: React.FC = () => {
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
-              className="flex-1 py-2.5 text-[11px] font-bold transition-all flex items-center justify-center gap-1"
+              className="flex-shrink-0 flex items-center justify-center gap-1 px-3 py-1.5 text-[11px] font-bold transition-all duration-200 rounded-[10px]"
               style={{
-                background:  tab === t.id ? BLUE : '#FFFFFF',
-                color:       tab === t.id ? '#FFFFFF' : '#757575',
-                borderRight: i < tabs.length - 1 ? '1px solid #E8E8E8' : 'none',
+                background: isActive ? '#FFFFFF' : 'transparent',
+                color:      isActive ? '#202125' : '#757575',
+                boxShadow: isActive ? '0 1px 6px rgba(0,0,0,0.12), 0 0 0 0.5px rgba(0,0,0,0.06)' : 'none',
+                fontWeight: isActive ? 800 : 600,
               }}
             >
               {t.label}
               {badge !== null && (
                 <span
-                  className="text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[16px] text-center"
+                  className="text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[16px] text-center leading-none"
                   style={{
-                    background: tab === t.id ? 'rgba(255,255,255,0.3)' : (t.id === 'scheduled' ? BLUE : RED),
-                    // pending_approval badge is RED (falls through to RED in ternary above)
-                    color: '#FFFFFF',
+                    background: isActive
+                      ? (t.id === 'pending_approval' ? '#E23437' : BLUE)
+                      : (t.id === 'scheduled' ? BLUE + '22' : t.id === 'pending_approval' ? '#E2343722' : '#75757522'),
+                    color: isActive
+                      ? '#FFFFFF'
+                      : (t.id === 'scheduled' ? BLUE : t.id === 'pending_approval' ? '#E23437' : '#757575'),
                   }}
                 >
                   {badge}
@@ -1184,29 +1208,44 @@ const BusinessDeliveries: React.FC = () => {
         )
       ) : filtered.length === 0 ? (
         <div
-          className="rounded-2xl p-8 flex flex-col items-center gap-3 text-center"
-          style={{ background: '#FFFFFF', border: '1px solid #E8E8E8' }}
+          className="rounded-2xl p-10 flex flex-col items-center gap-4 text-center"
+          style={{ background: '#FFFFFF', border: '1px solid #E8E8E8', boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}
         >
-          <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: '#E6F6FC' }}>
+          <div
+            className="w-16 h-16 rounded-2xl flex items-center justify-center"
+            style={{ background: tab === 'archived' ? '#F4F4F4' : '#E6F6FC', boxShadow: `0 4px 16px ${tab === 'archived' ? '#75757520' : BLUE + '20'}` }}
+          >
             {tab === 'archived'
-              ? <ArchiveBoxIcon className="w-7 h-7" style={{ color: BLUE }} />
-              : <TruckIcon      className="w-7 h-7" style={{ color: BLUE }} />
+              ? <ArchiveBoxIcon className="w-8 h-8" style={{ color: '#9CA3AF' }} />
+              : tab === 'completed'
+              ? <CheckCircle size={32} style={{ color: GREEN }} />
+              : <TruckIcon className="w-8 h-8" style={{ color: BLUE }} />
             }
           </div>
-          <p className="text-[14px] font-bold" style={{ color: '#202125' }}>
-            {tab === 'scheduled' ? 'אין משלוחים מתוזמנים'
-             : tab === 'active'    ? 'אין משלוחים פעילים'
-             : tab === 'completed' ? 'אין משלוחים שהושלמו'
-             : tab === 'archived'  ? 'הארכיון ריק'
-             : 'אין משלוחים עדיין'}
-          </p>
-          {tab === 'scheduled' && (
+          <div>
+            <p className="text-[15px] font-black mb-1" style={{ color: '#202125' }}>
+              {tab === 'scheduled' ? 'אין משלוחים מתוזמנים'
+               : tab === 'active'    ? 'אין משלוחים פעילים כרגע'
+               : tab === 'completed' ? 'אין משלוחים שהושלמו'
+               : tab === 'archived'  ? 'הארכיון ריק'
+               : 'אין משלוחים עדיין'}
+            </p>
+            <p className="text-[12px]" style={{ color: '#9CA3AF' }}>
+              {tab === 'active'    ? 'משלוחים שנמצאים בדרך יופיעו כאן'
+               : tab === 'completed' ? 'משלוחים שנמסרו בהצלחה יופיעו כאן'
+               : tab === 'archived'  ? 'משלוחים שהועברו לארכיון יופיעו כאן'
+               : tab === 'scheduled' ? 'צור משלוח מתוזמן לשעה עתידית'
+               : 'צור את המשלוח הראשון שלך'}
+            </p>
+          </div>
+          {(tab === 'active' || tab === 'all' || tab === 'scheduled') && (
             <button
               onClick={() => navigate('/business/new-delivery')}
-              className="px-5 py-2.5 rounded-xl text-white font-bold text-[13px] transition-all active:scale-95 mt-1"
-              style={{ background: BLUE }}
+              className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-white font-bold text-[13px] transition-all duration-200 active:scale-95 mt-1"
+              style={{ background: `linear-gradient(135deg, ${BLUE}, #2563EB)`, boxShadow: `0 4px 14px ${BLUE}35` }}
             >
-              תזמן משלוח חדש
+              <PlusCircleIcon className="w-4 h-4" />
+              {tab === 'scheduled' ? 'תזמן משלוח חדש' : 'צור משלוח חדש'}
             </button>
           )}
         </div>
@@ -1231,8 +1270,13 @@ const BusinessDeliveries: React.FC = () => {
             const isActiveDelivery = ['accepted', 'picked_up'].includes(d.status);
             const card = (
               <div
-                className="rounded-2xl p-4"
-                style={{ background: '#FFFFFF', border: '1px solid #E8E8E8', boxShadow: '0 1px 6px rgba(0,0,0,0.05)', cursor: isActiveDelivery ? 'pointer' : undefined }}
+                className="rounded-2xl p-4 overflow-hidden cursor-pointer transition-all duration-200 hover:shadow-md"
+                style={{
+                  background: '#FFFFFF',
+                  border: '1px solid #E8E8E8',
+                  boxShadow: '0 1px 6px rgba(0,0,0,0.05)',
+                  borderRight: `4px solid ${color}`,
+                }}
                 onClick={() => isActiveDelivery && setTrackingSheet(d)}
               >
                 {/* Header: order number (right) + date (left) */}
@@ -1261,7 +1305,7 @@ const BusinessDeliveries: React.FC = () => {
                       className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 text-[10px] font-bold text-white"
                       style={{ background: GREEN }}
                     >א</div>
-                    <p className="text-[13px]" style={{ color: '#202125' }}>{d.pickupAddress}</p>
+                    <p className="text-[13px] font-medium leading-snug" style={{ color: '#202125' }}>{d.pickupAddress}</p>
                   </div>
                   <div className="w-px h-3 mr-2.5" style={{ background: '#E8E8E8' }} />
                   <div className="flex gap-2 items-start">
@@ -1269,7 +1313,7 @@ const BusinessDeliveries: React.FC = () => {
                       className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 text-[10px] font-bold text-white"
                       style={{ background: RED }}
                     >ב</div>
-                    <p className="text-[13px]" style={{ color: '#202125' }}>{d.dropAddress}</p>
+                    <p className="text-[13px] font-medium leading-snug" style={{ color: '#202125' }}>{d.dropAddress}</p>
                   </div>
                 </div>
 
@@ -1278,17 +1322,6 @@ const BusinessDeliveries: React.FC = () => {
                   {d.paymentMethod && (
                     <span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{ background: '#F4F4F4', color: '#757575' }}>
                       {d.paymentMethod === 'cash' ? 'מזומן' : 'ביט'}
-                    </span>
-                  )}
-                  {d.customerPaid !== undefined && (
-                    <span
-                      className="text-[10px] px-2 py-0.5 rounded-full font-bold"
-                      style={{
-                        background: d.customerPaid ? GREEN + '18' : '#F58F1F18',
-                        color:      d.customerPaid ? GREEN : '#F58F1F',
-                      }}
-                    >
-                      {d.customerPaid ? 'שולם' : 'לגבות'}
                     </span>
                   )}
                   {d.requiredVehicle && (
@@ -1311,14 +1344,27 @@ const BusinessDeliveries: React.FC = () => {
 
                 {/* Footer: price + action buttons */}
                 <div className="flex items-center justify-between pt-3" style={{ borderTop: '1px solid #E8E8E8' }}>
-                  <span className="text-[15px] font-black" style={{ color: BLUE }}>₪{d.price}</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[16px] font-black" style={{ color: BLUE }}>₪{d.price}</span>
+                    {d.customerPaid !== undefined && (
+                      <span
+                        className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                        style={{
+                          background: d.customerPaid ? GREEN + '18' : '#F58F1F18',
+                          color:      d.customerPaid ? GREEN : '#F58F1F',
+                        }}
+                      >
+                        {d.customerPaid ? 'שולם' : 'לגבות'}
+                      </span>
+                    )}
+                  </div>
 
                   <div className="flex items-center gap-2">
                     {/* Republish — resets delivery and broadcasts to all couriers */}
                     {canRepublish(d) && (
                       <button
-                        onClick={() => handleRepublish(d)}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-black transition-all active:scale-95"
+                        onClick={(e) => { e.stopPropagation(); handleRepublish(d); }}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-black transition-all duration-200 active:scale-95"
                         style={{ background: '#FFF4E5', color: '#F58F1F', border: '1px solid #F58F1F30' }}
                         title="פרסם שוב לכל השליחים"
                       >
@@ -1329,9 +1375,9 @@ const BusinessDeliveries: React.FC = () => {
                     {/* Resend */}
                     {canResend(d) && (
                       <button
-                        onClick={() => handleResend(d)}
+                        onClick={(e) => { e.stopPropagation(); handleResend(d); }}
                         disabled={resending === d.id}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition-all active:scale-95 disabled:opacity-60"
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition-all duration-200 active:scale-95 disabled:opacity-60"
                         style={{ background: '#E6F6FC', color: BLUE }}
                         title="שלח שוב לשליחים"
                       >
@@ -1343,8 +1389,8 @@ const BusinessDeliveries: React.FC = () => {
                     {/* Edit */}
                     {canEdit(d) && (
                       <button
-                        onClick={() => setEditTarget(d)}
-                        className="p-2 rounded-xl transition-all active:scale-95"
+                        onClick={(e) => { e.stopPropagation(); setEditTarget(d); }}
+                        className="p-2 rounded-xl transition-all duration-200 active:scale-95"
                         style={{ background: '#FFF8E6', color: '#F58F1F' }}
                         title="ערוך משלוח"
                       >
@@ -1355,8 +1401,8 @@ const BusinessDeliveries: React.FC = () => {
                     {/* Unarchive */}
                     {tab === 'archived' && (
                       <button
-                        onClick={() => handleUnarchive(d.id)}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition-all active:scale-95"
+                        onClick={(e) => { e.stopPropagation(); handleUnarchive(d.id); }}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition-all duration-200 active:scale-95"
                         style={{ background: '#E6F6FC', color: BLUE }}
                       >
                         <ArchiveBoxIcon className="w-3.5 h-3.5" />
@@ -1367,8 +1413,8 @@ const BusinessDeliveries: React.FC = () => {
                     {/* Delete */}
                     {canDelete(d) && (
                       <button
-                        onClick={() => setDelTarget(d)}
-                        className="p-2 rounded-xl transition-all active:scale-95"
+                        onClick={(e) => { e.stopPropagation(); setDelTarget(d); }}
+                        className="p-2 rounded-xl transition-all duration-200 active:scale-95"
                         style={{ background: '#FFF0F0', color: RED }}
                         title="מחק משלוח"
                       >

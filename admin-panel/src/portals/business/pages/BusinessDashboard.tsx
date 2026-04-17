@@ -19,7 +19,7 @@ import { syncDeliveriesDown, getCandidates, rejectCandidate, acceptCandidate, ge
 import { getActiveDeliveryForBusiness } from '../../../services/storage.service';
 import { supabase } from '../../../lib/supabase';
 import {
-  TruckIcon, PlusIcon, ChevronLeftIcon, XMarkIcon,
+  TruckIcon, PlusIcon, ChevronLeftIcon, ChevronRightIcon, XMarkIcon,
   ChatBubbleLeftRightIcon, MagnifyingGlassIcon,
   CheckIcon, MapPinIcon, BanknotesIcon, ClockIcon,
   ArrowRightIcon,
@@ -118,31 +118,54 @@ const CandidateReviewSheet: React.FC<{
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deliveryId]);
 
-  const top = candidates[0] ?? null;
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const touchStartXRef = useRef<number | null>(null);
+
+  // Keep selectedIndex in bounds when candidates list changes
+  const safeIndex = candidates.length > 0 ? Math.min(selectedIndex, candidates.length - 1) : 0;
+  const selected = candidates[safeIndex] ?? null;
+
+  const goNext = () => setSelectedIndex(i => Math.min(candidates.length - 1, i + 1));
+  const goPrev = () => setSelectedIndex(i => Math.max(0, i - 1));
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartXRef.current = e.touches[0].clientX;
+  };
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartXRef.current === null) return;
+    const delta = e.changedTouches[0].clientX - touchStartXRef.current;
+    touchStartXRef.current = null;
+    if (Math.abs(delta) < 40) return;
+    // In RTL: swiping left (negative delta) means going to next candidate
+    if (delta < 0) goNext(); else goPrev();
+  };
 
   const handleAccept = async () => {
-    if (!top) return;
+    if (!selected) return;
     setLoading(true);
 
     // 1. Mark candidate as accepted in Supabase (also rejects all others)
-    await acceptCandidate(deliveryId, top.courierId);
+    await acceptCandidate(deliveryId, selected.courierId);
 
     // 2. Update the delivery with the chosen courier — writes to localStorage AND Supabase
+    //    If the business set a prep time on the delivery, start the countdown now.
+    const acceptedAt = new Date().toISOString();
+    const deliveryForPrep = getDeliveries().find(d => d.id === deliveryId);
+    const prepReadyAt = deliveryForPrep?.prepMinutes
+      ? new Date(Date.now() + deliveryForPrep.prepMinutes * 60 * 1000).toISOString()
+      : undefined;
+
     updateDelivery(deliveryId, {
       status: 'accepted',
-      courierId: top.courierId,
-      courierName: top.courierName,
-      acceptedAt: new Date().toISOString(),
+      courierId: selected.courierId,
+      courierName: selected.courierName,
+      acceptedAt,
+      ...(prepReadyAt ? { prepReadyAt } : {}),
     });
 
-    // 3. Clear pending_candidacy for this courier so their UI reacts immediately
-    //    (also done client-side in courier portal, but clearing here guarantees it)
-    //    We can't directly clear the courier's localStorage (different browser),
-    //    but the Supabase realtime subscription in CourierDeliveries will fire.
-
-    // 4. Send a system message in the shared conversation so the courier gets
+    // 3. Send a system message in the shared conversation so the courier gets
     //    an in-app notification and the chat shows the approval event.
-    const conv = getOrCreateConversation(businessId, top.courierId);
+    const conv = getOrCreateConversation(businessId, selected.courierId);
     const biz  = getBusiness(businessId);
     addMessage(conv.id, {
       senderId:    'system',
@@ -160,13 +183,14 @@ const CandidateReviewSheet: React.FC<{
   };
 
   const handleReject = async () => {
-    if (!top) return;
-    await rejectCandidate(deliveryId, top.courierId);
+    if (!selected) return;
+    await rejectCandidate(deliveryId, selected.courierId);
+    setSelectedIndex(0);
     await refresh();
-    toast.success('הועבר למועמד הבא');
+    toast.success('השליח נדחה');
   };
 
-  const waitSec = top ? Math.round((Date.now() - new Date(top.joinedAt).getTime()) / 1000) : 0;
+  const waitSec = selected ? Math.round((Date.now() - new Date(selected.joinedAt).getTime()) / 1000) : 0;
   const waitLabel = waitSec < 60 ? `${waitSec} שנ׳` : `${Math.floor(waitSec / 60)} דק׳`;
 
   return (
@@ -258,55 +282,126 @@ const CandidateReviewSheet: React.FC<{
             <p className="text-[15px] font-bold" style={{ color: '#202125' }}>מחפש שליחים זמינים...</p>
             <p className="text-[12px]" style={{ color: '#757575' }}>ההודעה נשלחה לכל השליחים הזמינים</p>
           </div>
-        ) : top ? (
+        ) : selected ? (
           <>
-            {/* Queue progress dots */}
+            {/* ── Carousel ──────────────────────────────────────────────────── */}
+            <div className="relative mb-3">
+              {/* Right arrow (RTL: previous candidate) */}
+              {candidates.length > 1 && (
+                <button
+                  onClick={goPrev}
+                  disabled={safeIndex === 0}
+                  className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full flex items-center justify-center transition-all active:scale-90 disabled:opacity-25"
+                  style={{ background: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.15)', marginRight: -12 }}
+                >
+                  <ChevronRightIcon className="w-4 h-4" style={{ color: '#202125' }} />
+                </button>
+              )}
+
+              {/* Left arrow (RTL: next candidate) */}
+              {candidates.length > 1 && (
+                <button
+                  onClick={goNext}
+                  disabled={safeIndex === candidates.length - 1}
+                  className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full flex items-center justify-center transition-all active:scale-90 disabled:opacity-25"
+                  style={{ background: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.15)', marginLeft: -12 }}
+                >
+                  <ChevronLeftIcon className="w-4 h-4" style={{ color: '#202125' }} />
+                </button>
+              )}
+
+              {/* Courier card — swipeable */}
+              <div
+                onTouchStart={handleTouchStart}
+                onTouchEnd={handleTouchEnd}
+                className="rounded-2xl p-4"
+                style={{
+                  background: '#F4F4F4',
+                  border: `2px solid ${BLUE}20`,
+                  userSelect: 'none',
+                  transition: 'opacity 0.15s',
+                }}
+              >
+                <div className="flex items-center gap-3">
+                  {/* Avatar */}
+                  <div
+                    className="w-14 h-14 rounded-2xl flex items-center justify-center text-white text-[22px] font-black flex-shrink-0"
+                    style={{ background: `linear-gradient(135deg, ${BLUE}, #0077a8)` }}
+                  >
+                    {selected.courierName.charAt(0)}
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <p className="font-black text-[17px]" style={{ color: '#202125' }}>{selected.courierName}</p>
+
+                    {/* Star rating */}
+                    <div className="flex items-center gap-0.5 mt-0.5">
+                      {[1,2,3,4,5].map(i => (
+                        <span key={i} style={{ color: i <= Math.round(selected.courierRating) ? '#F58F1F' : '#E8E8E8', fontSize: 13 }}>★</span>
+                      ))}
+                      <span className="text-[11px] mr-1 font-semibold" style={{ color: '#757575' }}>{selected.courierRating.toFixed(1)}</span>
+                    </div>
+
+                    {/* Vehicle + wait time */}
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      <div className="flex items-center gap-1 px-2 py-0.5 rounded-lg" style={{ background: '#E8E8E8' }}>
+                        <TruckIcon className="w-3 h-3" style={{ color: '#757575' }} />
+                        <span className="text-[11px] font-semibold" style={{ color: '#757575' }}>
+                          {VEHICLE_LABEL[selected.courierVehicle] ?? selected.courierVehicle}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 px-2 py-0.5 rounded-lg" style={{ background: '#E8E8E8' }}>
+                        <ClockIcon className="w-3 h-3" style={{ color: '#757575' }} />
+                        <span className="text-[11px] font-semibold" style={{ color: '#757575' }}>ממתין {waitLabel}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Candidate index badge (when multiple) */}
+                  {candidates.length > 1 && (
+                    <div
+                      className="flex flex-col items-center justify-center rounded-xl px-2 py-1 flex-shrink-0"
+                      style={{ background: '#E8E8E8', minWidth: 36 }}
+                    >
+                      <span className="text-[13px] font-black leading-none" style={{ color: '#757575' }}>{safeIndex + 1}</span>
+                      <span className="text-[9px] font-semibold" style={{ color: '#AAAAAA' }}>מתוך {candidates.length}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* ETA banner — full width inside the card */}
+                {selected.etaMinutes != null && (
+                  <div
+                    className="mt-3 rounded-xl px-3 py-2.5 flex items-center justify-center gap-2"
+                    style={{
+                      background: 'linear-gradient(135deg, #009DE0, #2563EB)',
+                      boxShadow: '0 4px 14px rgba(0,157,224,0.35)',
+                    }}
+                  >
+                    <ClockIcon className="w-4 h-4 flex-shrink-0" style={{ color: 'rgba(255,255,255,0.8)' }} />
+                    <span className="text-white text-[14px] font-semibold text-center leading-tight">
+                      השליח יכול להגיע לאסוף עוד{' '}
+                      <span className="font-black text-[18px]">{selected.etaMinutes}</span>
+                      {' '}דקות
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Carousel dots */}
             {candidates.length > 1 && (
               <div className="flex gap-1.5 mb-4 justify-center">
                 {candidates.map((_, i) => (
-                  <div key={i} className="h-1.5 rounded-full transition-all" style={{ background: i === 0 ? BLUE : '#E8E8E8', width: i === 0 ? 24 : 12 }} />
+                  <button
+                    key={i}
+                    onClick={() => setSelectedIndex(i)}
+                    className="h-2 rounded-full transition-all"
+                    style={{ background: i === safeIndex ? BLUE : '#E8E8E8', width: i === safeIndex ? 24 : 8 }}
+                  />
                 ))}
               </div>
             )}
-
-            {/* Courier card */}
-            <div className="rounded-2xl p-4 mb-4" style={{ background: '#F4F4F4', border: `2px solid ${BLUE}20` }}>
-              <div className="flex items-center gap-3">
-                {/* Avatar */}
-                <div
-                  className="w-14 h-14 rounded-2xl flex items-center justify-center text-white text-[22px] font-black flex-shrink-0"
-                  style={{ background: `linear-gradient(135deg, ${BLUE}, #0077a8)` }}
-                >
-                  {top.courierName.charAt(0)}
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <p className="font-black text-[17px]" style={{ color: '#202125' }}>{top.courierName}</p>
-
-                  {/* Star rating */}
-                  <div className="flex items-center gap-0.5 mt-0.5">
-                    {[1,2,3,4,5].map(i => (
-                      <span key={i} style={{ color: i <= Math.round(top.courierRating) ? '#F58F1F' : '#E8E8E8', fontSize: 13 }}>★</span>
-                    ))}
-                    <span className="text-[11px] mr-1 font-semibold" style={{ color: '#757575' }}>{top.courierRating.toFixed(1)}</span>
-                  </div>
-
-                  {/* Vehicle + wait time */}
-                  <div className="flex items-center gap-2 mt-1">
-                    <div className="flex items-center gap-1 px-2 py-0.5 rounded-lg" style={{ background: '#E8E8E8' }}>
-                      <TruckIcon className="w-3 h-3" style={{ color: '#757575' }} />
-                      <span className="text-[11px] font-semibold" style={{ color: '#757575' }}>
-                        {VEHICLE_LABEL[top.courierVehicle] ?? top.courierVehicle}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1 px-2 py-0.5 rounded-lg" style={{ background: '#E8E8E8' }}>
-                      <ClockIcon className="w-3 h-3" style={{ color: '#757575' }} />
-                      <span className="text-[11px] font-semibold" style={{ color: '#757575' }}>ממתין {waitLabel}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
 
             {/* Actions */}
             <div className="flex gap-3">
@@ -314,19 +409,10 @@ const CandidateReviewSheet: React.FC<{
                 onClick={handleReject}
                 disabled={loading}
                 className="flex-1 py-3.5 rounded-2xl font-bold text-[14px] flex items-center justify-center gap-1.5 transition-all active:scale-95 disabled:opacity-50"
-                style={{ background: '#F4F4F4', color: '#757575' }}
+                style={{ background: '#FFF0F0', color: '#E23437' }}
               >
-                {candidates.length > 1 ? (
-                  <>
-                    <ArrowRightIcon className="w-4 h-4" />
-                    הבא בתור ({candidates.length - 1})
-                  </>
-                ) : (
-                  <>
-                    <XMarkIcon className="w-4 h-4" />
-                    דחה
-                  </>
-                )}
+                <XMarkIcon className="w-4 h-4" />
+                דחה שליח
               </button>
               <button
                 onClick={handleAccept}

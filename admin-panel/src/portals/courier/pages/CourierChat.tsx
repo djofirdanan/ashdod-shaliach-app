@@ -30,6 +30,7 @@ import {
   syncDeliveriesDown,
   syncMessagesDown,
   syncConversationsDown,
+  syncDown,
   joinCandidatesQueue,
   courierApproveDelivery,
   saveDeliveryProof,
@@ -678,6 +679,8 @@ const CourierChat: React.FC = () => {
     loadConvs();
     loadDelivery();
     if (courierId) {
+      // Sync conversations AND full data (businesses with logos) so profile pictures work
+      syncDown().then(loadConvs).catch(() => {});
       syncConversationsDown(courierId, 'courier').then(loadConvs);
     }
   }, [courierId, urlDeliveryId]);

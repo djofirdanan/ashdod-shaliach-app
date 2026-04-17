@@ -53,13 +53,29 @@ export async function compressImage(
  */
 export function formatMessagePreview(content: string): string {
   if (!content) return '';
-  if (content.startsWith('data:image/')) return 'קובץ תמונה';
+  if (content.startsWith('data:image/')) return '📷 תמונה';
   try {
     const obj = JSON.parse(content) as Record<string, unknown>;
-    if (obj._t === 'v') return 'הודעה קולית';
-    if (obj._t === 'd' && typeof obj.n === 'string') return `מסמך: ${obj.n}`;
-    if (obj._t === 'd') return 'מסמך';
-  } catch { /* plain text */ }
+    // Media types
+    if (obj._t === 'v') return '🎤 הודעה קולית';
+    if (obj._t === 'd' && typeof obj.n === 'string') return `📄 מסמך: ${obj.n}`;
+    if (obj._t === 'd') return '📄 מסמך';
+    // Review system message
+    if (obj.type === 'review') {
+      const name = typeof obj.reviewerName === 'string' ? obj.reviewerName : '';
+      const stars = typeof obj.rating === 'number' ? obj.rating : 0;
+      const starsStr = '★'.repeat(stars) + '☆'.repeat(5 - stars);
+      return `⭐ ביקורת מ${name} ${starsStr}`;
+    }
+    // Proof of delivery
+    if (typeof obj.hasPhoto !== 'undefined' && typeof obj.deliveryId !== 'undefined') {
+      return '✅ אישור מסירה';
+    }
+    // Delivery card
+    if (typeof obj.pickupAddress !== 'undefined' && typeof obj.dropAddress !== 'undefined') {
+      return '📦 פרטי משלוח';
+    }
+  } catch { /* plain text — fall through */ }
   return content;
 }
 

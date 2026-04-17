@@ -18,10 +18,8 @@ import {
 } from '@heroicons/react/24/outline';
 import { StarIcon as StarSolid } from '@heroicons/react/24/solid';
 import toast from 'react-hot-toast';
-import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
-import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
 import * as storageService from '../services/storage.service';
 import type { StoredBusiness } from '../services/storage.service';
@@ -155,6 +153,7 @@ const Businesses: React.FC = () => {
   const [businesses, setBusinesses] = useState<StoredBusiness[]>([]);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
 
   // Modals
   const [addModal, setAddModal] = useState(false);
@@ -190,7 +189,12 @@ const Businesses: React.FC = () => {
       b.email.includes(search) ||
       b.phone.includes(search);
     const matchCat = categoryFilter === 'all' || b.category === categoryFilter;
-    return matchSearch && matchCat;
+    const matchStatus = statusFilter === 'all' ? true
+      : statusFilter === 'active' ? (b.isActive && !b.isBlocked)
+      : statusFilter === 'pending' ? (!b.isActive && !b.isBlocked)
+      : statusFilter === 'blocked' ? b.isBlocked
+      : true;
+    return matchSearch && matchCat && matchStatus;
   });
 
   const categories = ['all', ...Array.from(new Set(businesses.map((b) => b.category)))];
@@ -339,208 +343,345 @@ const Businesses: React.FC = () => {
     toast.success(`כניסה בשם: ${biz.businessName}`);
   };
 
+  const pendingBizCount = businesses.filter((b) => !b.isActive && !b.isBlocked).length;
+
   return (
-    <div className="space-y-6" dir="rtl">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
+    <div className="space-y-5" dir="rtl">
+
+      {/* ── HEADER ── */}
+      <div
+        className="rounded-[12px] p-5 flex items-center justify-between gap-4 flex-wrap"
+        style={{
+          background: 'linear-gradient(135deg, #061b31 0%, #0f3460 60%, #2563EB 100%)',
+          boxShadow: '0 10px 30px rgba(6,27,49,0.25)',
+        }}
+      >
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">ניהול עסקים</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">ניהול כל העסקים הרשומים במערכת</p>
+          <div className="flex items-center gap-2.5 mb-1">
+            <div className="w-8 h-8 rounded-[8px] flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.12)' }}>
+              <BuildingStorefrontIcon className="w-4.5 h-4.5 text-white" />
+            </div>
+            <h1 className="text-[1.2rem] font-black text-white tracking-tight">ניהול עסקים</h1>
+          </div>
+          <p className="text-[13px] mr-10" style={{ color: 'rgba(255,255,255,0.50)' }}>
+            {totalCount} עסקים רשומים · {activeCount} פעילים כעת
+          </p>
         </div>
-        <Button
-          variant="primary"
-          leftIcon={<PlusIcon className="w-4 h-4" />}
+        <button
           onClick={() => { setAddForm(emptyBizForm()); setAddModal(true); }}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-[8px] text-[13px] font-bold text-white transition-all active:scale-95"
+          style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.22)'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.15)'; }}
         >
+          <PlusIcon className="w-4 h-4" />
           הוסף עסק
-        </Button>
+        </button>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
-              <BuildingStorefrontIcon className="w-5 h-5 text-blue-600" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">סה"כ עסקים</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{totalCount}</p>
-            </div>
-          </div>
-        </Card>
-        <Card>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-green-50 dark:bg-green-900/20 flex items-center justify-center">
-              <BuildingStorefrontIcon className="w-5 h-5 text-green-600" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">עסקים פעילים</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{activeCount}</p>
-            </div>
-          </div>
-        </Card>
-        <Card>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-orange-50 dark:bg-orange-900/20 flex items-center justify-center">
-              <TruckIcon className="w-5 h-5 text-orange-500" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">סה"כ משלוחים</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{totalDeliveries.toLocaleString()}</p>
-            </div>
-          </div>
-        </Card>
-      </div>
-
-      {/* Filters */}
-      <Card>
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="flex-1">
-            <Input
-              placeholder="חיפוש לפי שם, אימייל או טלפון..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              leftIcon={<MagnifyingGlassIcon className="w-4 h-4" />}
-            />
-          </div>
-          <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+      {/* ── STAT CARDS ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          { label: 'סה"כ עסקים', value: totalCount, icon: <BuildingStorefrontIcon className="w-5 h-5" />, bg: 'linear-gradient(135deg,#2563EB,#1d4ed8)', color: '#2563EB' },
+          { label: 'פעילים', value: activeCount, icon: <TruckIcon className="w-5 h-5" />, bg: 'linear-gradient(135deg,#1db954,#00897b)', color: '#1db954' },
+          { label: 'ממתינים לאישור', value: pendingBizCount, icon: <StarIcon className="w-5 h-5" />, bg: 'linear-gradient(135deg,#F97316,#ea580c)', color: '#F97316' },
+          { label: 'סה"כ משלוחים', value: totalDeliveries.toLocaleString(), icon: <TruckIcon className="w-5 h-5" />, bg: 'linear-gradient(135deg,#533afd,#3d22e0)', color: '#533afd' },
+        ].map((s) => (
+          <div
+            key={s.label}
+            className="rounded-[10px] p-4 flex items-center gap-3"
+            style={{ background: '#fff', border: '1px solid #e8ecf0', boxShadow: '0 2px 8px rgba(50,50,93,0.06)' }}
           >
-            {categories.map((cat) => (
-              <option key={cat} value={cat}>{cat === 'all' ? 'כל הקטגוריות' : cat}</option>
-            ))}
-          </select>
-        </div>
-      </Card>
+            <div className="w-10 h-10 rounded-[8px] flex items-center justify-center flex-shrink-0 text-white" style={{ background: s.bg }}>
+              {s.icon}
+            </div>
+            <div className="min-w-0">
+              <p className="text-[22px] font-black leading-none" style={{ color: '#061b31' }}>{s.value}</p>
+              <p className="text-[11px] mt-0.5 leading-tight" style={{ color: '#8898aa' }}>{s.label}</p>
+            </div>
+          </div>
+        ))}
+      </div>
 
-      {/* Table / Cards */}
-      <Card padding="none">
+      {/* ── PENDING ALERT ── */}
+      {pendingBizCount > 0 && (
+        <div
+          className="flex items-center gap-3 px-4 py-3 rounded-[8px]"
+          style={{ background: 'rgba(249,115,22,0.08)', border: '1.5px solid rgba(249,115,22,0.30)' }}
+        >
+          <StarIcon className="w-4 h-4 flex-shrink-0" style={{ color: '#F97316' }} />
+          <p className="text-[13px] font-semibold flex-1" style={{ color: '#92400e' }}>
+            {pendingBizCount} עס{pendingBizCount > 1 ? 'קים' : 'ק'} ממתינ{pendingBizCount > 1 ? 'ים' : ''} לאישור
+          </p>
+          <button
+            onClick={() => setStatusFilter('pending')}
+            className="text-[12px] font-bold px-3 py-1 rounded-full text-white flex-shrink-0"
+            style={{ background: '#F97316' }}
+          >
+            סנן
+          </button>
+        </div>
+      )}
+
+      {/* ── FILTERS ── */}
+      <div
+        className="rounded-[10px] p-4 flex flex-col sm:flex-row gap-3"
+        style={{ background: '#fff', border: '1px solid #e8ecf0', boxShadow: '0 2px 8px rgba(50,50,93,0.06)' }}
+      >
+        {/* Search */}
+        <div className="flex-1 relative">
+          <MagnifyingGlassIcon className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder="חיפוש לפי שם, אימייל או טלפון..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pr-9 pl-4 py-2.5 text-[13px] rounded-[7px] outline-none transition-all"
+            style={{ background: '#f6f9fc', border: '1.5px solid #e8ecf0', color: '#061b31', direction: 'rtl' }}
+            onFocus={(e) => { e.currentTarget.style.borderColor = '#2563EB'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(37,99,235,0.08)'; }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = '#e8ecf0'; e.currentTarget.style.boxShadow = ''; }}
+          />
+        </div>
+        <select
+          value={categoryFilter}
+          onChange={(e) => setCategoryFilter(e.target.value)}
+          className="px-3 py-2.5 rounded-[7px] text-[13px] outline-none"
+          style={{ background: '#f6f9fc', border: '1.5px solid #e8ecf0', color: '#061b31', fontFamily: 'inherit', direction: 'rtl' }}
+        >
+          {categories.map((cat) => (
+            <option key={cat} value={cat}>{cat === 'all' ? 'כל הקטגוריות' : cat}</option>
+          ))}
+        </select>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="px-3 py-2.5 rounded-[7px] text-[13px] outline-none"
+          style={{ background: '#f6f9fc', border: '1.5px solid #e8ecf0', color: '#061b31', fontFamily: 'inherit', direction: 'rtl' }}
+        >
+          <option value="all">כל הסטטוסים</option>
+          <option value="active">פעיל</option>
+          <option value="pending">ממתין לאישור</option>
+          <option value="blocked">חסום</option>
+        </select>
+      </div>
+
+      {/* ── TABLE ── */}
+      <div
+        className="rounded-[10px] overflow-hidden"
+        style={{ background: '#fff', border: '1px solid #e8ecf0', boxShadow: '0 2px 8px rgba(50,50,93,0.06)' }}
+      >
         {/* Desktop Table */}
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-100 dark:border-gray-700">
+              <tr style={{ borderBottom: '2px solid #f0f4ff', background: '#fafbff' }}>
                 {['שם עסק', 'טלפון', 'קטגוריה', 'משלוחים', 'דירוג', 'יתרה', 'סטטוס', 'פעולות'].map((h) => (
-                  <th key={h} className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
+                  <th key={h} className="text-right px-4 py-3 text-[11px] font-black uppercase tracking-wider" style={{ color: '#8898aa' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {filtered.map((biz) => (
-                <tr key={biz.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
-                        <BuildingStorefrontIcon className="w-4 h-4 text-blue-600" />
+              {filtered.map((biz) => {
+                const isPending = !biz.isActive && !biz.isBlocked;
+                return (
+                  <tr
+                    key={biz.id}
+                    className="transition-colors cursor-pointer"
+                    style={{
+                      borderBottom: '1px solid #f6f9fc',
+                      background: isPending ? 'rgba(249,115,22,0.03)' : 'transparent',
+                      borderRight: isPending ? '3px solid #F97316' : '3px solid transparent',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = isPending ? 'rgba(249,115,22,0.06)' : '#fafbff'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = isPending ? 'rgba(249,115,22,0.03)' : 'transparent'; }}
+                  >
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2.5">
+                        <div
+                          className="w-9 h-9 rounded-[8px] flex items-center justify-center flex-shrink-0 text-white text-[13px] font-black"
+                          style={{ background: 'linear-gradient(135deg, #2563EB, #1d4ed8)' }}
+                        >
+                          {biz.businessName.charAt(0)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-[13px] truncate" style={{ color: '#061b31' }}>{biz.businessName}</p>
+                          <p className="text-[11px] truncate" style={{ color: '#8898aa' }}>{biz.contactPerson}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-medium text-gray-900">{biz.businessName}</p>
-                        <p className="text-xs text-gray-400">{biz.contactPerson}</p>
+                    </td>
+                    <td className="px-4 py-3 text-[12px]" style={{ color: '#525f7f' }} dir="ltr">{biz.phone}</td>
+                    <td className="px-4 py-3">
+                      <span
+                        className="px-2 py-0.5 rounded-full text-[11px] font-bold"
+                        style={{ background: 'rgba(37,99,235,0.08)', color: '#2563EB' }}
+                      >
+                        {biz.category}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-[13px] font-bold" style={{ color: '#061b31' }}>{biz.totalDeliveries.toLocaleString()}</td>
+                    <td className="px-4 py-3"><RatingStars rating={biz.rating} /></td>
+                    <td className="px-4 py-3 text-[13px] font-bold" style={{ color: biz.balance > 0 ? '#1db954' : biz.balance < 0 ? '#ea2261' : '#8898aa' }}>
+                      {formatCurrency(biz.balance)}
+                    </td>
+                    <td className="px-4 py-3">
+                      {biz.isBlocked
+                        ? <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold" style={{ background: 'rgba(234,34,97,0.10)', color: '#ea2261' }}>⛔ חסום</span>
+                        : biz.isActive
+                        ? <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold" style={{ background: 'rgba(29,185,84,0.10)', color: '#1db954' }}>● פעיל</span>
+                        : <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold" style={{ background: 'rgba(249,115,22,0.12)', color: '#F97316' }}>◐ ממתין</span>
+                      }
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1 flex-wrap">
+                        {/* Quick approve for pending */}
+                        {isPending && (
+                          <button
+                            title="אשר עסק"
+                            onClick={async () => {
+                              try {
+                                await updateBusinessAsync(biz.id, { isActive: true });
+                                sendAccountApproved(biz.email, biz.businessName).catch(() => {});
+                                toast.success(`${biz.businessName} אושר!`);
+                                load();
+                              } catch { toast.error('שגיאה'); }
+                            }}
+                            className="flex items-center gap-1 px-2 py-1.5 rounded-[6px] text-[11px] font-bold text-white"
+                            style={{ background: 'linear-gradient(135deg,#1db954,#00897b)' }}
+                          >
+                            <CheckCircleIcon className="w-3.5 h-3.5" />
+                            אשר
+                          </button>
+                        )}
+                        <button title="פרטי גישה" onClick={() => { setShowCredPw(false); setCredModal({ open: true, biz }); }}
+                          className="p-1.5 rounded-[5px] transition-colors" style={{ background: 'rgba(245,158,11,0.10)', color: '#d97706' }}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(245,158,11,0.20)'; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(245,158,11,0.10)'; }}>
+                          <KeyIcon className="w-3.5 h-3.5" />
+                        </button>
+                        <button title="כניסה מהירה" onClick={() => handleQuickLogin(biz)}
+                          className="p-1.5 rounded-[5px] transition-colors" style={{ background: 'rgba(83,58,253,0.10)', color: '#533afd' }}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(83,58,253,0.20)'; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(83,58,253,0.10)'; }}>
+                          <BoltIcon className="w-3.5 h-3.5" />
+                        </button>
+                        <button title="עריכה" onClick={() => openEdit(biz)}
+                          className="p-1.5 rounded-[5px] transition-colors" style={{ background: 'rgba(37,99,235,0.10)', color: '#2563EB' }}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(37,99,235,0.20)'; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(37,99,235,0.10)'; }}>
+                          <PencilIcon className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => biz.isBlocked ? handleUnblock(biz) : setBlockModal({ open: true, biz })}
+                          className="p-1.5 rounded-[5px] transition-colors"
+                          style={biz.isBlocked
+                            ? { background: 'rgba(29,185,84,0.10)', color: '#1db954' }
+                            : { background: 'rgba(234,34,97,0.10)', color: '#ea2261' }
+                          }
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.opacity = '0.7'; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.opacity = '1'; }}
+                        >
+                          {biz.isBlocked ? <CheckCircleIcon className="w-3.5 h-3.5" /> : <NoSymbolIcon className="w-3.5 h-3.5" />}
+                        </button>
+                        <button title="מחיקה" onClick={() => setDeleteModal({ open: true, biz })}
+                          className="p-1.5 rounded-[5px] transition-colors" style={{ background: 'rgba(156,163,175,0.12)', color: '#6b7280' }}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(234,34,97,0.10)'; (e.currentTarget as HTMLButtonElement).style.color = '#ea2261'; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(156,163,175,0.12)'; (e.currentTarget as HTMLButtonElement).style.color = '#6b7280'; }}>
+                          <TrashIcon className="w-3.5 h-3.5" />
+                        </button>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-gray-600" dir="ltr">{biz.phone}</td>
-                  <td className="px-4 py-3">
-                    <Badge color={(categoryColors[biz.category] as any) || 'gray'} size="sm">{biz.category}</Badge>
-                  </td>
-                  <td className="px-4 py-3 font-semibold text-gray-900">{biz.totalDeliveries.toLocaleString()}</td>
-                  <td className="px-4 py-3"><RatingStars rating={biz.rating} /></td>
-                  <td className="px-4 py-3 text-gray-700 font-medium">{formatCurrency(biz.balance)}</td>
-                  <td className="px-4 py-3">
-                    {biz.isBlocked ? <Badge color="red" dot>חסום</Badge>
-                      : biz.isActive ? <Badge color="green" dot>פעיל</Badge>
-                      : <Badge color="gray" dot>לא פעיל</Badge>}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1 flex-wrap">
-                      {/* Credentials */}
-                      <button title="פרטי גישה" onClick={() => { setShowCredPw(false); setCredModal({ open: true, biz }); }}
-                        className="p-1.5 rounded-lg text-xs font-medium transition-colors bg-amber-50 text-amber-700 hover:bg-amber-100">
-                        <KeyIcon className="w-3.5 h-3.5" />
-                      </button>
-                      {/* Quick Login */}
-                      <button title="כניסה מהירה" onClick={() => handleQuickLogin(biz)}
-                        className="p-1.5 rounded-lg text-xs font-medium transition-colors bg-purple-50 text-purple-700 hover:bg-purple-100">
-                        <BoltIcon className="w-3.5 h-3.5" />
-                      </button>
-                      {/* Edit */}
-                      <button title="עריכה" onClick={() => openEdit(biz)}
-                        className="p-1.5 rounded-lg text-xs font-medium transition-colors bg-blue-50 text-blue-700 hover:bg-blue-100">
-                        <PencilIcon className="w-3.5 h-3.5" />
-                      </button>
-                      {/* Block/Unblock */}
-                      <button onClick={() => biz.isBlocked ? handleUnblock(biz) : setBlockModal({ open: true, biz })}
-                        className={`p-1.5 rounded-lg text-xs font-medium transition-colors ${biz.isBlocked ? 'bg-green-50 text-green-700 hover:bg-green-100' : 'bg-red-50 text-red-700 hover:bg-red-100'}`}>
-                        {biz.isBlocked ? <CheckCircleIcon className="w-3.5 h-3.5" /> : <NoSymbolIcon className="w-3.5 h-3.5" />}
-                      </button>
-                      {/* Delete */}
-                      <button title="מחיקה" onClick={() => setDeleteModal({ open: true, biz })}
-                        className="p-1.5 rounded-lg text-xs font-medium transition-colors bg-gray-50 text-gray-600 hover:bg-red-50 hover:text-red-700">
-                        <TrashIcon className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
 
         {/* Mobile Cards */}
-        <div className="md:hidden divide-y divide-gray-100">
-          {filtered.map((biz) => (
-            <div key={biz.id} className="p-4 space-y-2">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
-                    <BuildingStorefrontIcon className="w-5 h-5 text-blue-600" />
+        <div className="md:hidden divide-y" style={{ borderColor: '#f6f9fc' }}>
+          {filtered.map((biz) => {
+            const isPending = !biz.isActive && !biz.isBlocked;
+            return (
+              <div
+                key={biz.id}
+                className="p-4 space-y-3"
+                style={{
+                  borderRight: isPending ? '3px solid #F97316' : '3px solid transparent',
+                  background: isPending ? 'rgba(249,115,22,0.03)' : 'white',
+                }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      className="w-10 h-10 rounded-[8px] flex items-center justify-center text-white text-[14px] font-black flex-shrink-0"
+                      style={{ background: 'linear-gradient(135deg, #2563EB, #1d4ed8)' }}
+                    >
+                      {biz.businessName.charAt(0)}
+                    </div>
+                    <div>
+                      <p className="font-semibold text-[14px]" style={{ color: '#061b31' }}>{biz.businessName}</p>
+                      <p className="text-[11px]" style={{ color: '#8898aa' }}>{biz.contactPerson}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-semibold text-gray-900">{biz.businessName}</p>
-                    <p className="text-xs text-gray-400">{biz.contactPerson}</p>
-                  </div>
+                  {biz.isBlocked
+                    ? <span className="px-2 py-0.5 rounded-full text-[11px] font-bold flex-shrink-0" style={{ background: 'rgba(234,34,97,0.10)', color: '#ea2261' }}>חסום</span>
+                    : biz.isActive
+                    ? <span className="px-2 py-0.5 rounded-full text-[11px] font-bold flex-shrink-0" style={{ background: 'rgba(29,185,84,0.10)', color: '#1db954' }}>פעיל</span>
+                    : <span className="px-2 py-0.5 rounded-full text-[11px] font-bold flex-shrink-0" style={{ background: 'rgba(249,115,22,0.12)', color: '#F97316' }}>ממתין</span>
+                  }
                 </div>
-                {biz.isBlocked ? <Badge color="red" dot>חסום</Badge>
-                  : biz.isActive ? <Badge color="green" dot>פעיל</Badge>
-                  : <Badge color="gray" dot>לא פעיל</Badge>}
+                <div className="flex items-center justify-between text-[12px]">
+                  <span style={{ color: '#8898aa' }} dir="ltr">{biz.phone}</span>
+                  <span className="px-2 py-0.5 rounded-full font-bold" style={{ background: 'rgba(37,99,235,0.08)', color: '#2563EB' }}>{biz.category}</span>
+                </div>
+                <div className="flex items-center gap-2 pt-1">
+                  {isPending && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          await updateBusinessAsync(biz.id, { isActive: true });
+                          sendAccountApproved(biz.email, biz.businessName).catch(() => {});
+                          toast.success(`${biz.businessName} אושר!`);
+                          load();
+                        } catch { toast.error('שגיאה'); }
+                      }}
+                      className="flex-1 py-1.5 rounded-[6px] text-[12px] font-bold text-white"
+                      style={{ background: 'linear-gradient(135deg,#1db954,#00897b)' }}
+                    >
+                      אשר עסק
+                    </button>
+                  )}
+                  <button onClick={() => handleQuickLogin(biz)} className="flex-1 py-1.5 rounded-[6px] text-[12px] font-semibold" style={{ background: 'rgba(83,58,253,0.10)', color: '#533afd' }}>כניסה מהירה</button>
+                  <button onClick={() => openEdit(biz)} className="flex-1 py-1.5 rounded-[6px] text-[12px] font-semibold" style={{ background: 'rgba(37,99,235,0.10)', color: '#2563EB' }}>עריכה</button>
+                  <button onClick={() => biz.isBlocked ? handleUnblock(biz) : setBlockModal({ open: true, biz })}
+                    className="flex-1 py-1.5 rounded-[6px] text-[12px] font-semibold"
+                    style={biz.isBlocked ? { background: 'rgba(29,185,84,0.10)', color: '#1db954' } : { background: 'rgba(234,34,97,0.10)', color: '#ea2261' }}>
+                    {biz.isBlocked ? 'בטל חסימה' : 'חסום'}
+                  </button>
+                  <button onClick={() => setDeleteModal({ open: true, biz })} className="px-3 py-1.5 rounded-[6px] text-[12px]" style={{ background: 'rgba(156,163,175,0.12)', color: '#6b7280' }}>
+                    <TrashIcon className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center justify-between text-sm text-gray-500">
-                <span dir="ltr">{biz.phone}</span>
-                <Badge color={(categoryColors[biz.category] as any) || 'gray'} size="sm">{biz.category}</Badge>
-              </div>
-              <div className="flex items-center gap-2 pt-1">
-                <button onClick={() => handleQuickLogin(biz)} className="flex-1 py-1.5 rounded-lg text-xs font-semibold bg-purple-50 text-purple-700">
-                  כניסה מהירה
-                </button>
-                <button onClick={() => openEdit(biz)} className="flex-1 py-1.5 rounded-lg text-xs font-semibold bg-blue-50 text-blue-700">
-                  עריכה
-                </button>
-                <button onClick={() => biz.isBlocked ? handleUnblock(biz) : setBlockModal({ open: true, biz })}
-                  className={`flex-1 py-1.5 rounded-lg text-xs font-semibold ${biz.isBlocked ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                  {biz.isBlocked ? 'בטל חסימה' : 'חסום'}
-                </button>
-                <button onClick={() => setDeleteModal({ open: true, biz })} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 text-gray-600">
-                  <TrashIcon className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {filtered.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+          <div className="flex flex-col items-center justify-center py-16" style={{ color: '#c1cdd8' }}>
             <BuildingStorefrontIcon className="w-12 h-12 mb-3 opacity-30" />
-            <p className="text-sm font-medium">לא נמצאו עסקים</p>
-            <Button variant="primary" size="sm" className="mt-4" leftIcon={<PlusIcon className="w-4 h-4" />}
-              onClick={() => { setAddForm(emptyBizForm()); setAddModal(true); }}>
+            <p className="text-[13px] font-medium" style={{ color: '#8898aa' }}>לא נמצאו עסקים</p>
+            <button
+              onClick={() => { setAddForm(emptyBizForm()); setAddModal(true); }}
+              className="mt-4 flex items-center gap-2 px-4 py-2 rounded-[7px] text-[13px] font-bold text-white"
+              style={{ background: 'linear-gradient(135deg, #2563EB, #1d4ed8)' }}
+            >
+              <PlusIcon className="w-4 h-4" />
               הוסף עסק ראשון
-            </Button>
+            </button>
           </div>
         )}
-      </Card>
+      </div>
 
       {/* ── ADD MODAL ── */}
       <Modal isOpen={addModal} onClose={() => setAddModal(false)} title="הוסף עסק חדש" size="lg"

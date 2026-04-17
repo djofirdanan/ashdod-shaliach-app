@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   TruckIcon,
   UserGroupIcon,
@@ -6,6 +6,9 @@ import {
   CurrencyDollarIcon,
   ExclamationTriangleIcon,
   ArrowPathIcon,
+  CheckCircleIcon,
+  XMarkIcon,
+  BellAlertIcon,
 } from '@heroicons/react/24/outline';
 import { Flask, Rocket, Package, Money, DeviceMobile } from '@phosphor-icons/react';
 import { StatCard } from '../components/ui/StatCard';
@@ -16,7 +19,8 @@ import { Skeleton, TableSkeleton } from '../components/ui/LoadingSkeleton';
 import type { DailyRevenueData, HourlyDeliveryData } from '../types';
 import { formatCurrency } from '../utils/formatters';
 import * as storageService from '../services/storage.service';
-import { addDeliveryNotification } from '../services/storage.service';
+import { addDeliveryNotification, updateCourierAsync, updateBusinessAsync } from '../services/storage.service';
+import { sendAccountApproved } from '../services/email.service';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
 
@@ -30,6 +34,16 @@ interface DashboardStats {
   revenueToday: number;
   revenueThisWeek: number;
   trends: { deliveries: number; couriers: number; businesses: number; revenue: number };
+}
+
+interface PendingItem {
+  id: string;
+  name: string;
+  type: 'courier' | 'business';
+  email: string;
+  phone: string;
+  createdAt: string;
+  extra?: string; // vehicle for courier, category for business
 }
 
 function buildStatsFromStorage(): DashboardStats {
@@ -154,6 +168,7 @@ const Dashboard: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats>(() => buildStatsFromStorage());
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [pendingItems, setPendingItems] = useState<PendingItem[]>([]);
 
   const [weeklyData] = useState<DailyRevenueData[]>(generateWeeklyRevenue);
   const [hourlyData] = useState<HourlyDeliveryData[]>(generateHourlyDeliveries);
@@ -167,15 +182,71 @@ const Dashboard: React.FC = () => {
   const [testVehicle, setTestVehicle] = useState('');
   const [testPayment, setTestPayment] = useState<'cash'|'bit'>('cash');
 
+  const VEHICLE_LABELS: Record<string, string> = {
+    motorcycle: 'אופנוע', bicycle: 'אופניים', car: 'רכב', scooter: 'קטנוע',
+  };
+
+  const loadPending = useCallback(() => {
+    const couriers = storageService.getCouriers()
+      .filter((c) => !c.isActive && !c.isBlocked)
+      .map((c): PendingItem => ({
+        id: c.id, name: c.name, type: 'courier',
+        email: c.email, phone: c.phone, createdAt: c.createdAt,
+        extra: VEHICLE_LABELS[c.vehicle] ?? c.vehicle,
+      }));
+    const businesses = storageService.getBusinesses()
+      .filter((b) => !b.isActive && !b.isBlocked)
+      .map((b): PendingItem => ({
+        id: b.id, name: b.businessName, type: 'business',
+        email: b.email, phone: b.phone, createdAt: b.createdAt,
+        extra: b.category,
+      }));
+    setPendingItems([...couriers, ...businesses].sort((a, b) =>
+      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    ));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleApprove = async (item: PendingItem) => {
+    try {
+      if (item.type === 'courier') {
+        await updateCourierAsync(item.id, { isActive: true });
+      } else {
+        await updateBusinessAsync(item.id, { isActive: true });
+      }
+      sendAccountApproved(item.email, item.name).catch(() => {});
+      toast.success(`${item.name} אושר בהצלחה!`);
+      loadPending();
+      loadData();
+    } catch {
+      toast.error('שגיאה באישור');
+    }
+  };
+
+  const handleRejectPending = async (item: PendingItem) => {
+    try {
+      if (item.type === 'courier') {
+        storageService.updateCourier(item.id, { isBlocked: true, blockedReason: 'נדחה על ידי מנהל' });
+      } else {
+        storageService.updateBusiness(item.id, { isBlocked: true, blockedReason: 'נדחה על ידי מנהל' });
+      }
+      toast.success(`${item.name} נדחה`);
+      loadPending();
+    } catch {
+      toast.error('שגיאה');
+    }
+  };
+
   const loadData = () => {
     setStats(buildStatsFromStorage());
     setLastUpdated(new Date());
+    loadPending();
   };
 
   useEffect(() => {
+    loadPending();
     const interval = setInterval(loadData, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -319,6 +390,117 @@ const Dashboard: React.FC = () => {
           trend={{ value: stats.trends.revenue, label: 'לעומת אתמול' }}
         />
       </div>
+
+      {/* ── PENDING APPROVALS ─────────────────────────────────────────────── */}
+      {pendingItems.length > 0 && (
+        <div
+          className="rounded-[12px] overflow-hidden"
+          style={{
+            border: '1.5px solid rgba(249,115,22,0.35)',
+            boxShadow: '0 4px 20px rgba(249,115,22,0.10)',
+          }}
+        >
+          {/* Header */}
+          <div
+            className="flex items-center justify-between px-5 py-3"
+            style={{ background: 'rgba(249,115,22,0.08)', borderBottom: '1px solid rgba(249,115,22,0.20)' }}
+          >
+            <div className="flex items-center gap-2.5">
+              <span
+                className="w-8 h-8 rounded-[8px] flex items-center justify-center flex-shrink-0"
+                style={{ background: 'rgba(249,115,22,0.15)' }}
+              >
+                <BellAlertIcon className="w-4 h-4" style={{ color: '#F97316' }} />
+              </span>
+              <div>
+                <h3 className="text-[14px] font-bold" style={{ color: '#92400e' }}>
+                  ממתינים לאישור
+                </h3>
+                <p className="text-[11px]" style={{ color: '#b45309' }}>
+                  {pendingItems.length} {pendingItems.length === 1 ? 'בקשה' : 'בקשות'} חדשות מחכות לאישורך
+                </p>
+              </div>
+            </div>
+            <span
+              className="px-2.5 py-1 rounded-full text-[12px] font-black text-white"
+              style={{ background: '#F97316' }}
+            >
+              {pendingItems.length}
+            </span>
+          </div>
+
+          {/* List */}
+          <div className="bg-white divide-y divide-orange-50">
+            {pendingItems.map((item) => (
+              <div
+                key={item.id}
+                className="flex items-center gap-3 px-5 py-3 transition-colors"
+                style={{ background: 'rgba(255,251,247,0.8)' }}
+              >
+                {/* Avatar */}
+                <div
+                  className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 text-white text-[14px] font-black"
+                  style={{
+                    background: item.type === 'courier'
+                      ? 'linear-gradient(135deg, #533afd, #3d22e0)'
+                      : 'linear-gradient(135deg, #F97316, #ea580c)',
+                  }}
+                >
+                  {item.name.charAt(0)}
+                </div>
+
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[14px] font-semibold truncate" style={{ color: '#061b31' }}>
+                      {item.name}
+                    </span>
+                    <span
+                      className="px-2 py-0.5 rounded-full text-[10px] font-bold flex-shrink-0"
+                      style={{
+                        background: item.type === 'courier' ? 'rgba(83,58,253,0.10)' : 'rgba(249,115,22,0.10)',
+                        color: item.type === 'courier' ? '#533afd' : '#ea580c',
+                      }}
+                    >
+                      {item.type === 'courier' ? 'שליח' : 'עסק'}
+                      {item.extra ? ` · ${item.extra}` : ''}
+                    </span>
+                  </div>
+                  <p className="text-[11px] mt-0.5" style={{ color: '#8898aa' }} dir="ltr">
+                    {item.phone} · {item.email}
+                  </p>
+                </div>
+
+                {/* Joined time */}
+                <span className="text-[11px] flex-shrink-0 hidden sm:block" style={{ color: '#c1cdd8' }}>
+                  {new Date(item.createdAt).toLocaleDateString('he-IL')}
+                </span>
+
+                {/* Actions */}
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <button
+                    onClick={() => handleApprove(item)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] text-[12px] font-bold text-white transition-all active:scale-95"
+                    style={{ background: 'linear-gradient(135deg, #1db954, #00897b)' }}
+                    title="אשר"
+                  >
+                    <CheckCircleIcon className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">אשר</span>
+                  </button>
+                  <button
+                    onClick={() => handleRejectPending(item)}
+                    className="p-1.5 rounded-[6px] transition-all active:scale-95"
+                    style={{ background: 'rgba(234,34,97,0.08)', color: '#ea2261' }}
+                    title="דחה"
+                  >
+                    <XMarkIcon className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── CHARTS ──────────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">

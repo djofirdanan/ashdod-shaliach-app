@@ -26,7 +26,7 @@ import {
   type SupportMessage,
   type SupportTicket,
 } from '../../../services/storage.service';
-import { syncMessagesDown, syncConversationsDown, syncDeliveriesDown, getCourierLocationFromDB, syncSupportMessagesDown } from '../../../services/sync.service';
+import { syncMessagesDown, syncConversationsDown, syncDeliveriesDown, syncDown, getCourierLocationFromDB, syncSupportMessagesDown } from '../../../services/sync.service';
 import { sendAdminSupportNotification } from '../../../services/email.service';
 import { playNewMessage, playStatusUpdate, getMuted, setMuted } from '../../../utils/sounds';
 import {
@@ -509,7 +509,11 @@ const BusinessChat: React.FC = () => {
 
   useEffect(() => {
     loadConvs();
-    if (businessId) syncConversationsDown(businessId, 'business').then(loadConvs);
+    if (businessId) {
+      // Sync full data (couriers with photos) so profile pictures are available
+      syncDown().then(loadConvs).catch(() => {});
+      syncConversationsDown(businessId, 'business').then(loadConvs);
+    }
   }, [businessId]);
 
   // ─── Load support ticket once ────────────────────────────────
