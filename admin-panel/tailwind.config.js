@@ -58,10 +58,16 @@ export default {
         // Borders
         borderLight: '#e0e6ed',
         borderCard:  '#e8ecf0',
+        // ─── Editorial Light tokens ──────────────────────────────────────
+        canvas:           '#fbfaf6',  // off-white page background
+        ink:              '#111111',  // primary text on canvas
+        inkMuted:         '#555555',  // secondary text on canvas
+        borderEditorial:  '#e8e6dc',  // subtle hairlines on canvas
       },
       fontFamily: {
         sans: ['"Noto Sans Hebrew"', '"Helvetica Neue"', 'Arial', 'sans-serif'],
         mono: ['"Source Code Pro"', 'Menlo', 'monospace'],
+        serif: ['Georgia', '"Times New Roman"', 'serif'],
       },
       boxShadow: {
         // Stripe's signature blue-tinted multi-layer shadows
@@ -72,6 +78,7 @@ export default {
         'stripe-xl':  '0 50px 100px -20px rgba(50,50,93,0.25), 0 30px 60px -30px rgba(0,0,0,0.30)',
         'stripe-focus': '0 0 0 4px rgba(83,58,253,0.20)',
         'stripe-danger-focus': '0 0 0 4px rgba(234,34,97,0.20)',
+        'editorial-card': '0 1px 2px rgba(17,17,17,0.04), 0 8px 24px rgba(17,17,17,0.06)',
       },
       letterSpacing: {
         'stripe-display': '-0.06em',
