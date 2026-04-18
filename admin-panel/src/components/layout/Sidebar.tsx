@@ -165,15 +165,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, mobileOpe
           mobileOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0',
           collapsed ? 'w-[64px]' : 'w-[240px]'
         )}
-        style={{ background: '#061b31' }}
+        style={{ background: '#0A0A0F' }}
       >
         {/* Collapse toggle — desktop only */}
         <button
           onClick={onToggle}
           className="absolute -left-3 top-[72px] w-6 h-6 rounded-full hidden md:flex items-center justify-center z-10 transition-all hover:scale-110 shadow-lg"
           style={{
-            background: 'linear-gradient(135deg, #533afd, #ea2261)',
-            border: '2px solid #061b31',
+            background: '#6C63FF',
+            border: '2px solid #0A0A0F',
           }}
           aria-label="Toggle sidebar"
         >
@@ -193,14 +193,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, mobileOpe
         >
           <div
             className="w-9 h-9 rounded-[8px] flex items-center justify-center flex-shrink-0"
-            style={{ background: 'linear-gradient(135deg, #533afd, #ea2261)' }}
+            style={{ background: '#6C63FF' }}
           >
             <TruckIcon className="w-5 h-5 text-white" />
           </div>
           {!collapsed && (
             <div className="overflow-hidden">
               <p className="font-bold text-sm leading-tight text-white whitespace-nowrap tracking-tight">
-                אשדוד-שליח
+                ZOOZ
               </p>
               <p className="text-[11px] whitespace-nowrap mt-0.5" style={{ color: 'rgba(255,255,255,0.40)' }}>
                 פאנל ניהול
@@ -285,7 +285,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, mobileOpe
                         {item.badge && item.badge > 0 && (
                           <span
                             className="absolute -top-1 -left-1 w-3.5 h-3.5 rounded-full text-[9px] font-bold text-white flex items-center justify-center"
-                            style={{ background: '#ea2261' }}
+                            style={{ background: '#6C63FF' }}
                           >
                             {item.badge > 9 ? '9+' : item.badge}
                           </span>
@@ -299,7 +299,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, mobileOpe
                       {!collapsed && item.badge && item.badge > 0 && (
                         <span
                           className="px-1.5 py-0.5 rounded-full text-[10px] font-bold text-white flex-shrink-0"
-                          style={{ background: '#ea2261' }}
+                          style={{ background: '#6C63FF' }}
                         >
                           {item.badge}
                         </span>
@@ -309,7 +309,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, mobileOpe
                         <div
                           className="absolute left-full ml-3 px-3 py-1.5 text-white text-xs rounded-[6px] opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50"
                           style={{
-                            background: '#1c1e54',
+                            background: 'rgba(255,255,255,0.06)',
                             boxShadow: '0 7px 14px 0 rgba(50,50,93,0.10), 0 3px 6px 0 rgba(0,0,0,0.07)',
                             border: '1px solid rgba(83,58,253,0.25)',
                           }}
@@ -359,7 +359,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, mobileOpe
               <div
                 className="absolute left-full ml-3 px-3 py-1.5 text-white text-xs rounded-[6px] opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50"
                 style={{
-                  background: '#1c1e54',
+                  background: 'rgba(255,255,255,0.06)',
                   boxShadow: '0 7px 14px 0 rgba(50,50,93,0.10), 0 3px 6px 0 rgba(0,0,0,0.07)',
                   border: '1px solid rgba(83,58,253,0.25)',
                 }}
@@ -377,8 +377,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, mobileOpe
             style={{ background: 'rgba(83,58,253,0.12)', border: '1px solid rgba(83,58,253,0.20)' }}
           >
             <span className="relative flex h-2 w-2 flex-shrink-0">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ background: '#533afd' }} />
-              <span className="relative inline-flex rounded-full h-2 w-2" style={{ background: '#533afd' }} />
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ background: '#6C63FF' }} />
+              <span className="relative inline-flex rounded-full h-2 w-2" style={{ background: '#6C63FF' }} />
             </span>
             <span className="text-[12px] font-medium" style={{ color: 'rgba(255,255,255,0.65)' }}>
               מערכת פעילה
@@ -399,7 +399,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, mobileOpe
           >
             <div
               className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-white"
-              style={{ background: 'linear-gradient(135deg, #533afd, #ea2261)' }}
+              style={{ background: '#6C63FF' }}
             >
               {firstLetter}
             </div>
@@ -411,7 +411,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, mobileOpe
                     {user?.name || 'מנהל'}
                   </p>
                   <p className="text-[11px] truncate leading-tight mt-0.5" style={{ color: 'rgba(255,255,255,0.40)' }}>
-                    {user?.email || 'admin@ashdod-shaliach.co.il'}
+                    {user?.email || 'admin@zooz.co.il'}
                   </p>
                 </div>
                 <button
@@ -421,7 +421,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, mobileOpe
                   title="התנתק"
                   onMouseEnter={(e) => {
                     (e.currentTarget as HTMLButtonElement).style.background = 'rgba(234,34,97,0.15)';
-                    (e.currentTarget as HTMLButtonElement).style.color = '#ea2261';
+                    (e.currentTarget as HTMLButtonElement).style.color = '#6C63FF';
                   }}
                   onMouseLeave={(e) => {
                     (e.currentTarget as HTMLButtonElement).style.background = '';

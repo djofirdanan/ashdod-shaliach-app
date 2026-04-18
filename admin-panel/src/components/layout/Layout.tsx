@@ -117,17 +117,17 @@ export const Layout: React.FC = () => {
                 {({ isActive }) => (
                   <>
                     <span className="relative">
-                      <span style={{ color: isActive ? '#533afd' : '#9ca3af' }}>{item.icon}</span>
+                      <span style={{ color: isActive ? '#6C63FF' : '#9ca3af' }}>{item.icon}</span>
                       {badgeCount > 0 && (
                         <span
                           className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full text-[9px] font-bold text-white flex items-center justify-center"
-                          style={{ background: '#ea2261' }}
+                          style={{ background: '#6C63FF' }}
                         >
                           {badgeCount > 9 ? '9+' : badgeCount}
                         </span>
                       )}
                     </span>
-                    <span className="text-[10px] font-medium" style={{ color: isActive ? '#533afd' : '#9ca3af' }}>
+                    <span className="text-[10px] font-medium" style={{ color: isActive ? '#6C63FF' : '#9ca3af' }}>
                       {item.label}
                     </span>
                   </>
