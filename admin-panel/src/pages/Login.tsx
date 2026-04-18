@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { Lightning, MapTrifold, ChatCircle, ChartBar } from '@phosphor-icons/react';
 import { loginUser } from '../store/authSlice';
@@ -75,7 +75,7 @@ const AppDownloadBanner: React.FC = () => {
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-white text-[13px] font-bold leading-tight">
-            הורד את אפליקציית אשדוד-שליח
+            הורד את אפליקציית ZOOZ
           </p>
           <p className="text-white/55 text-[11px] mt-0.5">
             גש לכל הפיצ׳רים ישירות מהנייד שלך
@@ -163,8 +163,12 @@ const features: { icon: React.ReactNode; title: string; desc: string }[] = [
 const Login: React.FC = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
+  const [searchParams] = useSearchParams();
+  const roleParam = searchParams.get('role') as Role | null;
 
-  const [selectedRole, setSelectedRole] = useState<Role>('business');
+  const [selectedRole, setSelectedRole] = useState<Role>(
+    roleParam === 'courier' ? 'courier' : 'business'
+  );
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -234,7 +238,7 @@ const Login: React.FC = () => {
             <TruckIcon className="w-6 h-6 text-white" />
           </div>
           <div>
-            <p className="text-white font-black text-lg leading-tight tracking-tight">אשדוד-שליח</p>
+            <p className="text-white font-black text-lg leading-tight tracking-tight">ZOOZ</p>
             <p className="text-white/45 text-[12px]">פלטפורמת המשלוחים החכמה</p>
           </div>
         </div>
@@ -300,7 +304,7 @@ const Login: React.FC = () => {
             <div className="w-9 h-9 rounded-[8px] flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #533afd, #ea2261)' }}>
               <TruckIcon className="w-5 h-5 text-white" />
             </div>
-            <p className="font-black text-lg" style={{ color: '#061b31' }}>אשדוד-שליח</p>
+            <p className="font-black text-lg" style={{ color: '#061b31' }}>ZOOZ</p>
           </div>
 
           {/* App download banner — mobile/tablet only */}
@@ -428,7 +432,7 @@ const Login: React.FC = () => {
 
           {/* Footer */}
           <p className="text-center text-[11px] mt-6" style={{ color: '#c1cdd8' }}>
-            © {new Date().getFullYear()} אשדוד-שליח · כל הזכויות שמורות
+            © {new Date().getFullYear()} ZOOZ · כל הזכויות שמורות
           </p>
         </div>
       </div>
