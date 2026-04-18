@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Confetti, Truck, Calendar, CheckCircle, XCircle, Package, MapPin as PhosphorMapPin, Gear } from '@phosphor-icons/react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import ChatGroupsSidebar from '../../../components/ChatGroupsSidebar';
 import {
   getConversations,
   getMessages,
@@ -834,6 +835,14 @@ const BusinessChat: React.FC = () => {
   // ─── Conversation list ───────────────────────────────────────
   if (!selectedConvId) {
     return (
+      <div className="flex h-full">
+        <ChatGroupsSidebar
+          myId={businessId}
+          myType="business"
+          activeConvId={selectedConvId ?? undefined}
+          onSelect={(convId) => setSelectedConvId(convId)}
+        />
+        <div className="flex-1 min-w-0 overflow-auto">
       <div className="max-w-lg mx-auto px-4 py-5">
         <div className="flex items-center justify-between mb-5">
           <h1 className="text-[20px] font-black" style={{ color: '#061b31' }}>הודעות</h1>
@@ -939,6 +948,8 @@ const BusinessChat: React.FC = () => {
           </div>
         )}
       </div>
+        </div>
+      </div>
     );
   }
 
@@ -947,7 +958,14 @@ const BusinessChat: React.FC = () => {
     // Mark all admin messages as read when entering support chat
     localStorage.setItem(supportReadKey, new Date().toISOString());
     return (
-      <div className="flex flex-col h-[calc(100vh-130px)] max-w-lg mx-auto">
+      <div className="flex h-full">
+        <ChatGroupsSidebar
+          myId={businessId}
+          myType="business"
+          activeConvId={selectedConvId ?? undefined}
+          onSelect={(convId) => setSelectedConvId(convId)}
+        />
+        <div className="flex flex-col flex-1 min-w-0 h-[calc(100vh-130px)] max-w-lg mx-auto">
         {/* Header */}
         <div className="flex items-center gap-3 px-4 py-3" style={{ background: '#fff', borderBottom: '1px solid #e8ecf0' }}>
           <button onClick={() => setSelectedConvId(null)} className="text-[13px] font-semibold" style={{ color: '#533afd' }}>
@@ -955,7 +973,7 @@ const BusinessChat: React.FC = () => {
           </button>
           <div className="flex-1">
             <p className="text-[14px] font-black flex items-center gap-1" style={{ color: '#061b31' }}><Gear size={14} /> מוקד שירות</p>
-            <p className="text-[10px]" style={{ color: '#10b981' }}>● צוות אשדוד-שליח</p>
+            <p className="text-[10px]" style={{ color: '#10b981' }}>● צוות ZOOZ</p>
           </div>
         </div>
         {/* Messages */}
@@ -1033,12 +1051,20 @@ const BusinessChat: React.FC = () => {
           <VoiceRecorderModal onSend={handleSuppVoiceSend} onClose={() => setShowSupportVoiceModal(false)} />
         )}
       </div>
+      </div>
     );
   }
 
   // ─── Active chat ─────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-[calc(100vh-130px)] max-w-lg mx-auto">
+    <div className="flex h-full">
+      <ChatGroupsSidebar
+        myId={businessId}
+        myType="business"
+        activeConvId={selectedConvId ?? undefined}
+        onSelect={(convId) => setSelectedConvId(convId)}
+      />
+      <div className="flex flex-col flex-1 min-w-0 h-[calc(100vh-130px)] max-w-lg mx-auto">
       {/* Header */}
       <div
         className="flex items-center gap-3 px-4 py-3"
@@ -1264,6 +1290,7 @@ const BusinessChat: React.FC = () => {
           onClose={() => setShowCompletionModal(false)}
         />
       )}
+      </div>
     </div>
   );
 };
