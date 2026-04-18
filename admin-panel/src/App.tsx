@@ -22,6 +22,7 @@ import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import LiveMap from './pages/LiveMap';
 import Login from './pages/Login';
+import LandingPage from './pages/LandingPage';
 import AdminLogin from './pages/AdminLogin';
 import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
@@ -150,7 +151,7 @@ const App: React.FC = () => {
               element={
                 localStorage.getItem('admin_token')
                   ? <Navigate to={getRoleHome()} replace />
-                  : <Navigate to="/login" replace />
+                  : <LandingPage />
               }
             />
 
