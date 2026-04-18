@@ -38,12 +38,8 @@ export const heroContent: Record<Audience, {
   },
 };
 
-// PLACEHOLDER: replace with real platform numbers before launch
-export const PLACEHOLDER_heroStats: { value: string; label: string }[] = [
-  { value: '500+', label: 'עסקים פעילים' },
-  { value: '12,000+', label: 'משלוחים' },
-  { value: '4.9', label: 'דירוג ממוצע' },
-];
+// Real stats — update once platform has real data
+export const heroStats: { value: string; label: string }[] = [];
 
 // ─── How It Works ─────────────────────────────────────────────────
 export const howItWorksSteps: { num: string; title: string; desc: string }[] = [

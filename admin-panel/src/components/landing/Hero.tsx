@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { heroContent, PLACEHOLDER_heroStats, anchors, type Audience } from './content';
+import { heroContent, heroStats, anchors, type Audience } from './content';
 
 const Hero: React.FC = () => {
   const [tab, setTab] = useState<Audience>('business');
@@ -69,7 +69,7 @@ const Hero: React.FC = () => {
 
         {/* Proof strip */}
         <ul className="flex flex-wrap items-center justify-center gap-x-8 gap-y-2 text-[13px] text-inkMuted">
-          {PLACEHOLDER_heroStats.map((s, i) => (
+          {heroStats.map((s, i) => (
             <li key={i} className="flex items-baseline gap-2">
               <span className="font-serif text-ink text-[18px]">{s.value}</span>
               <span>{s.label}</span>

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Quotes } from '@phosphor-icons/react';
-import { PLACEHOLDER_heroStats, PLACEHOLDER_testimonials } from './content';
+import { heroStats, PLACEHOLDER_testimonials } from './content';
 
 const SocialProof: React.FC = () => {
   return (
@@ -8,7 +8,7 @@ const SocialProof: React.FC = () => {
       <div className="max-w-6xl mx-auto px-5 md:px-8">
         {/* Stats strip */}
         <div className="grid grid-cols-3 gap-4 mb-16 md:mb-20 border-y border-ink py-10">
-          {PLACEHOLDER_heroStats.map((s, i) => (
+          {heroStats.map((s, i) => (
             <div key={i} className="text-center">
               <div className="font-serif text-ink" style={{ fontSize: 'clamp(32px, 5vw, 52px)', fontWeight: 400 }}>
                 {s.value}
