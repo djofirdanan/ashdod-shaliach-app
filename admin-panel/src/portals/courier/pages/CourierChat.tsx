@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Confetti, Truck, Calendar, CheckCircle, XCircle, Package, MapPin as PhosphorMapPin, Gear, Clock, Camera } from '@phosphor-icons/react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import ChatGroupsSidebar from '../../../components/ChatGroupsSidebar';
 import {
   getConversations,
   getMessages,
@@ -1070,6 +1071,14 @@ const CourierChat: React.FC = () => {
     });
 
     return (
+      <div className="flex h-full">
+        <ChatGroupsSidebar
+          myId={courierId}
+          myType="courier"
+          activeConvId={selectedConvId ?? undefined}
+          onSelect={(convId) => setSelectedConvId(convId)}
+        />
+        <div className="flex-1 min-w-0 overflow-auto">
       <div className="max-w-lg mx-auto px-4 py-5">
         <div className="flex items-center justify-between mb-5">
           <h1 className="text-[20px] font-black" style={{ color: '#061b31' }}>הודעות</h1>
@@ -1165,6 +1174,8 @@ const CourierChat: React.FC = () => {
           </div>
         )}
       </div>
+        </div>
+      </div>
     );
   }
 
@@ -1173,7 +1184,14 @@ const CourierChat: React.FC = () => {
     // Mark as read on open
     localStorage.setItem(supportReadKey, new Date().toISOString());
     return (
-      <div className="flex flex-col h-[calc(100vh-130px)] max-w-lg mx-auto">
+      <div className="flex h-full">
+        <ChatGroupsSidebar
+          myId={courierId}
+          myType="courier"
+          activeConvId={selectedConvId ?? undefined}
+          onSelect={(convId) => setSelectedConvId(convId)}
+        />
+        <div className="flex flex-col flex-1 min-w-0 h-[calc(100vh-130px)] max-w-lg mx-auto">
         {/* Header */}
         <div className="flex items-center gap-3 px-4 py-3" style={{ background: '#fff', borderBottom: '1px solid #e8ecf0' }}>
           <button onClick={() => setSelectedConvId(null)} className="text-[13px] font-semibold" style={{ color: '#533afd' }}>
@@ -1181,7 +1199,7 @@ const CourierChat: React.FC = () => {
           </button>
           <div className="flex-1">
             <p className="text-[14px] font-black flex items-center gap-1" style={{ color: '#061b31' }}><Gear size={14} /> מוקד שירות</p>
-            <p className="text-[10px]" style={{ color: '#10b981' }}>● צוות אשדוד-שליח</p>
+            <p className="text-[10px]" style={{ color: '#10b981' }}>● צוות ZOOZ</p>
           </div>
         </div>
         {isUnavailable && <UnavailableBanner onGoToProfile={() => navigate('/courier/profile')} />}
@@ -1260,6 +1278,7 @@ const CourierChat: React.FC = () => {
           <VoiceRecorderModal onSend={handleSuppVoiceSend} onClose={() => setShowSupportVoiceModal(false)} />
         )}
       </div>
+      </div>
     );
   }
 
@@ -1267,15 +1286,30 @@ const CourierChat: React.FC = () => {
   // Show spinner while conversations haven't loaded yet (deep-link arrival)
   if (isConvLoading) {
     return (
-      <div className="flex flex-col items-center justify-center h-[calc(100vh-130px)]">
-        <div className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: '#009DE0', borderTopColor: 'transparent' }} />
-        <p className="text-[12px] mt-3" style={{ color: '#8898aa' }}>טוען שיחה...</p>
+      <div className="flex h-full">
+        <ChatGroupsSidebar
+          myId={courierId}
+          myType="courier"
+          activeConvId={selectedConvId ?? undefined}
+          onSelect={(convId) => setSelectedConvId(convId)}
+        />
+        <div className="flex flex-col items-center justify-center flex-1 min-w-0 h-[calc(100vh-130px)]">
+          <div className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: '#009DE0', borderTopColor: 'transparent' }} />
+          <p className="text-[12px] mt-3" style={{ color: '#8898aa' }}>טוען שיחה...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-130px)] max-w-lg mx-auto">
+    <div className="flex h-full">
+      <ChatGroupsSidebar
+        myId={courierId}
+        myType="courier"
+        activeConvId={selectedConvId ?? undefined}
+        onSelect={(convId) => setSelectedConvId(convId)}
+      />
+      <div className="flex flex-col flex-1 min-w-0 h-[calc(100vh-130px)] max-w-lg mx-auto">
       {/* Chat header */}
       <div className="flex items-center gap-3 px-4 py-3" style={{ background: '#fff', borderBottom: '1px solid #e8ecf0' }}>
         <button onClick={handleBack} className="text-[13px] font-semibold" style={{ color: '#533afd' }}>
@@ -1496,6 +1530,7 @@ const CourierChat: React.FC = () => {
         const biz = getBusiness(selectedConv.businessId);
         return biz ? <BusinessProfileModal business={biz} courierId={courierId} onClose={() => setShowBizProfile(false)} /> : null;
       })()}
+      </div>
     </div>
   );
 };
