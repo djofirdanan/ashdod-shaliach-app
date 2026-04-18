@@ -38,6 +38,43 @@
   --shadow-lg: 0 30px 60px -12px rgba(50,50,93,0.25), 0 18px 36px -18px rgba(0,0,0,0.30);
 }
 
+/* ─── ZOOZ design tokens (Style 3 light / Style 1 dark) ──────────── */
+:root {
+  --zooz-bg:           #FFFFFF;
+  --zooz-bg-card:      #FAFAFA;
+  --zooz-bg-input:     #F5F5F7;
+  --zooz-border:       #EFEFEF;
+  --zooz-border-strong:#E0E0E0;
+  --zooz-text1:        #0A0A0F;
+  --zooz-text2:        #555560;
+  --zooz-text3:        #AAAABC;
+  --zooz-accent:       #0A0A0F;
+  --zooz-yellow:       #FFE500;
+  --zooz-green:        #00C97A;
+  --zooz-red:          #FF3B30;
+  --zooz-purple:       #6C63FF;
+  --zooz-radius-card:  18px;
+  --zooz-radius-btn:   13px;
+  --zooz-shadow:       0 2px 16px rgba(0,0,0,0.06);
+  --zooz-transition:   0.28s cubic-bezier(0.4,0,0.2,1);
+}
+.dark {
+  --zooz-bg:           #0A0A0F;
+  --zooz-bg-card:      rgba(255,255,255,0.04);
+  --zooz-bg-input:     rgba(255,255,255,0.06);
+  --zooz-border:       rgba(255,255,255,0.08);
+  --zooz-border-strong:rgba(255,255,255,0.14);
+  --zooz-text1:        #FFFFFF;
+  --zooz-text2:        rgba(255,255,255,0.6);
+  --zooz-text3:        rgba(255,255,255,0.28);
+  --zooz-accent:       #6C63FF;
+  --zooz-yellow:       #6C63FF;
+  --zooz-green:        #00E5A0;
+  --zooz-red:          #FF453A;
+  --zooz-purple:       #8B83FF;
+  --zooz-shadow:       0 4px 24px rgba(0,0,0,0.4);
+}
+
 /* ─── Base ───────────────────────────────────────────────────────── */
 @layer base {
   * {
